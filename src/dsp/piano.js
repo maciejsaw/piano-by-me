@@ -48,6 +48,12 @@ export class Piano {
     this.transientDepth = opts.transientDepth ?? 0.14;
     this.transientTauS = opts.transientTauS ?? 0.25;    // fall
     this.transientRiseS = opts.transientRiseS ?? 0.04;   // spare the strike itself
+    // Hammer knobs, for fitting the attack against the samples.
+    this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
+    this.feltTauUs = opts.feltTauUs ?? 2;
+    this.hammerWidth = opts.hammerWidth ?? 1;   // scales the contact patch
+    this.feltKScale = opts.feltKScale ?? 1;
+    this.feltP = opts.feltP ?? null;            // null = per-note from the scale
     this.transientSustain = opts.transientSustain ?? 0;
     this.transientFc = opts.transientFc ?? null;   // null = scale with the note
     this.couplingFc = opts.couplingFc ?? null;     // bridge admittance corner
@@ -222,14 +228,23 @@ export class Piano {
       // then rings only sympathetically -- the real soft-pedal timbre, not a
       // volume cut.
       if (this.unaCorda && s.tuning.index === 0 && note.voices.length === 3) continue;
-      const pulse = makeHammerPulse(this.fs, s.coeffs.f0, velocity, {
+      // Every hammer quantity is per string, because one hammer face meeting
+      // three strings that are not quite level with it is not three identical
+      // impacts: it reaches them a fraction of a millisecond apart and leans
+      // on them with slightly different force.
+      const st = s.tuning;
+      const speed = 2 * (st.spec?.lengthM ?? note.spec.lengthM) * s.coeffs.f0;
+      const pulse = makeHammerPulse(this.fs, s.coeffs.f0, velocity * (st.hammerForceScale ?? 1), {
         Z: note.Z,
         strings: note.count,
-        mass: note.hammerMass,
-        K: note.feltK,
-        p: note.feltP,
+        mass: note.hammerMass * (st.hammerMassScale ?? 1),
+        K: note.feltK * this.feltKScale,
+        p: this.feltP ?? note.feltP,
+        feltEps: this.feltEps ?? note.feltEps,
+        feltTauUs: this.feltTauUs,
+        widthSamples: this.hammerWidth * (note.hammerWidthM ?? 0) * this.fs / Math.max(speed, 1),
         strikeDelay: s.coeffs.strikeDelay,
-        gain: note.gain * (s.tuning.drive ?? 1),
+        gain: note.gain * (st.drive ?? 1),
       });
       // A fresh strike re-arms the detuning; the pull starts over from it.
       s.lock = 1;
