@@ -65,7 +65,8 @@ export const softness = (s) => ({
 
 const rms = (x, a, n) => { let v = 0; for (let i = a; i < a + n; i++) v += (x[i] ?? 0) ** 2; return Math.sqrt(v / n); };
 const ref = rms(s.data, Math.round(0.3 * s.rate), 9600);
-const STEPS = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+// STEPS=0.42,0.45,... narrows the ladder once the ear has bracketed a range.
+const STEPS = (process.env.STEPS ?? '0,0.2,0.4,0.6,0.8,1.0').split(',').map(Number);
 const len = Math.round(4 * FS), gap = Math.round(0.6 * FS);
 const out = new Float32Array((STEPS.length + 1) * (len + gap));
 
@@ -81,9 +82,10 @@ STEPS.forEach((sv, i) => {
   const at = (i + 1) * (len + gap);
   for (let k = 0; k < len; k++) out[at + k] = (x[k] ?? 0) * g;
   const sh = onsetShape(x, FS);
-  console.log(`  ${i + 2}. softness ${sv.toFixed(1)}  vel ${o.velocity.toFixed(2)}  offsets x${o.strikeOffsetScale.toFixed(1)}  board ${o.body.boardMix.toFixed(2)} / ${o.body.boardSpreadMs.toFixed(0)} ms`);
+  console.log(`  ${i + 2}. softness ${sv.toFixed(2)}  vel ${o.velocity.toFixed(2)}  offsets x${o.strikeOffsetScale.toFixed(1)}  board ${o.body.boardMix.toFixed(2)} / ${o.body.boardSpreadMs.toFixed(0)} ms`);
   console.log(`     half ${sh.halfMs} ms  peak ${sh.peakMs} ms  hf burst ${burst(x, FS).toFixed(1)} dB`);
 });
 
-writeWav(`renders/${NAME.toLowerCase()}-softness.wav`, out, FS);
-console.log(`\nrenders/${NAME.toLowerCase()}-softness.wav`);
+const outName = process.env.OUT ?? `${NAME.toLowerCase()}-softness`;
+writeWav(`renders/${outName}.wav`, out, FS);
+console.log(`\nrenders/${outName}.wav`);
