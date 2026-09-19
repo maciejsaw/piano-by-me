@@ -90,6 +90,25 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2.5" step="0.01" value="1.0"><output id="gainV"></output></div>
       <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
       <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Case &amp; body — everything downstream of the bridge</h2>
+      <div class="row"><label>body</label><button id="bodyBtn" class="on" style="flex:1">enabled</button><output></output></div>
+      <div class="row"><label>case width</label><input type="range" id="cw" min="0.8" max="2.0" step="0.01" value="1.45"><output id="cwV"></output></div>
+      <div class="row"><label>case length</label><input type="range" id="cl" min="1.0" max="3.0" step="0.01" value="2.00"><output id="clV"></output></div>
+      <div class="row"><label>cavity depth</label><input type="range" id="cd" min="0.08" max="0.60" step="0.005" value="0.26"><output id="cdV"></output></div>
+      <div class="row"><label>cavity amount</label><input type="range" id="cmix" min="0" max="0.6" step="0.005" value="0.18"><output id="cmixV"></output></div>
+      <div class="row"><label>cavity damping</label><input type="range" id="cq" min="4" max="80" step="1" value="26"><output id="cqV"></output></div>
+      <div class="row"><label>lid reflection</label><input type="range" id="lid" min="0" max="0.8" step="0.01" value="0.28"><output id="lidV"></output></div>
+      <div class="hint">The string model stops at the bridge. This is the rest: plate radiation
+        efficiency, the case as a baffle, the enclosed air as real box modes computed from these
+        dimensions, and one lid reflection. Measured against a real grand, a model with no body is
+        about 22&nbsp;dB bass-heavy and treble-shy — the single largest error in the instrument.
+        Because this sits downstream of every coupling path, making it linear costs nothing:
+        sympathetic resonance is unaffected.</div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Coupling</h2>
       <div class="hint">Coupling is expressed as the fraction of each string's own loss that goes
         into the bridge instead of into internal damping — so it can never destabilise, and the
         decay time you ask for stays the decay time you get. Unison coupling drives beating and

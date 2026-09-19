@@ -59,6 +59,24 @@ const scenes = {
     on(5.3, 60, 0.8), off(9.2, 60),
   ]),
 
+  // Same phrase three times: no case at all, the default case, then a small
+  // shallow case. The string model is identical in all three.
+  'body-comparison': () => {
+    const phrase = (t0) => [
+      ...[52, 56, 59, 64].flatMap((m, i) => [on(t0 + i * 0.13, m, 0.85)]),
+      ...[52, 56, 59, 64].map((m) => off(t0 + 2.0, m)),
+    ];
+    const parts = [
+      scene(3.4, phrase(0.1), { body: { enabled: false } }),
+      scene(3.4, phrase(0.1), { body: {} }),
+      scene(3.4, phrase(0.1), { body: { caseWidth: 1.05, caseLength: 1.35, caseDepth: 0.14, cavityMix: 0.34 } }),
+    ];
+    const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+    let o = 0;
+    for (const p of parts) { out.set(p, o); o += p.length; }
+    return out;
+  },
+
   'chord-with-pedal': () => scene(12, [
     ped(0, true),
     ...[40, 47, 52, 56, 59].flatMap((m, i) => [on(0.1 + i * 0.09, m, 0.8)]),

@@ -155,6 +155,59 @@ export function verifyDispersion(fs, f0, B, loss, design, nMax = 16) {
   return out;
 }
 
+/** Least-squares B implied by a set of partial frequencies. */
+function impliedB(freqs, f0) {
+  let sw = 0, sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (const { n, f } of freqs) {
+    if (n < 2) continue;
+    const w = 1 / n;                       // weight like partial energy
+    const xi = n * n, yi = Math.pow(f / n, 2);
+    sw += w; sx += w * xi; sy += w * yi; sxx += w * xi * xi; sxy += w * xi * yi;
+  }
+  const den = sw * sxx - sx * sx;
+  if (Math.abs(den) < 1e-12) return NaN;
+  const slope = (sw * sxy - sx * sy) / den;
+  const inter = (sy * sxx - sx * sxy) / den;
+  return inter > 0 ? Math.max(0, slope / inter) : NaN;
+}
+
+/**
+ * Design the dispersion chain so the REALISED inharmonicity matches the target.
+ *
+ * Feeding B straight to the designer gives partials a few cents off, which is
+ * inaudible on its own but shows up as a ~20% error in the B you can measure
+ * back out of the rendered audio -- enough to dominate any attempt to fit the
+ * model to a real instrument. So: design, measure what that design actually
+ * produces, and correct the target until the realised value lands. A handful of
+ * cheap iterations, once per string, at build time.
+ */
+function designDispersionMatched(fs, f0, B, loss, maxSections) {
+  const realisedOf = (design) => {
+    const got = verifyDispersion(fs, f0, B, loss, design, 16);
+    return impliedB(got.map((g) => ({ n: g.n, f: g.got })), f0);
+  };
+
+  let target = B;
+  let best = null, bestErr = Infinity;
+  for (let it = 0; it < 8; it++) {
+    const cand = designDispersion(fs, f0, target, loss, maxSections);
+    if (!isFinite(cand.err)) break;
+    const realised = realisedOf(cand);
+    if (!isFinite(realised) || realised <= 0) break;
+    const err = Math.abs(Math.log(realised / B));
+    // Keep the BEST candidate, not the last one. In the top octaves the delay
+    // budget simply cannot deliver the required dispersion, and a loop that
+    // blindly keeps stepping the target upward walks away from its own best
+    // answer into a degenerate design.
+    if (err < bestErr) { bestErr = err; best = cand; }
+    if (err < 0.015) break;
+    const ratio = B / realised;
+    // Clamp the step: an unreachable target must not run away.
+    target *= Math.pow(Math.min(4, Math.max(0.25, ratio)), 0.8);
+  }
+  return best ?? designDispersion(fs, f0, B, loss, maxSections);
+}
+
 /** Compile one string's physical parameters into a runnable coefficient set. */
 export function compileString(fs, phys, tuning) {
   const f0 = phys.f0 * Math.pow(2, (tuning.detuneCents ?? 0) / 1200);
@@ -165,7 +218,7 @@ export function compileString(fs, phys, tuning) {
   const eps = 1 - Math.exp(-6.9078 / (f0 * Math.max(tuning.t60Low, 1e-3)));
   const kappa = Math.min(0.95, tuning.couplingFraction ?? 0) * eps;
   const loss = designLoss(fs, f0, tuning.t60Low, tuning.t60High, 5000, kappa);
-  const disp = designDispersion(fs, f0, phys.B, loss, tuning.maxAllpass ?? 48);
+  const disp = designDispersionMatched(fs, f0, phys.B, loss, tuning.maxAllpass ?? 48);
   const damped = designLoss(fs, f0, tuning.t60Damped ?? 0.12, (tuning.t60Damped ?? 0.12) * 0.35, 5000, kappa);
   return {
     f0, B: phys.B, kappa, eps,
@@ -173,6 +226,10 @@ export function compileString(fs, phys, tuning) {
     dispErr: disp.err, loss,
     lossG: loss.g, lossB: loss.b,
     dampG: Math.min(damped.g, loss.g), dampB: Math.max(damped.b, loss.b),
-    strikeDelay: Math.max(1, Math.round(disp.dLine * (tuning.strikePosition ?? 0.125))),
+    // Strike position is a fraction of the SPEAKING LENGTH, so the comb delay
+    // must be that fraction of the full loop period -- not of the delay line,
+    // which is shorter by however much the dispersion chain contributes. Using
+    // dLine put the notch ~40% too low across the whole instrument.
+    strikeDelay: Math.max(1, Math.round((fs / f0) * (tuning.strikePosition ?? 0.125))),
   };
 }
