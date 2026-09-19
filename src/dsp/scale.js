@@ -73,7 +73,7 @@ export const DEFAULT_SCALE = {
     // movement is not beating at all -- see tensionDrift in piano.js. With the
     // drift carrying the broadband part, detune only has to supply the slow
     // coherent layer underneath it.
-    detune:   [[21, 0.0], [30, 0.36], [48, 0.60], [72, 0.96], [108, 1.56]],
+    detune:   [[21, 0.0], [30, 0.72], [48, 1.20], [72, 1.92], [108, 3.12]],
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
@@ -239,7 +239,10 @@ export function buildScale(scale = DEFAULT_SCALE) {
       // Hammer never hits three strings at the same instant.
       contactOffsetUs: [0, 35, 70][i] ?? 0,
     }));
-    for (const st of strings) st.phys = derive(st.spec, f0 * Math.pow(2, st.detuneCents / 1200));
+    // Derive at the note's nominal pitch, NOT the string's detuned one:
+    // compileString applies detuneCents itself, so doing it here too doubled
+    // every unison spread in the instrument.
+    for (const st of strings) st.phys = derive(st.spec, f0);
 
     // A fitted scale supplies explicit per-note geometry and voicing, measured
     // from a real instrument, which replaces the interpolated breakpoint values.
@@ -258,7 +261,7 @@ export function buildScale(scale = DEFAULT_SCALE) {
           if (ov.strings.t60Low != null) st.t60Low = ov.strings.t60Low * (1 + 0.03 * k);
           if (ov.strings.t60High != null) st.t60High = ov.strings.t60High * (1 + 0.05 * k);
           st.spec = { ...spec, lengthM: spec.lengthM * (1 + lenSpread * k) };
-          st.phys = derive(st.spec, f0 * Math.pow(2, st.detuneCents / 1200));
+          st.phys = derive(st.spec, f0);
         }
       }
     }
