@@ -227,7 +227,14 @@ export class Body {
     this.lidPos = 0;
 
     // --- soundboard ring-up ---
-    this.boardMix = opts.boardMix ?? 0.67;
+    // 1, not a partial mix. What reaches the room from a piano is the board;
+    // a string moves too little air to be heard directly, and a third of the
+    // output bypassing the plate was the direct string the ear kept calling a
+    // clavinet. It is also the only setting that colours nothing: at 1 this is
+    // exactly an allpass, magnitude untouched, energy moved only in time. A
+    // partial mix combs the dry path against the diffused one, so 0.67 was the
+    // most coloured value in the range as well as the least plausible.
+    this.boardMix = opts.boardMix ?? 1;
     this.diffuser = new Diffuser(fs, {
       spreadMs: opts.boardSpreadMs ?? 37,
       stages: opts.boardStages ?? 5,
