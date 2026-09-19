@@ -45,7 +45,7 @@ export class Piano {
     // decay away from the straight line the loss filter would give it. depth
     // is the fraction of the high part removed on the first trip at full
     // velocity, tau how long that takes to fade.
-    this.transientDepth = opts.transientDepth ?? 0.14;
+    this.transientDepth = opts.transientDepth ?? 0.077;
     this.transientTauS = opts.transientTauS ?? 0.25;    // fall
     this.transientRiseS = opts.transientRiseS ?? 0.04;   // spare the strike itself
     // Hammer knobs, for fitting the attack against the samples.
@@ -70,7 +70,7 @@ export class Piano {
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
-    this.masterGain = opts.gain ?? 0.068;
+    this.masterGain = opts.gain ?? 0.092;
     // Everything downstream of the bridge: radiation, case, cavity, lid.
     this.body = new Body(fs, opts.body ?? {});
     this.sustain = false;

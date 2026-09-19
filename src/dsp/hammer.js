@@ -125,7 +125,14 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
 
   // MIDI velocity -> hammer speed. Real range is roughly 0.2 m/s (ppp) to
   // 6 m/s (fff), and the curve is strongly exponential.
-  const v = 0.18 * Math.pow(velocity, 0.15) * Math.exp(3.5 * velocity);
+  //
+  // Squared inside the exponential rather than raw, which was chosen by ear:
+  // at a normal playing velocity the blow was landing too hard -- 2.38 m/s at
+  // 0.75, where the note wanted about 1.23 -- and the fix has to leave the top
+  // of the range alone, since fff is not too loud. Squaring does exactly that:
+  // it is the identity at 1.0 and takes half a metre per second out of the
+  // middle, which also spreads the dynamics rather than compressing them.
+  const v = 0.18 * Math.pow(velocity, 0.15) * Math.exp(3.5 * velocity * velocity);
 
   const { force, comp } = contact(fs, { mass, K, p, Z: Zload, velocity: v, strikeDelay, eps, tauUs });
   const n = force.length;

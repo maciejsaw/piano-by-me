@@ -82,7 +82,12 @@ for (const cents of [0.8, 2.0, 4.0]) {
   // `coupling` was not a real option, so this had silently been running at full
   // coupling; and with the unison lock on, the strings are pulled together and
   // there is no beat left to measure.
-  const p = new Piano(FS, { quality: 24, unisonCoupling: 0.0004, bridgeCoupling: 0.0004, unisonLock: 0 });
+  // Arrival skew off as well: this measures the beat rate DETUNING produces,
+  // and three strings arriving a millisecond apart modulate the composite on
+  // their own, which lands on top of the beat being counted.
+  const p = new Piano(FS, {
+    quality: 24, unisonCoupling: 0.0004, bridgeCoupling: 0.0004, unisonLock: 0, strikeOffsetScale: 0,
+  });
   const note = p.notes[60 - 21];
   const offs = [-cents, 0, cents];
   note.voices.forEach((s, i) => p.recompileString(s, { ...s.tuning, detuneCents: offs[i] }));
