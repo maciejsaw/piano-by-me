@@ -41,7 +41,7 @@ export class Piano {
     // How much of a unison's differential mode still reaches the bridge.
     this.diffLeak = opts.diffLeak ?? 0.05;
     // Spread of bridge coupling across the strings of one unison.
-    this.bridgeSpread = opts.bridgeSpread ?? 0.8;
+    this.bridgeSpread = opts.bridgeSpread ?? 1.3;
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
