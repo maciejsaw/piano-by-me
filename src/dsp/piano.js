@@ -42,6 +42,10 @@ export class Piano {
     this.diffLeak = opts.diffLeak ?? 0.05;
     // Spread of bridge coupling across the strings of one unison.
     this.bridgeSpread = opts.bridgeSpread ?? 1.3;
+    // Tension drift: relative RMS wander of each string's length, and the
+    // bandwidth it wanders over.
+    this.tensionDrift = opts.tensionDrift ?? 3e-4;
+    this.driftHz = opts.driftHz ?? 0.25;
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
@@ -101,6 +105,9 @@ export class Piano {
         const total = coeffs.kappa;
         const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
         s.diffLeak = this.diffLeak;
+        // Each string wanders independently -- a shared sequence would move all
+        // three together, which is a common mode and produces no beating at all.
+        s.driftSeed = (this.strings.length * 2654435761 + 40503) & 0x7fffffff;
         s.kUnison = total * split;
         // The three strings of a unison do not sit on one point of the bridge,
         // so the bridge does not drive them equally. That matters more than it
@@ -235,7 +242,36 @@ export class Piano {
     s.setCoefficients(c);
   }
 
+  /**
+   * Advance each ringing string's tension drift, once per block.
+   *
+   * A real string is not a rigid mathematical object. Its tension wanders by a
+   * few parts per million -- the bridge it is anchored to is moving, the case
+   * breathes, the air moves -- so its partials wander with it. Measured on a
+   * real C3, every partial's envelope modulates at roughly the same 0.2-0.3 Hz
+   * no matter which partial it is, and broadly rather than as a spike. Detuning
+   * alone cannot do that: it makes partial n beat at n times the rate of
+   * partial 1, which climbs into the range the ear hears as phasing. A common
+   * slow wander over the whole string modulates every partial at one rate, and
+   * because it is noise rather than a tone it stays broad.
+   *
+   * Lowpassed white noise, updated per block: 0.25 Hz needs nothing faster.
+   */
+  drift(blockRate) {
+    const a = Math.exp((-2 * Math.PI * this.driftHz) / blockRate);
+    // A one-pole on unit-variance white noise has variance (1-a)/(1+a).
+    const scale = this.tensionDrift / Math.sqrt((1 - a) / (1 + a));
+    for (let k = 0; k < this.active.length; k++) {
+      const s = this.active[k];
+      s.driftSeed = (s.driftSeed * 1103515245 + 12345) & 0x7fffffff;
+      const white = s.driftSeed / 0x3fffffff - 1;
+      s.drift = a * s.drift + (1 - a) * white * scale;
+      s.setDelayScale(1 + s.drift);
+    }
+  }
+
   render(out, n) {
+    if (this.tensionDrift > 0) this.drift(this.fs / Math.max(n, 1));
     const active = this.active, activeNotes = this.activeNotes;
     const nj = this.noteJunction, acc = this.noteAcc;
     const zAcc = this.zoneAcc, zVel = this.zoneVel, zDrive = this.zoneDrive;

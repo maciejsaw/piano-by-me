@@ -63,14 +63,17 @@ export const DEFAULT_SCALE = {
     // Unison spread in cents; the outer strings sit either side of the centre one.
     // A tuner sets a unison far tighter than this used to assume: measured
     // against a real C3, 1.0 cent here put every partial into an audible sweep.
-    // Back at the value this started from, because the flanger was never the
-    // tuning. Work it out from the metric: at 1 cent, partial 2 of C3 beats at
-    // 0.30 Hz and partial 3 at 0.45 Hz, both below the 0.5 Hz floor of the
-    // warble band, while partials 4-8 land at 0.6-1.2 Hz, inside it. That is
-    // exactly the real instrument's shape -- steady low partials over a lively
-    // middle. Tightening the unison to silence the sweep pushed EVERY partial
-    // below the floor, which measures beautifully and sounds dead.
-    detune:   [[21, 0.0], [30, 0.6], [48, 1.0], [72, 1.6], [108, 2.6]],
+    // Detuning sets the COHERENT part of the wobble, and only that. Partial n
+    // of two strings df apart beats at n*df, so a detune wide enough to keep
+    // the note alive drags the upper partials up into the rate the ear hears
+    // as phasing: at 1 cent, C3's partial 7 beat at 1.02 Hz against a real
+    // 0.42 Hz. Narrow enough and every partial goes still instead.
+    //
+    // Neither is what a piano does, because on a real instrument most of the
+    // movement is not beating at all -- see tensionDrift in piano.js. With the
+    // drift carrying the broadband part, detune only has to supply the slow
+    // coherent layer underneath it.
+    detune:   [[21, 0.0], [30, 0.18], [48, 0.30], [72, 0.48], [108, 0.78]],
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
