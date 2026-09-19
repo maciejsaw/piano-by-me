@@ -13,9 +13,14 @@ export class WaveguideString {
 
     this.lossZ = 0;
     this.nlZ = 0;                     // transient-damping lowpass state
-    this.nlM = 0;                     // how much of the high part it removes now
-    this.nlDepth = 0;                 // and how much at the moment of the strike
-    this.nlDecay = 1;                 // per-sample fade of that amount
+    this.nlOn = false;                // is the stage running at all
+    this.nlPeak = 0;                  // its depth for this strike
+    this.nlDepth = 0;                 // and the depth at full velocity
+    this.nlR = 0;                     // rise state, 0 at the strike
+    this.nlD = 1;                     // fall state, 1 at the strike
+    this.nlRiseA = 1;                 // per-sample rise coefficient
+    this.nlDecay = 1;                 // per-sample fall coefficient
+    this.nlSustain = 0;               // share that does not fall away
     this.nlB = 0;                     // its lowpass coefficient
     this.apX = new Float64Array(0);   // x[n-1] per section
     this.apY = new Float64Array(0);   // y[n-1] per section
@@ -75,14 +80,15 @@ export class WaveguideString {
 
   reset() {
     this.buf.fill(0); this.lossZ = 0; this.apX.fill(0); this.apY.fill(0);
-    this.nlZ = 0; this.nlM = 0;
+    this.nlZ = 0; this.nlOn = false; this.nlR = 0; this.nlD = 1;
     this.out = 0; this.energy = 0; this.w = 0;
   }
 
   /** Inject a hammer force pulse (already shaped and comb-filtered). */
   excite(pulse, strength = 1) {
     this.exc = pulse; this.excPos = 0; this.active = true;
-    this.nlM = this.nlDepth * strength;
+    this.nlPeak = this.nlDepth * strength;
+    this.nlR = 0; this.nlD = 1; this.nlOn = this.nlDepth > 0;
   }
 
   setDamper(closed) { this.damperTarget = closed ? 1 : 0; }
@@ -138,22 +144,36 @@ export class WaveguideString {
     // Salamander C3, partials above the 10th lose 25 dB/s over the first half
     // second and then almost nothing; ours lost 5 and then kept going at 10.
     //
-    // So there is a second, fast loss stage that fades out after the strike,
-    // weighted toward high frequency because that is where a string gives up
-    // its energy quickest. This is a two-stage decay stated as such -- a curve
-    // fit to what the instrument does, not a derived nonlinearity. Driving it
-    // from the string's own amplitude instead was tried first and does not
-    // work: it senses the very partials it damps, so it never lets go.
+    // So there is a second loss stage, weighted toward high frequency because
+    // that is where a string gives up its energy quickest. Its strength over
+    // the note is an envelope with three knobs, because the first version --
+    // full depth from the very first sample, fading out with one time
+    // constant -- took the top off the attack itself, which is the one part
+    // of the note that was already right:
+    //
+    //   rise     how long it takes to come on. Zero damps the strike; a long
+    //            rise leaves the attack alone and lets the string dull as it
+    //            goes, which is what it sounds like it should do.
+    //   sustain  the share that stays once it is on, rather than fading
+    //   fall     how fast the rest of it fades
+    //
+    // This is a two-stage decay stated as such -- a curve fit to what the
+    // instrument does, not a derived nonlinearity. Driving it from the
+    // string's own amplitude instead was tried first and does not work: it
+    // senses the very partials it damps, so it never lets go.
     //
     // Handing the removed part to the soundboard instead of dropping it was
     // tried, on the reasoning that a string radiates most of what it loses.
     // It changed the sympathetic halo by 0.1 dB: what the halo lives on at
     // 2.5 s is the neighbours' low partials, and this stage is gone by then.
     // So it is a plain loss, and the halo cost below is real.
-    if (this.nlM > 1e-4) {
+    if (this.nlOn) {
+      this.nlR += (1 - this.nlR) * this.nlRiseA;
+      this.nlD *= this.nlDecay;
+      const m = this.nlPeak * this.nlR * (this.nlSustain + (1 - this.nlSustain) * this.nlD);
       this.nlZ = (1 - this.nlB) * x + this.nlB * this.nlZ;
-      x -= this.nlM * (x - this.nlZ);
-      this.nlM *= this.nlDecay;
+      x -= m * (x - this.nlZ);
+      if (m < 1e-5 && this.nlR > 0.99) this.nlOn = false;
     }
 
     // --- dispersion allpass chain:  y = a(x - y[n-1]) + x[n-1] ---

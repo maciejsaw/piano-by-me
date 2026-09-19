@@ -45,8 +45,10 @@ export class Piano {
     // decay away from the straight line the loss filter would give it. depth
     // is the fraction of the high part removed on the first trip at full
     // velocity, tau how long that takes to fade.
-    this.transientDepth = opts.transientDepth ?? 0.28;
-    this.transientTauS = opts.transientTauS ?? 0.25;
+    this.transientDepth = opts.transientDepth ?? 0.14;
+    this.transientTauS = opts.transientTauS ?? 0.25;    // fall
+    this.transientRiseS = opts.transientRiseS ?? 0.001;  // 1 ms = on at once
+    this.transientSustain = opts.transientSustain ?? 0;
     this.transientFc = opts.transientFc ?? null;   // null = scale with the note
     this.couplingFc = opts.couplingFc ?? null;     // bridge admittance corner
     // Spread of bridge coupling across the strings of one unison.
@@ -121,6 +123,8 @@ export class Piano {
         s.diffLeak = this.diffLeak;
         s.nlDepth = this.transientDepth;
         s.nlDecay = Math.exp(-1 / (this.transientTauS * fs));
+        s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS, 1e-5) * fs));
+        s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all
         // three together, which is a common mode and produces no beating at all.
         s.driftSeed = (this.strings.length * 2654435761 + 40503) & 0x7fffffff;
