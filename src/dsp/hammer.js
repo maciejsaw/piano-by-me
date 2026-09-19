@@ -183,3 +183,70 @@ function spread(x, samples, comp, offset) {
   }
   return out;
 }
+
+/**
+ * The part of the blow that never becomes a note.
+ *
+ * A hammer does not only set a string ringing. It arrives with momentum, and
+ * the string is a light thing tied at both ends to a heavy one: most of that
+ * momentum passes straight through to the bridge and shakes the soundboard
+ * directly. You hear it as a low, noisy knock under the partials, loudest in
+ * the bass where the hammer is heaviest -- close to the sound of somebody
+ * tapping the soundboard, which is exactly what it is. Without it a model has
+ * nothing between the strike and the tone, and the tone has to account for the
+ * whole of the attack on its own.
+ *
+ * Two parts, from the same blow:
+ *
+ *   force   the contact force itself, highpassed. A plate cannot radiate a
+ *           steady push, so what reaches the air is the RATE the force
+ *           changes -- take the DC out and a unipolar squash becomes a thud.
+ *   noise   the felt crushing, the string sliding across it, the action
+ *           arriving. Broadband, lowpassed, and gone in a few tens of
+ *           milliseconds. Deterministic from `seed` so renders repeat.
+ *
+ * `pulse` is the string excitation, which is proportional to the contact
+ * force, so the knock automatically tracks velocity, felt and contact time
+ * instead of needing its own copy of them.
+ */
+export function makeKnock(fs, pulse, opts = {}) {
+  const gain = opts.gain ?? 0;
+  const noiseAmt = opts.noise ?? 0;
+  const decayS = opts.decayS ?? 0.02;
+  const fc = opts.fc ?? 800;
+  const hpFc = opts.hpFc ?? 45;
+  if (gain <= 0 && noiseAmt <= 0) return null;
+
+  const tail = Math.ceil(decayS * 4 * fs);
+  const n = pulse.length + tail;
+  const out = new Float64Array(n);
+
+  // One-pole highpass: y = a*(y + x - x1), a set by hpFc.
+  const aHp = 1 / (1 + (2 * Math.PI * hpFc) / fs);
+  let yH = 0, x1 = 0, peak = 0;
+  for (let i = 0; i < n; i++) {
+    const x = pulse[i] ?? 0;
+    yH = aHp * (yH + x - x1);
+    x1 = x;
+    out[i] = gain * yH;
+    if (Math.abs(x) > peak) peak = Math.abs(x);
+  }
+
+  if (noiseAmt > 0 && peak > 0) {
+    const aLp = 1 - Math.exp((-2 * Math.PI * fc) / fs);
+    const dec = Math.exp(-1 / Math.max(decayS * fs, 1));
+    let rng = (opts.seed ?? 1) >>> 0 || 1;
+    let lp = 0, env = 0;
+    for (let i = 0; i < n; i++) {
+      // The burst is driven by the force, so it starts when contact does and
+      // does not outlive a quiet blow.
+      const drive = Math.abs(pulse[i] ?? 0) / peak;
+      env = Math.max(env * dec, drive);
+      rng ^= rng << 13; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
+      const w = rng / 2147483648 - 1;
+      lp += aLp * (w - lp);
+      out[i] += noiseAmt * peak * env * lp;
+    }
+  }
+  return out;
+}
