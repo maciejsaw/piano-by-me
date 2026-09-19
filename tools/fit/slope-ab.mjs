@@ -30,11 +30,11 @@ const rms = (x, a, n) => { let v = 0; for (let i = a; i < a + n; i++) v += (x[i]
 const ref = rms(s.data, Math.round(0.3 * s.rate), 9600);
 
 const TAKES = [
-  ['picked: 30 ms from 0.25, skew 2.0', { swellS: 0.030, swellFloor: 0.25, swellSkew: 2.0 }],
-  ['new default: 24 ms from 0.40, skew 1.6', {}],
-  ['24 ms from 0.40, skew 1.3 (straighter)', { swellSkew: 1.3 }],
-  ['24 ms from 0.40, skew 2.0 (curve kept)', { swellSkew: 2.0 }],
-  ['20 ms from 0.50, skew 1.4 (further back)', { swellS: 0.020, swellFloor: 0.50, swellSkew: 1.4 }],
+  ['30 ms from 0.25, skew 2.0 (first pick)', { swellS: 0.030, swellFloor: 0.25, swellSkew: 2.0 }],
+  ['24 ms from 0.40, skew 1.6', { swellS: 0.024, swellFloor: 0.40, swellSkew: 1.6 }],
+  ['24 ms from 0.40, skew 1.3 (straighter)', { swellS: 0.024, swellFloor: 0.40, swellSkew: 1.3 }],
+  ['24 ms from 0.40, skew 2.0 (curve kept)', { swellS: 0.024, swellFloor: 0.40, swellSkew: 2.0 }],
+  ['default: 20 ms from 0.50, skew 1.4', {}],
 ];
 
 const len = Math.round(3.5 * FS), gap = Math.round(0.45 * FS);
