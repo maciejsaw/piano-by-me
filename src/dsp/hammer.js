@@ -35,8 +35,28 @@ const OS = 64;
  * mallet-like tone. With the reflection included, contact ends crisply and the
  * spectrum reaches the high partials a piano actually has.
  */
-function contact(fs, { mass, K, p, Z, velocity, strikeDelay, maxMs = 12 }) {
+function contact(fs, { mass, K, p, Z, velocity, strikeDelay, maxMs = 12, eps = 0, tauUs = 2 }) {
   const dt = 1 / (fs * OS);
+  // Felt is not a spring. Measured force-compression curves of real hammers
+  // are hysteresis loops: the felt pushes back harder going in than coming
+  // out, because the wool fibres slip against each other and do not spring
+  // back. Stulov's model puts this as a history-dependent stiffness,
+  //
+  //   F = F0 [ u^p  -  (eps/tau0) * exp(-t/tau0) (*) u^p ]
+  //
+  // and that convolution with a decaying exponential is exactly a one-pole
+  // lowpass of u^p, which costs one multiply-add per step. eps is how much of
+  // the felt's stiffness is hysteretic (real hammers sit near 1) and tau0 the
+  // relaxation time, a couple of microseconds against a contact of one or two
+  // milliseconds.
+  //
+  // At eps near 1 the bracket is a small difference of large numbers, so the
+  // effective stiffness collapses; K is divided by (1 - eps) to compensate.
+  // That keeps eps a knob for the SHAPE of the contact and not for how loud
+  // the note is, which is what makes it fittable.
+  const aH = Math.exp(-dt / Math.max(tauUs * 1e-6, dt));
+  const Keff = K / Math.max(1 - eps, 1e-3);
+  let hyst = 0;
   const maxSteps = Math.round(fs * OS * maxMs * 1e-3);
   const out = [];
 
@@ -47,7 +67,9 @@ function contact(fs, { mass, K, p, Z, velocity, strikeDelay, maxMs = 12 }) {
 
   let d = 0, vh = velocity, acc = 0, sub = 0, touched = false;
   for (let i = 0; i < maxSteps; i++) {
-    const F = d > 0 ? K * Math.pow(d, p) : 0;
+    const u = d > 0 ? Math.pow(d, p) : 0;
+    hyst = u + (hyst - u) * aH;
+    const F = Math.max(0, Keff * (u - eps * hyst));
     if (F > 0) touched = true;
     const outgoing = F / (2 * Z);
     const reflected = ring[rp];              // inverted on return from the agraffe
@@ -89,12 +111,22 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
   const K = opts.K ?? 1e9;
   const strikeDelay = opts.strikeDelay ?? 8;
   const gain = opts.gain ?? 1;
+  const eps = opts.feltEps ?? 0;
+  const tauUs = opts.feltTauUs ?? 2;
+  // The hammer touches a patch of string, not a point. The patch is a few
+  // millimetres wide and the wave crosses it in width / c seconds, so the
+  // excitation is smeared over that long -- a lowpass whose corner sits near
+  // c / (2 * width). In the treble c is high and the patch is small, so the
+  // corner is far above hearing and this does nothing. In the bass c is a
+  // third of that and the felt is wider, which puts the corner down among the
+  // partials the note actually has.
+  const smear = Math.max(0, opts.widthSamples ?? 0);
 
   // MIDI velocity -> hammer speed. Real range is roughly 0.2 m/s (ppp) to
   // 6 m/s (fff), and the curve is strongly exponential.
   const v = 0.18 * Math.pow(velocity, 0.15) * Math.exp(3.5 * velocity);
 
-  const force = contact(fs, { mass, K, p, Z: Zload, velocity: v, strikeDelay });
+  const force = contact(fs, { mass, K, p, Z: Zload, velocity: v, strikeDelay, eps, tauUs });
   const n = force.length;
   if (!n) return new Float64Array(0);
 
@@ -108,5 +140,17 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
     out[i] += s;
     out[i + strikeDelay] -= s;
   }
+  return smear > 0.25 ? spread(out, smear) : out;
+}
+
+/** Raised-cosine smear, for the width of the contact patch. */
+function spread(x, samples) {
+  const m = Math.max(1, Math.round(samples));
+  const k = new Float64Array(m);
+  let sum = 0;
+  for (let i = 0; i < m; i++) { k[i] = 0.5 * (1 - Math.cos((2 * Math.PI * (i + 1)) / (m + 1))); sum += k[i]; }
+  for (let i = 0; i < m; i++) k[i] /= sum;
+  const out = new Float64Array(x.length + m - 1);
+  for (let i = 0; i < x.length; i++) for (let j = 0; j < m; j++) out[i + j] += x[i] * k[j];
   return out;
 }

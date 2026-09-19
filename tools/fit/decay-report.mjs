@@ -8,9 +8,10 @@ const SAMPLE = process.env.SAMPLE ?? '/home/user/samples/salamander/C3v12.wav';
 const MIDI = 48, F0 = 440 * Math.pow(2, (MIDI - 69) / 12);
 
 export function renderNote(seconds = 8, midi = MIDI, opts = {}) {
-  const p = new Piano(FS, { quality: 32, ...opts });
+  const { velocity = 0.75, ...rest } = opts;
+  const p = new Piano(FS, { quality: 32, ...rest });
   const N = Math.round(FS * seconds), x = new Float64Array(N), buf = new Float32Array(256);
-  p.noteOn(midi, 0.75);
+  p.noteOn(midi, velocity);
   for (let i = 0; i < N; i += 256) {
     p.render(buf, 256);
     for (let k = 0; k < 256 && i + k < N; k++) x[i + k] = buf[k];

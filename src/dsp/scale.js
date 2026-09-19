@@ -51,6 +51,24 @@ export const DEFAULT_SCALE = {
     hardness: [[21, 0.215], [30, 0.027], [39, 0.000], [48, 0.049], [57, 0.064],
                [66, 0.117], [75, 0.240], [84, 0.334], [93, 0.395], [102, 0.354],
                [108, 0.453]],
+    // Felt nonlinearity exponent. Measured hammers run about 2.3 in the bass
+    // to 3.0 and above in the treble, where the covering is thinner
+    // (Chaigne & Askenfelt give C2 2.3, C4 2.5, C7 3.0). It was fixed at 2.5
+    // keyboard-wide, which makes the bass hammer too nonlinear and the treble
+    // not nonlinear enough.
+    feltP: [[21, 2.3], [36, 2.4], [60, 2.5], [84, 2.8], [96, 3.0], [108, 3.2]],
+    // How much of the felt's stiffness is hysteretic rather than elastic.
+    feltEps: [[21, 0.90], [60, 0.90], [108, 0.90]],
+    // Width of the contact patch, mm. Sets a lowpass at about c/(2*width),
+    // which lands among the partials in the bass and above hearing on top.
+    hammerWidthMm: [[21, 14], [36, 11], [60, 7], [84, 5], [108, 3.5]],
+    // Arrival spread across the strings of one unison, microseconds. The
+    // strings are not perfectly level with the hammer face, so it reaches them
+    // a fraction of a millisecond apart.
+    strikeOffsetUs: [[21, 400], [48, 260], [72, 160], [108, 90]],
+    // Spread of hammer mass and of delivered force across the unison.
+    hammerMassSpread: [[21, 0.02], [108, 0.04]],
+    hammerForceSpread: [[21, 0.03], [108, 0.06]],
     // Base hammer mass, kg (scaled down by hardness below). ~10 g bass, ~3 g top.
     hammerMass: [[21, 0.0120], [36, 0.0098], [48, 0.0085], [60, 0.0072],
                  [72, 0.0062], [84, 0.0053], [96, 0.0045], [108, 0.0039]],
@@ -209,6 +227,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
     const lvlSpread = lerpTable(scale.voicing.levelSpread, midi);
     const gaugeSpread = lerpTable(scale.voicing.gaugeSpread, midi);
     const strikeSpread = lerpTable(scale.voicing.strikeSpread, midi);
+    const offsetUs = lerpTable(scale.voicing.strikeOffsetUs, midi) / 2.2;
+    const massSpread = lerpTable(scale.voicing.hammerMassSpread, midi);
+    const forceSpread = lerpTable(scale.voicing.hammerForceSpread, midi);
     const strings = offsets.map((cents, i) => ({
       index: i,
       shape: shape[i],
@@ -242,7 +263,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
       strikePosition: lerpTable(scale.voicing.strikePos, midi) * (1 + strikeSpread * sShape[i]),
       coupling: lerpTable(scale.voicing.coupling, midi),
       // Hammer never hits three strings at the same instant.
-      contactOffsetUs: [0, 35, 70][i] ?? 0,
+      contactOffsetUs: offsetUs * [0, 1, 2.2][i] ?? 0,
+      hammerMassScale: 1 + massSpread * gShape[i],
+      hammerForceScale: 1 + forceSpread * sShape[i],
     }));
     // Derive at the note's nominal pitch, NOT the string's detuned one:
     // compileString applies detuneCents itself, so doing it here too doubled
@@ -279,7 +302,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
       hammerMass: lerpTable(scale.voicing.hammerMass, midi)
                   * Math.pow(10, -0.35 * lerpTable(scale.voicing.hardness, midi)),
       feltK: 3e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),
-      feltP: 2.5,
+      feltP: lerpTable(scale.voicing.feltP, midi),
+      feltEps: lerpTable(scale.voicing.feltEps, midi),
+      hammerWidthM: lerpTable(scale.voicing.hammerWidthMm, midi) * 1e-3,
       // String wave impedance: what the hammer actually pushes against.
       Z: Math.sqrt(phys.T * phys.mu),
       gain: lerpTable(scale.voicing.gain, midi),
