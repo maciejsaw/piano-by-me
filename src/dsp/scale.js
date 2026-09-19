@@ -44,13 +44,27 @@ export const DEFAULT_SCALE = {
     t60High:  [[21, 4.0], [36, 3.2], [48, 2.3], [60, 1.7], [72, 1.1], [84, 0.63], [96, 0.40], [108, 0.29]],
     t60Damped:[[21, 0.30], [48, 0.18], [72, 0.10], [108, 0.06]],
     strikePos:[[21, 0.125], [36, 0.122], [60, 0.115], [84, 0.10], [108, 0.085]],
-    // Felt hardness, calibrated so hammer contact times match measured pianos
-    // (~4.6 ms at A0 down to ~0.55 ms at C8). Contact time is what sets
-    // brightness, so this curve matters more to the sound than almost anything
-    // else here. The dip in the low bass follows the bass/treble bridge break.
-    hardness: [[21, 0.215], [30, 0.027], [39, 0.000], [48, 0.049], [57, 0.064],
-               [66, 0.117], [75, 0.240], [84, 0.334], [93, 0.395], [102, 0.354],
-               [108, 0.453]],
+    // Felt hardness, solved per note so contact duration lands on the curve
+    // real hammers measure -- 4.5 ms at A0 falling to 0.5 ms at C8, with C4
+    // at the 2 ms everybody reports. Contact duration is what decides how far
+    // up the ladder a strike reaches, so this matters more to the sound than
+    // almost anything else here.
+    //
+    // It is solved rather than set by hand (tools/fit/fit-hardness.mjs),
+    // because it has to be re-solved whenever the felt stiffness or the
+    // velocity curve moves. Both moved, and the hand-set curve went with
+    // them: contact flattened to 1.5-2.7 ms across the whole keyboard, three
+    // times too SHORT at A0 -- a sharp pulse on a long string, heard as a
+    // metallic zing -- and eleven times the string's period at C8, where the
+    // felt then lies on the string through eleven round trips damping what it
+    // just excited, heard as a hammer far too big for the note.
+    //
+    // Against the period it now runs from a tenth at A0 to about two at C8,
+    // which is the shape a real action has.
+    hardness: [[21, -0.746], [27, -0.654], [33, -0.514], [39, -0.418], [45, -0.288],
+               [51, -0.196], [57, -0.080], [63, 0.075], [69, 0.295], [75, 0.525],
+               [81, 0.761], [87, 1.010], [93, 1.288], [99, 1.583], [105, 1.872],
+               [108, 2.024]],
     // Felt nonlinearity exponent. Measured hammers run about 2.3 in the bass
     // to 3.0 and above in the treble, where the covering is thinner
     // (Chaigne & Askenfelt give C2 2.3, C4 2.5, C7 3.0). It was fixed at 2.5
