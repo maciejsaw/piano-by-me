@@ -12,6 +12,11 @@ export class WaveguideString {
     this.w = 0;
 
     this.lossZ = 0;
+    this.nlZ = 0;                     // transient-damping lowpass state
+    this.nlM = 0;                     // how much of the high part it removes now
+    this.nlDepth = 0;                 // and how much at the moment of the strike
+    this.nlDecay = 1;                 // per-sample fade of that amount
+    this.nlB = 0;                     // its lowpass coefficient
     this.apX = new Float64Array(0);   // x[n-1] per section
     this.apY = new Float64Array(0);   // y[n-1] per section
 
@@ -41,6 +46,7 @@ export class WaveguideString {
   setCoefficients(c) {
     this.c = c;
     if (c.couplingA != null) this.couplingA = c.couplingA;
+    if (c.nlB != null) this.nlB = c.nlB;
     this.setDelayScale(this.delayScale);
   }
 
@@ -69,11 +75,15 @@ export class WaveguideString {
 
   reset() {
     this.buf.fill(0); this.lossZ = 0; this.apX.fill(0); this.apY.fill(0);
+    this.nlZ = 0; this.nlM = 0;
     this.out = 0; this.energy = 0; this.w = 0;
   }
 
   /** Inject a hammer force pulse (already shaped and comb-filtered). */
-  excite(pulse) { this.exc = pulse; this.excPos = 0; this.active = true; }
+  excite(pulse, strength = 1) {
+    this.exc = pulse; this.excPos = 0; this.active = true;
+    this.nlM = this.nlDepth * strength;
+  }
 
   setDamper(closed) { this.damperTarget = closed ? 1 : 0; }
 
@@ -118,6 +128,33 @@ export class WaveguideString {
     // --- one-pole loss:  H(z) = g(1-b)/(1 - b z^-1) ---
     this.lossZ = g * (1 - b) * x + b * this.lossZ;
     x = this.lossZ;
+
+    // --- transient damping ---
+    //
+    // The loss filter gives every partial one fixed exponential, so each
+    // partial's decay is a straight line in dB by construction. A real one is
+    // not: it falls fast while the string is still moving hard and then goes
+    // soft, and the higher the partial the sharper the bend. Measured on the
+    // Salamander C3, partials above the 10th lose 25 dB/s over the first half
+    // second and then almost nothing; ours lost 5 and then kept going at 10.
+    //
+    // So there is a second, fast loss stage that fades out after the strike,
+    // weighted toward high frequency because that is where a string gives up
+    // its energy quickest. This is a two-stage decay stated as such -- a curve
+    // fit to what the instrument does, not a derived nonlinearity. Driving it
+    // from the string's own amplitude instead was tried first and does not
+    // work: it senses the very partials it damps, so it never lets go.
+    //
+    // Handing the removed part to the soundboard instead of dropping it was
+    // tried, on the reasoning that a string radiates most of what it loses.
+    // It changed the sympathetic halo by 0.1 dB: what the halo lives on at
+    // 2.5 s is the neighbours' low partials, and this stage is gone by then.
+    // So it is a plain loss, and the halo cost below is real.
+    if (this.nlM > 1e-4) {
+      this.nlZ = (1 - this.nlB) * x + this.nlB * this.nlZ;
+      x -= this.nlM * (x - this.nlZ);
+      this.nlM *= this.nlDecay;
+    }
 
     // --- dispersion allpass chain:  y = a(x - y[n-1]) + x[n-1] ---
     const a = c.allpassA, n = c.allpassN, apX = this.apX, apY = this.apY;

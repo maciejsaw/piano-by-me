@@ -27,7 +27,9 @@ const check = (name, ok, detail) => {
 
 console.log('\n=== 1. Inharmonicity: does B come out as specified? ===');
 for (const midi of [33, 48, 60, 72]) {
-  const p = new Piano(FS, { quality: 48, coupling: 0.0008 });
+  // B is a property of the STRING, so the unisons and the bridge are decoupled
+  // here: coupled partials pull on each other and bias the fit.
+  const p = new Piano(FS, { quality: 48, unisonCoupling: 0.0008, bridgeCoupling: 0.0008 });
   const note = p.notes[midi - 21];
   const spec0 = note.phys.B;
   const x = render(p, 3, [{ at: 0, run: (q) => q.noteOn(midi, 0.75) }]);

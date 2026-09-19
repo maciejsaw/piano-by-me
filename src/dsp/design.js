@@ -245,8 +245,13 @@ export function compileString(fs, phys, tuning) {
   const loss = designLoss(fs, f0, tuning.t60Low, tuning.t60High, 5000, 0);
   const disp = designDispersionMatched(fs, f0, phys.B, loss, tuning.maxAllpass ?? 48);
   const damped = designLoss(fs, f0, tuning.t60Damped ?? 0.12, (tuning.t60Damped ?? 0.12) * 0.35, 5000, 0);
+  // Transient damping is biased toward high frequency; this is the split
+  // point. It rises with the note, because the partials a treble string has
+  // are all above where a bass string's damped ones sit.
+  const tFc = tuning.transientFc ?? Math.max(400, Math.min(6000, f0 * 10));
   return {
     f0, B: phys.B, kappa, eps, couplingA: aC,
+    nlB: Math.exp((-2 * Math.PI * tFc) / fs),
     delay: disp.dLine, allpassA: disp.a, allpassN: disp.M,
     dispErr: disp.err, loss,
     lossG: loss.g, lossB: loss.b,
