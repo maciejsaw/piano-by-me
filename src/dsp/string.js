@@ -28,6 +28,9 @@ export class WaveguideString {
     this.kBridge = 0;                 // wave fraction shared with the soundboard
     this.diffLeak = 0.05;              // how much the differential mode still moves the bridge
     this.couplingA = 0;               // one-pole coefficient for the bridge's falling admittance
+    this.delayScale = 1;              // tension drift, as a relative delay change
+    this.drift = 0;                   // its lowpassed-noise state
+    this.driftSeed = 22222;
     this.cLp = 0;                     // its state (common mode)
     this.dLp = 0;                     // and differential; both see the same bridge
     this.setCoefficients({ delay: 100, allpassA: 0, allpassN: 0, lossG: 0.99, lossB: 0.3, dampG: 0.8, dampB: 0.6 });
@@ -36,7 +39,18 @@ export class WaveguideString {
   setCoefficients(c) {
     this.c = c;
     if (c.couplingA != null) this.couplingA = c.couplingA;
-    const d = Math.max(8, Math.min(c.delay, this.size - 6));
+    this.setDelayScale(this.delayScale);
+  }
+
+  /**
+   * Re-tune the delay line by a small relative amount. Used for tension drift,
+   * so it has to be cheap: the integer part rarely moves and only the four
+   * Lagrange taps are rebuilt.
+   */
+  setDelayScale(scale) {
+    this.delayScale = scale;
+    const c = this.c;
+    const d = Math.max(8, Math.min(c.delay * scale, this.size - 6));
     this.dInt = Math.floor(d) - 1;
     this.dFrac = d - Math.floor(d);
     if (this.apX.length !== c.allpassN) {
