@@ -49,6 +49,11 @@ export class Piano {
     this.transientTauS = opts.transientTauS ?? null;    // fall; null = per note
     this.transientRiseS = opts.transientRiseS ?? null;   // rise; null = per note
     this.transientSkew = opts.transientSkew ?? null;     // release skew; null = per note
+    // Soundboard swell: how long the radiated level takes to come up, and
+    // how far down it starts. Floor 1 disables it.
+    this.swellS = opts.swellS ?? null;
+    this.swellFloor = opts.swellFloor ?? null;
+    this.swellSkew = opts.swellSkew ?? null;
     // Hammer knobs, for fitting the attack against the samples.
     this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
     this.feltTauUs = opts.feltTauUs ?? 2;
@@ -139,6 +144,9 @@ export class Piano {
         // three times the old exponential time constant for the same feel.
         s.nlPhaseInc = 1 / Math.max((this.transientTauS ?? n.transientTauS) * fs, 1);
         s.nlSkew = Math.max(1, Math.round(this.transientSkew ?? n.transientSkew ?? 1));
+        s.swellInc = 1 / Math.max((this.swellS ?? n.swellS ?? 0.02) * fs, 1);
+        s.swellFloor = this.swellFloor ?? n.swellFloor ?? 1;
+        s.swellSkew = Math.max(1, Math.round(this.swellSkew ?? n.swellSkew ?? 2));
         s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS ?? n.transientRiseS, 1e-5) * fs));
         s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all
@@ -374,7 +382,10 @@ export class Piano {
         const s = active[k];
         const o = s.tick(nj[s.noteIndex], zDrive[s.zone]);
         acc[s.noteIndex] += o * s.wUnison;
-        zAcc[s.zone] += o * s.wZone;
+        // Only what leaves for the board is swelled. The unison junction sees
+        // the string's real motion, because the strings do not stop hearing
+        // each other while the board is getting going.
+        zAcc[s.zone] += o * s.wZone * s.radiation();
       }
       for (let k = 0; k < activeNotes.length; k++) {
         const idx = activeNotes[k];
