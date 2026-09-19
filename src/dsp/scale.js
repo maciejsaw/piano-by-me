@@ -63,11 +63,14 @@ export const DEFAULT_SCALE = {
     // Unison spread in cents; the outer strings sit either side of the centre one.
     // A tuner sets a unison far tighter than this used to assume: measured
     // against a real C3, 1.0 cent here put every partial into an audible sweep.
-    // A sampled concert instrument is freshly and carefully tuned, and a tuner
-    // nulls a unison by ear until the beat is gone -- so the residual really is
-    // this small. Measured against the Salamander C3, 1.0 cent (the old value)
-    // put every partial into a slow sweep: a flanger, not a piano.
-    detune:   [[21, 0.0], [30, 0.09], [48, 0.14], [72, 0.22], [108, 0.40]],
+    // Back at the value this started from, because the flanger was never the
+    // tuning. Work it out from the metric: at 1 cent, partial 2 of C3 beats at
+    // 0.30 Hz and partial 3 at 0.45 Hz, both below the 0.5 Hz floor of the
+    // warble band, while partials 4-8 land at 0.6-1.2 Hz, inside it. That is
+    // exactly the real instrument's shape -- steady low partials over a lively
+    // middle. Tightening the unison to silence the sweep pushed EVERY partial
+    // below the floor, which measures beautifully and sounds dead.
+    detune:   [[21, 0.0], [30, 0.6], [48, 1.0], [72, 1.6], [108, 2.6]],
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
@@ -167,17 +170,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
     const detune = lerpTable(scale.voicing.detune, midi);
     const count = bp.strings;
 
-    // No two unisons on a real instrument are tuned alike: measured across the
-    // Salamander library, warble scatters from 1.4 to 8.4 dB between
-    // neighbouring notes. A smooth detune curve makes every note equally, and
-    // unnaturally, steady. This is a fixed hash of the note number, not noise,
-    // so an instrument is identical every time it is built.
-    const h = Math.sin(midi * 12.9898) * 43758.5453;
-    const jitter = 0.45 + 1.6 * (h - Math.floor(h));
-    const detuneJ = detune * jitter;
     // Unison spread: centre string at nominal, outers either side.
     const shape = count === 1 ? [0] : count === 2 ? [-0.5, 0.5] : [-1, 0, 1];
-    const offsets = shape.map((k) => k * detuneJ);
+    const offsets = shape.map((k) => k * detune);
     // The three strings of one note are NOT identical wire at identical length.
     // The bridge pins are offset, so their speaking lengths differ by a fraction
     // of a percent. Holding f0 and the wire fixed, a different length means a
