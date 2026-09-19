@@ -12,15 +12,23 @@
 // round trip, damping what it just excited, heard as a hammer far too big for
 // the note.
 //
-// `gamma` steepens the curve about C3: 1 is the literature curve, above 1
-// lengthens the bass and shortens the treble together. It exists because the
-// ear put C3 right while calling everything below it zingy and everything
-// above it choked, which is a slope and not an offset.
+// The curve is steepened about the WOUND BREAK, and separately on each side,
+// because the two sides are not the same kind of string. A bass string is
+// wound: a soft, thick, textured surface that the felt sinks into, so contact
+// is long. A treble string is a thin bare wire that the felt barely engages,
+// so contact is short. One smooth power law through both is the wrong shape,
+// and the ear said so -- gamma 2 put C4 right while the bass still zinged.
+//
+// So gBass and gTreble are separate exponents, and the pivot is midi 52.5,
+// where this scale's spec turns wound strings into plain ones, rather than a
+// note chosen by ear. gBass > 1 lengthens bass contact; gTreble > 1 shortens
+// treble contact; 1 and 1 is the published curve.
 import { contactMs } from '../../src/dsp/hammer.js';
 import { DEFAULT_SCALE } from '../../src/dsp/scale.js';
 
 const FS = 48000;
-const PIVOT = 48;
+// Where this scale's spec turns wound into plain (see DEFAULT_SCALE.spec).
+const PIVOT = 52.5;
 
 // Measured contact durations, bass to treble. C4 at 2 ms is the one everybody
 // reports (Chaigne & Askenfelt; Russell); the rest follows the usual curve.
@@ -40,9 +48,10 @@ export const lerpT = (t, x) => {
 
 export const hammerSpeed = (v) => 0.18 * Math.pow(v, 0.15) * Math.exp(3.5 * v * v);
 
-export function targetMs(midi, gamma = 1) {
+export function targetMs(midi, gBass = 1, gTreble = null) {
   const base = lerpT(TARGET, PIVOT);
-  return base * Math.pow(lerpT(TARGET, midi) / base, gamma);
+  const g = midi < PIVOT ? gBass : (gTreble ?? gBass);
+  return base * Math.pow(lerpT(TARGET, midi) / base, g);
 }
 
 function contactFor(note, hardness, speed) {
@@ -59,11 +68,11 @@ function contactFor(note, hardness, speed) {
 }
 
 /** Bisect hardness per anchor note until contact hits the target. */
-export function solveHardness(model, gamma = 1, velocity = 0.75) {
+export function solveHardness(model, gBass = 1, gTreble = null, velocity = 0.75) {
   const speed = hammerSpeed(velocity);
   return ANCHORS.map((midi) => {
     const note = model.notes[midi - 21];
-    const want = targetMs(midi, gamma);
+    const want = targetMs(midi, gBass, gTreble);
     let lo = -1.8, hi = 2.6;                    // contact shortens as felt hardens
     for (let i = 0; i < 48; i++) {
       const mid = (lo + hi) / 2;
@@ -74,6 +83,9 @@ export function solveHardness(model, gamma = 1, velocity = 0.75) {
 }
 
 /** A scale with that hardness curve, for rendering without editing tables. */
-export function scaleWithGamma(model, gamma, velocity = 0.75) {
-  return { ...DEFAULT_SCALE, voicing: { ...DEFAULT_SCALE.voicing, hardness: solveHardness(model, gamma, velocity) } };
+export function scaleWithGamma(model, gBass, gTreble = null, velocity = 0.75) {
+  return {
+    ...DEFAULT_SCALE,
+    voicing: { ...DEFAULT_SCALE.voicing, hardness: solveHardness(model, gBass, gTreble, velocity) },
+  };
 }
