@@ -13,7 +13,19 @@ import { fft } from './comb.mjs';
 
 export const TIMES = [0.05, 0.2, 0.5, 1, 2, 4, 6];
 
-export function brightness(x, fs, { times = TIMES, hi = [2000, 6000], lo = [100, 600] } = {}) {
+/**
+ * The bands follow the note. Fixed bands work in the middle and are
+ * meaningless at the ends: above F#5 the fundamental is already above 600 Hz,
+ * so a fixed 100-600 low band holds none of the note and the ratio is
+ * measuring the high band against a noise floor. That produced 7 to 22 dB of
+ * pure nonsense across the top two octaves on the first keyboard-wide fit.
+ */
+export function bandsFor(f0) {
+  return { lo: [f0 * 0.7, f0 * 3], hi: [Math.min(f0 * 6, 12000), Math.min(f0 * 20, 16000)] };
+}
+
+export function brightness(x, fs, { times = TIMES, f0 = null, hi = [2000, 6000], lo = [100, 600] } = {}) {
+  if (f0) ({ lo, hi } = bandsFor(f0));
   const N = 8192;
   return times.map((t) => {
     const re = new Float64Array(N), im = new Float64Array(N), st = Math.round(t * fs);
