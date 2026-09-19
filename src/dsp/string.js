@@ -17,10 +17,9 @@ export class WaveguideString {
     this.nlPeak = 0;                  // its depth for this strike
     this.nlDepth = 0;                 // and the depth at full velocity
     this.nlR = 0;                     // rise state, 0 at the strike
-    this.nlD = 1;                     // fall state, 1 at the strike
+    this.nlPhase = 1;                 // 0 at the strike, 1 when the build ends
+    this.nlPhaseInc = 1;              // 1 / (build length in samples)
     this.nlRiseA = 1;                 // per-sample rise coefficient
-    this.nlDecay = 1;                 // per-sample fall coefficient
-    this.nlSustain = 0;               // share that does not fall away
     this.nlB = 0;                     // its lowpass coefficient
     this.apX = new Float64Array(0);   // x[n-1] per section
     this.apY = new Float64Array(0);   // y[n-1] per section
@@ -80,7 +79,7 @@ export class WaveguideString {
 
   reset() {
     this.buf.fill(0); this.lossZ = 0; this.apX.fill(0); this.apY.fill(0);
-    this.nlZ = 0; this.nlOn = false; this.nlR = 0; this.nlD = 1;
+    this.nlZ = 0; this.nlOn = false; this.nlR = 0; this.nlPhase = 1;
     this.out = 0; this.energy = 0; this.w = 0;
   }
 
@@ -88,7 +87,7 @@ export class WaveguideString {
   excite(pulse, strength = 1) {
     this.exc = pulse; this.excPos = 0; this.active = true;
     this.nlPeak = this.nlDepth * strength;
-    this.nlR = 0; this.nlD = 1; this.nlOn = this.nlDepth > 0;
+    this.nlR = 0; this.nlPhase = 0; this.nlOn = this.nlDepth > 0;
   }
 
   setDamper(closed) { this.damperTarget = closed ? 1 : 0; }
@@ -169,11 +168,22 @@ export class WaveguideString {
     // So it is a plain loss, and the halo cost below is real.
     if (this.nlOn) {
       this.nlR += (1 - this.nlR) * this.nlRiseA;
-      this.nlD *= this.nlDecay;
-      const m = this.nlPeak * this.nlR * (this.nlSustain + (1 - this.nlSustain) * this.nlD);
+      // The release is a smootherstep, not an exponential. An exponential is
+      // a straight line in dB, and it sounds like one: the high end walks in
+      // at a constant rate from the first millisecond, which is neither how a
+      // string takes up energy nor what the ear expects. This has zero slope
+      // at both ends, so the damping holds through the strike -- cutting more
+      // of the initial zing than an exponential of the same length -- and
+      // then lets go gently instead of arriving at zero still moving. Easing
+      // out at the end is also what allows the whole build to be longer
+      // without the note sounding as though it fades up.
+      const p = this.nlPhase;
+      const fall = 1 - p * p * p * (p * (p * 6 - 15) + 10);
+      const m = this.nlPeak * this.nlR * fall;
       this.nlZ = (1 - this.nlB) * x + this.nlB * this.nlZ;
       x -= m * (x - this.nlZ);
-      if (m < 1e-5 && this.nlR > 0.99) this.nlOn = false;
+      this.nlPhase = p + this.nlPhaseInc;
+      if (this.nlPhase >= 1) this.nlOn = false;
     }
 
     // --- dispersion allpass chain:  y = a(x - y[n-1]) + x[n-1] ---

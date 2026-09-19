@@ -133,7 +133,10 @@ export class Piano {
         // one; a plain treble string should keep the top it was given. The
         // instrument-level options still override, for the fitting tools.
         s.nlDepth = this.transientDepth ?? n.transientDepth;
-        s.nlDecay = Math.exp(-1 / ((this.transientTauS ?? n.transientTauS) * fs));
+        // The build runs over this long and then is done; with a smootherstep
+        // release most of it happens in the middle, so the figure is roughly
+        // three times the old exponential time constant for the same feel.
+        s.nlPhaseInc = 1 / Math.max((this.transientTauS ?? n.transientTauS) * fs, 1);
         s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS ?? n.transientRiseS, 1e-5) * fs));
         s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all
