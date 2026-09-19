@@ -58,7 +58,9 @@ export const DEFAULT_SCALE = {
     // not nonlinear enough.
     feltP: [[21, 2.3], [36, 2.4], [60, 2.5], [84, 2.8], [96, 3.0], [108, 3.2]],
     // How much of the felt's stiffness is hysteretic rather than elastic.
-    feltEps: [[21, 0.90], [60, 0.90], [108, 0.90]],
+    // Fitted on C4's attack ladder against the sample; real hammers measure
+    // near 1, and 0.97 is what the fit asks for.
+    feltEps: [[21, 0.97], [60, 0.97], [108, 0.97]],
     // Width of the contact patch, mm. Sets a lowpass at about c/(2*width),
     // which lands among the partials in the bass and above hearing on top.
     hammerWidthMm: [[21, 14], [36, 11], [60, 7], [84, 5], [108, 3.5]],
