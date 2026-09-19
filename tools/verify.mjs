@@ -71,7 +71,9 @@ for (const t60 of [3, 8, 16]) {
 
 console.log('\n=== 3. Unison beating: does detuning produce the right beat rate? ===');
 for (const cents of [0.8, 2.0, 4.0]) {
-  const p = new Piano(FS, { quality: 24, coupling: 0.0004 });
+  // Near-zero coupling, so this measures detuning alone. `coupling` was not a
+  // real option, so this had silently been running at full coupling.
+  const p = new Piano(FS, { quality: 24, unisonCoupling: 0.0004, bridgeCoupling: 0.0004 });
   const note = p.notes[60 - 21];
   const offs = [-cents, 0, cents];
   note.voices.forEach((s, i) => p.recompileString(s, { ...s.tuning, detuneCents: offs[i] }));

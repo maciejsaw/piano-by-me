@@ -38,6 +38,12 @@ export class Piano {
     // internal damping. Stability is guaranteed for anything below 1.
     this.unisonCoupling = opts.unisonCoupling ?? 0.55;
     this.bridgeCoupling = opts.bridgeCoupling ?? 0.30;
+    // How much of a unison's differential mode still reaches the bridge.
+    this.diffLeak = opts.diffLeak ?? 0.05;
+    // Spread of bridge coupling across the strings of one unison.
+    this.bridgeSpread = opts.bridgeSpread ?? 0.8;
+    // Mean of the three weights, divided out so the spread cannot shift level.
+    this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
     this.masterGain = opts.gain ?? 0.075;
     // Everything downstream of the bridge: radiation, case, cavity, lid.
@@ -79,7 +85,7 @@ export class Piano {
       const zone = Math.min(ZONES - 1, Math.floor((ni * ZONES) / notes.length));
       const voices = [];
       for (const st of n.strings) {
-        const coeffs = compileString(fs, n.phys, {
+        const coeffs = compileString(fs, st.phys ?? n.phys, {
           ...st,
           couplingFraction: (this.unisonCoupling + this.bridgeCoupling) * st.coupling,
           maxAllpass: this.quality,
@@ -94,8 +100,15 @@ export class Piano {
         s.wUnison = 1 / n.count;
         const total = coeffs.kappa;
         const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
+        s.diffLeak = this.diffLeak;
         s.kUnison = total * split;
-        s.kBridge = total * (1 - split);
+        // The three strings of a unison do not sit on one point of the bridge,
+        // so the bridge does not drive them equally. That matters more than it
+        // sounds: an identical drive excites only the common mode, which is the
+        // heavily damped one, and a sympathetic ring would die as fast as a
+        // struck note's prompt. An uneven drive also reaches the differential
+        // modes, and those are what ring on long enough to be heard as a halo.
+        s.kBridge = total * (1 - split) * this.bridgeWeight(st.shape ?? 0);
         s.damperTarget = n.hasDamper ? 1 : 0;
         s.damperClosed = n.hasDamper ? 1 : 0;
         voices.push(s);
@@ -115,7 +128,15 @@ export class Piano {
     // matching normalisation and it is what real instruments behave like.
     // Worst-case coherent alignment is then bounded by the output softclip
     // rather than by construction, which the stability tests cover.
-    for (const s of this.strings) s.wZone = 1 / Math.sqrt(zoneCount[s.zone]);
+    // A string reaches the soundboard exactly as hard as it couples to the
+    // bridge, so radiation uses the same uneven weights the drive does. With
+    // equal weights the differential mode cancels EXACTLY in this sum, which is
+    // self-consistent (that is why it is the lossless one) but leaves the whole
+    // aftersound inaudible -- it rings for half a minute and never reaches the
+    // output. The spread is zero-mean, so overall level is unchanged.
+    for (const s of this.strings) {
+      s.wZone = (1 / Math.sqrt(zoneCount[s.zone])) * this.bridgeWeight(s.tuning.shape ?? 0);
+    }
 
     this.noteJunction = new Float64Array(notes.length);
     this.noteAcc = new Float64Array(notes.length);
@@ -123,6 +144,15 @@ export class Piano {
     this.zoneVel = new Float64Array(ZONES);
     this.zoneDrive = new Float64Array(ZONES);
     this.refreshActive();
+  }
+
+  /**
+   * How hard string `shape` of a unison is tied to the bridge, relative to the
+   * centre one. Geometric rather than linear so that no string is ever fully
+   * decoupled, which a linear spread of 1.0 would do.
+   */
+  bridgeWeight(shape) {
+    return Math.pow(1 + this.bridgeSpread, shape) / this.bridgeNorm;
   }
 
   /** Only strings that can move are ticked: struck, ringing, or damper-up. */
@@ -152,7 +182,7 @@ export class Piano {
         K: note.feltK,
         p: note.feltP,
         strikeDelay: s.coeffs.strikeDelay,
-        gain: note.gain,
+        gain: note.gain * (s.tuning.drive ?? 1),
       });
       const skew = Math.round(this.fs * s.tuning.contactOffsetUs * 1e-6);
       if (skew > 0) {

@@ -26,11 +26,16 @@ export class WaveguideString {
     this.active = false;
     this.kUnison = 0;                 // wave fraction shared with its unison partners
     this.kBridge = 0;                 // wave fraction shared with the soundboard
+    this.diffLeak = 0.05;              // how much the differential mode still moves the bridge
+    this.couplingA = 0;               // one-pole coefficient for the bridge's falling admittance
+    this.cLp = 0;                     // its state (common mode)
+    this.dLp = 0;                     // and differential; both see the same bridge
     this.setCoefficients({ delay: 100, allpassA: 0, allpassN: 0, lossG: 0.99, lossB: 0.3, dampG: 0.8, dampB: 0.6 });
   }
 
   setCoefficients(c) {
     this.c = c;
+    if (c.couplingA != null) this.couplingA = c.couplingA;
     const d = Math.max(8, Math.min(c.delay, this.size - 6));
     this.dInt = Math.floor(d) - 1;
     this.dFrac = d - Math.floor(d);
@@ -108,8 +113,38 @@ export class WaveguideString {
     this.out = x;
 
     // --- excitation + bridge coupling back into the loop ---
-    const ku = this.kUnison, kb = this.kBridge;
-    let inp = x * (1 - ku - kb) + unison * ku + bridge * kb;
+    //
+    // What a bridge does is SELECTIVE, and the selectivity is the whole reason a
+    // piano has an aftersound. Split this string's wave into the part it shares
+    // with its unison partners and the part it does not:
+    //
+    //   common       all strings push the bridge the same way, so the bridge
+    //                moves, radiates, and this component is damped hard
+    //   differential the strings pull against each other, net force at the
+    //                bridge is zero, it barely moves, and this component rings
+    //                on almost undamped -- the long aftersound
+    //
+    // Blending toward the unison average does the exact opposite: it preserves
+    // the average and attenuates the difference. Subtracting the average instead
+    // damps only the common part and leaves the differential untouched, which is
+    // both the correct sign and still passive (common gain 1-ku-kb <= 1,
+    // differential gain exactly 1, and the loss filter above already took its
+    // share this trip).
+    //
+    // The cancellation is not perfect, though: the strings of one unison sit a
+    // few millimetres apart on the bridge, not on top of each other, so the
+    // differential mode does move it slightly. diffLeak is that fraction. At 0
+    // the aftersound is lossless, which rings far too long and leaves nothing
+    // for a struck string to drive its neighbours with.
+    const ku = this.kUnison, kb = this.kBridge, leak = this.diffLeak;
+    const k = ku + kb;
+    // Lowpassed, because the bridge yields to low frequencies and not to high
+    // ones. Without this the coupling damps every partial at the rate only the
+    // fundamental should see, and the note stops sounding seconds early.
+    const aC = this.couplingA;
+    this.cLp = (1 - aC) * unison + aC * this.cLp;
+    this.dLp = (1 - aC) * (x - unison) + aC * this.dLp;
+    let inp = x - k * this.cLp + kb * bridge - leak * k * this.dLp;
     const e = this.exc;
     if (this.excPos < e.length) inp += e[this.excPos++];
 
