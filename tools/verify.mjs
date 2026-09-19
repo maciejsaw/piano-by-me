@@ -45,7 +45,10 @@ console.log('\n=== 2. Decay: does T60 track the parameter? ===');
 // With them coupled the composite decays in two stages (see test 2b), which is
 // correct piano behaviour but is not what this parameter promises.
 for (const t60 of [3, 8, 16]) {
-  const p = new Piano(FS, { quality: 32, unisonCoupling: 0.02, bridgeCoupling: 0.02 });
+  // Arrival skew is zeroed for the same reason the detune is: three strings
+  // landing a fraction of a millisecond apart comb the composite, which looks
+  // like extra decay over a short window and is a unison effect, not a string's.
+  const p = new Piano(FS, { quality: 32, unisonCoupling: 0.02, bridgeCoupling: 0.02, strikeOffsetScale: 0 });
   const note = p.notes[60 - 21];
   // Zero the detune too: a slow unison beat looks like extra decay over a short
   // measurement window, which is a measurement artefact, not a modelling one.
