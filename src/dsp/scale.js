@@ -88,6 +88,24 @@ export const DEFAULT_SCALE = {
     // strike. Widened again, to about 1.2 ms at C4, at the point on the
     // softness ladder chosen by ear.
     strikeOffsetUs: [[21, 2390], [48, 1550], [72, 955], [108, 540]],
+    // How the string's high end BUILDS after the strike, per note.
+    //
+    // The transient-damping stage is a high-frequency loss that fades after
+    // the strike, which is the same thing as a high end that fades in. Which
+    // way it should point depends on the string. On a thick wound bass string
+    // the top should not be there at contact at all and should grow in as the
+    // winding lets go; from about C2 up the strike should keep its top and
+    // the damping arrive behind it.
+    //
+    // Measured at A0, in the 2-6 kHz band that the zing lives in, against the
+    // fundamental region: the real note sits at -29 to -35 dB and holds
+    // there, and ours sat at -17 to -21, ten to thirteen decibels too bright
+    // at every instant. Damping at contact, releasing over 80 ms, takes it to
+    // -24 to -30. The same setting at C2 takes that note from -26, which is
+    // right, to -43, which is not -- so it has to be a curve, not a constant.
+    transientDepth: [[21, 0.70], [27, 0.45], [33, 0.15], [36, 0.077], [108, 0.077]],
+    transientRiseS: [[21, 0.0005], [33, 0.020], [36, 0.040], [108, 0.040]],
+    transientTauS:  [[21, 0.080], [36, 0.250], [108, 0.250]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
@@ -328,6 +346,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
       feltK: 1.8e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),
       feltP: lerpTable(scale.voicing.feltP, midi),
       feltEps: lerpTable(scale.voicing.feltEps, midi),
+      transientDepth: lerpTable(scale.voicing.transientDepth, midi),
+      transientRiseS: lerpTable(scale.voicing.transientRiseS, midi),
+      transientTauS: lerpTable(scale.voicing.transientTauS, midi),
       hammerWidthM: lerpTable(scale.voicing.hammerWidthMm, midi) * 1e-3,
       // String wave impedance: what the hammer actually pushes against.
       Z: Math.sqrt(phys.T * phys.mu),

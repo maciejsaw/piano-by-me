@@ -45,9 +45,9 @@ export class Piano {
     // decay away from the straight line the loss filter would give it. depth
     // is the fraction of the high part removed on the first trip at full
     // velocity, tau how long that takes to fade.
-    this.transientDepth = opts.transientDepth ?? 0.077;
-    this.transientTauS = opts.transientTauS ?? 0.25;    // fall
-    this.transientRiseS = opts.transientRiseS ?? 0.04;   // spare the strike itself
+    this.transientDepth = opts.transientDepth ?? null;   // null = per note
+    this.transientTauS = opts.transientTauS ?? null;    // fall; null = per note
+    this.transientRiseS = opts.transientRiseS ?? null;   // rise; null = per note
     // Hammer knobs, for fitting the attack against the samples.
     this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
     this.feltTauUs = opts.feltTauUs ?? 2;
@@ -128,9 +128,13 @@ export class Piano {
         const total = coeffs.kappa;
         const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
         s.diffLeak = this.diffLeak;
-        s.nlDepth = this.transientDepth;
-        s.nlDecay = Math.exp(-1 / (this.transientTauS * fs));
-        s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS, 1e-5) * fs));
+        // Per note, because which way the stage points depends on the
+        // string: a wound bass string should have no top at contact and grow
+        // one; a plain treble string should keep the top it was given. The
+        // instrument-level options still override, for the fitting tools.
+        s.nlDepth = this.transientDepth ?? n.transientDepth;
+        s.nlDecay = Math.exp(-1 / ((this.transientTauS ?? n.transientTauS) * fs));
+        s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS ?? n.transientRiseS, 1e-5) * fs));
         s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all
         // three together, which is a common mode and produces no beating at all.
