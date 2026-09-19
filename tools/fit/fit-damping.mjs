@@ -17,7 +17,8 @@
 //   SHARD=0 SHARDS=4 node tools/fit/fit-damping.mjs out-0.json   (one core each)
 import { writeFileSync } from 'node:fs';
 import { readWav } from './wavread.mjs';
-import { brightness, TIMES } from './brightness.mjs';
+import { TIMES } from './brightness.mjs';
+import { fitBands, bandRatioDb } from './bands.mjs';
 import { indexLibrary } from './samples.mjs';
 import { renderNote } from './decay-report.mjs';
 import { DEFAULT_SCALE } from '../../src/dsp/scale.js';
@@ -53,11 +54,19 @@ for (const n of notes) {
   const times = FIT_TIMES.filter((t) => t + 0.2 < lenS);
   if (times.length < 4) { console.log(`${n.note} too short (${lenS.toFixed(1)}s), skipped`); continue; }
   const f0 = noteHz(n.midi);
-  const realB = brightness(s.data, s.rate, { times, f0 });
+  // Bands come from the sample, not from a formula: see bands.mjs. Above
+  // about A5 the v12 layer has no energy at 4 x f0 at all, so there is no
+  // high band and nothing here can constrain those notes.
+  const band = fitBands(s.data, s.rate, f0);
+  if (!band.usable) {
+    console.log(`${n.note.padEnd(4)} midi=${String(n.midi).padStart(3)}  no usable high band (fTop=${Math.round(band.fTop)} Hz, 4*f0=${Math.round(f0 * 4)} Hz), skipped`);
+    continue;
+  }
+  const realB = times.map((t) => bandRatioDb(s.data, s.rate, t, band));
   const seconds = Math.min(8, Math.ceil(times[times.length - 1] + 1));
   const score = (depth, k) => {
     const x = renderNote(seconds, n.midi, { transientDepth: depth, scale: hiScaled(k) });
-    const b = brightness(x, 48000, { times, f0 });
+    const b = times.map((t) => bandRatioDb(x, 48000, t, { lo: band.lo, hi: band.hi }));
     return b.reduce((a, v, i) => a + Math.abs(v - realB[i]), 0) / times.length;
   };
   let depth = 0.14, k = 1, err = Infinity;
@@ -65,7 +74,10 @@ for (const n of notes) {
     for (const kk of KHI) { const e = score(depth, kk); if (e < err) { err = e; k = kk; } }
     for (const dd of DEPTHS) { const e = score(dd, k); if (e < err) { err = e; depth = dd; } }
   }
-  results.push({ midi: n.midi, note: n.note, depth, t60HighScale: k, errDb: +err.toFixed(2) });
+  results.push({
+    midi: n.midi, note: n.note, depth, t60HighScale: k, errDb: +err.toFixed(2),
+    fTop: Math.round(band.fTop), hi: band.hi.map((v) => Math.round(v)),
+  });
   console.log(`${n.note.padEnd(4)} midi=${String(n.midi).padStart(3)}  depth=${String(depth).padEnd(5)} t60HighScale=${String(k).padEnd(5)} err=${err.toFixed(1)} dB`);
   writeFileSync(OUT, JSON.stringify({ khi: KHI, depths: DEPTHS, results }, null, 2));
 }
