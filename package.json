@@ -1,0 +1,27 @@
+{
+  "name": "piano-model-x",
+  "version": "0.1.0",
+  "description": "Physically modelled piano: per-string waveguides on a shared bridge",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "verify": "node tools/verify.mjs",
+    "bench": "node tools/bench.mjs",
+    "test:browser": "node tools/browser-test.mjs",
+    "render": "node tools/render.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maciejsaw/piano-model-x.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/maciejsaw/piano-model-x/issues"
+  },
+  "homepage": "https://github.com/maciejsaw/piano-model-x#readme",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "type": "module"
+}

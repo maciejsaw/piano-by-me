@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Piano Model X</title>
+<style>
+:root{
+  --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
+  --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc;
+  --wound:#b5762f; --plain:#7f8fa6;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+h1{font-size:14px;margin:0 14px 0 0;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
+button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
+select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
+.stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
+main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
+@media(max-width:1000px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+#kb{position:relative;height:150px;user-select:none;overflow-x:auto;white-space:nowrap}
+#kbInner{position:relative;height:150px}
+.wk{position:absolute;top:0;height:150px;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
+.wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
+.wk.dn{background:linear-gradient(#c9a35c,#a9863f)}
+.bk{position:absolute;top:0;height:95px;background:linear-gradient(#3a342c,#15120e);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
+.bk.sel{background:linear-gradient(#7a5e28,#3d2f14)}
+.bk.dn{background:linear-gradient(#b8933f,#6d5522)}
+.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
+.row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.row label{flex:0 0 116px;color:var(--dim);font-size:11px}
+.row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
+.row output{flex:0 0 74px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim)}
+td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700}
+.tag.w{background:var(--wound);color:#1a1409} .tag.p{background:var(--plain);color:#0d1116}
+.strings{display:flex;gap:6px;margin:8px 0}
+.strings button{flex:1;padding:4px;font-size:11px}
+.hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
+kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
+#overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
+#overlay div{text-align:center;max-width:460px}
+#overlay p{color:var(--dim);margin:14px 0}
+</style>
+</head>
+<body>
+<div id="overlay"><div>
+  <h1 style="font-size:20px;margin-bottom:6px">Piano Model X</h1>
+  <p>A physically modelled piano: every string is an individual waveguide with its own
+     geometry, tension and losses, and they all meet at a shared bridge — so unison
+     beating and sympathetic resonance happen on their own rather than being effects.</p>
+  <button class="primary" id="startBtn">Start audio</button>
+  <p style="font-size:11px">Connect a MIDI keyboard before or after starting. No MIDI? Play with the
+     computer keyboard (<kbd>z</kbd>…<kbd>m</kbd>, <kbd>q</kbd>…<kbd>u</kbd>) or click the keys.
+     <kbd>space</kbd> is the sustain pedal.</p>
+</div></div>
+
+<header>
+  <h1>Piano Model X</h1>
+  <select id="midiSel"><option>no MIDI</option></select>
+  <button id="sustainBtn">sustain</button>
+  <button id="unaBtn">una corda</button>
+  <button id="panicBtn">panic</button>
+  <span class="stat">strings <b id="statStrings">–</b></span>
+  <span class="stat">ringing <b id="statActive">–</b></span>
+  <span class="stat">dsp load <b id="statLoad">–</b></span>
+</header>
+
+<main>
+  <div>
+    <div class="panel">
+      <h2>Keyboard — click a key to inspect, shift-click to hold silently</h2>
+      <div id="kb"><div id="kbInner"></div></div>
+      <div class="hint">
+        <b>Hear the sympathetic resonance:</b> shift-click <b>C4</b> to hold it silently
+        (its dampers lift but no hammer strikes), then play <b>C3</b> hard and release.
+        C4 keeps ringing — driven entirely through the bridge.
+      </div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Instrument</h2>
+      <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2.5" step="0.01" value="1.0"><output id="gainV"></output></div>
+      <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
+      <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
+      <div class="hint">Coupling is expressed as the fraction of each string's own loss that goes
+        into the bridge instead of into internal damping — so it can never destabilise, and the
+        decay time you ask for stays the decay time you get. Unison coupling drives beating and
+        double decay; bridge coupling drives the sympathetic halo.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>String inspector — <span id="noteName">C4</span></h2>
+    <table id="physTable"></table>
+    <div class="hint" style="margin:10px 0 2px">Note geometry — changing these re-derives tension and inharmonicity.</div>
+    <div class="row"><label>speaking length</label><input type="range" id="len" min="0.04" max="2.0" step="0.001"><output id="lenV"></output></div>
+    <div class="row"><label>core wire ⌀</label><input type="range" id="core" min="0.6" max="1.6" step="0.005"><output id="coreV"></output></div>
+    <div class="row"><label>wrap ⌀</label><input type="range" id="wrap" min="0" max="4" step="0.01"><output id="wrapV"></output></div>
+    <div class="strings" id="stringSel"></div>
+    <div class="row"><label>detune</label><input type="range" id="det" min="-12" max="12" step="0.05"><output id="detV"></output></div>
+    <div class="row"><label>T60 @ f0</label><input type="range" id="t60l" min="0.3" max="45" step="0.1"><output id="t60lV"></output></div>
+    <div class="row"><label>T60 @ 5 kHz</label><input type="range" id="t60h" min="0.05" max="6" step="0.01"><output id="t60hV"></output></div>
+    <div class="row"><label>strike position</label><input type="range" id="strike" min="0.02" max="0.33" step="0.001"><output id="strikeV"></output></div>
+    <div class="row"><label>bridge coupling</label><input type="range" id="cpl" min="0" max="2" step="0.01"><output id="cplV"></output></div>
+    <div class="hint">Strike position is a fraction of the speaking length; it notches out every
+      partial with a node there (1/8 kills the 8th). That notch is why measured partials 8–9
+      nearly vanish — the physics, not a bug.</div>
+  </div>
+</main>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
