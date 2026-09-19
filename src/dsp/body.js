@@ -225,11 +225,11 @@ export class Body {
     this.lidPos = 0;
 
     // --- soundboard ring-up ---
-    this.boardMix = opts.boardMix ?? 0.5;
+    this.boardMix = opts.boardMix ?? 0.67;
     this.diffuser = new Diffuser(fs, {
-      spreadMs: opts.boardSpreadMs ?? 24,
+      spreadMs: opts.boardSpreadMs ?? 37,
       stages: opts.boardStages ?? 5,
-      g: opts.boardG ?? 0.62,
+      g: opts.boardG ?? 0.665,
     });
   }
 

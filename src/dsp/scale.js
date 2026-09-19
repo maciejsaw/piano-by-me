@@ -69,11 +69,11 @@ export const DEFAULT_SCALE = {
     // reaches them a fraction of a millisecond apart.
     //
     // Measured, not guessed: the first 5 ms of a real C4 has a crest factor of
-    // 7.3 dB and ours had 10.0, which is the click. Widening this spread to
-    // about 0.6 ms at C4 takes it to 7.9 dB and costs nothing on the partial
-    // ladder. Three strings landing together make one sharp edge; three
-    // landing a little apart make a strike.
-    strikeOffsetUs: [[21, 1200], [48, 780], [72, 480], [108, 270]],
+    // 7.3 dB and ours had 10.0, which is the click. Three strings landing
+    // together make one sharp edge; three landing a little apart make a
+    // strike. Widened again, to about 1.2 ms at C4, at the point on the
+    // softness ladder chosen by ear.
+    strikeOffsetUs: [[21, 2390], [48, 1550], [72, 955], [108, 540]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
@@ -311,7 +311,7 @@ export function buildScale(scale = DEFAULT_SCALE) {
       hardness: (ov && ov.hardness != null) ? ov.hardness : lerpTable(scale.voicing.hardness, midi),
       hammerMass: lerpTable(scale.voicing.hammerMass, midi)
                   * Math.pow(10, -0.35 * lerpTable(scale.voicing.hardness, midi)),
-      feltK: 3e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),
+      feltK: 1.8e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),
       feltP: lerpTable(scale.voicing.feltP, midi),
       feltEps: lerpTable(scale.voicing.feltEps, midi),
       hammerWidthM: lerpTable(scale.voicing.hammerWidthMm, midi) * 1e-3,
