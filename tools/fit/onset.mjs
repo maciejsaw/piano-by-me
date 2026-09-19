@@ -76,5 +76,20 @@ export function onsetShape(x, fs, opts = {}) {
   let pk = 0, sq = 0;
   for (let i = e.start; i < e.start + n5 && i < x.length; i++) { const a = Math.abs(x[i]); if (a > pk) pk = a; sq += x[i] * x[i]; }
   const crest = 20 * Math.log10(pk / (Math.sqrt(sq / n5) + 1e-30) + 1e-12);
-  return { ...e, halfMs: half, peakMs: peakAt, crestDb: crest };
+
+  // Crest over a fixed window stops meaning anything once the rise time
+  // changes: spreading energy out of the window lowers its RMS and so RAISES
+  // the ratio, which reads as more click for less. What a click actually is
+  // is a spike that overshoots what follows it, so measure that directly --
+  // the loudest sample in the first 3 ms against the loudest in the first
+  // 100 ms. A struck note is well below zero here; a click sits at zero.
+  const nEarly = Math.round(0.003 * fs), nLate = Math.round(0.1 * fs);
+  let pe = 0, pl = 0;
+  for (let i = e.start; i < e.start + nLate && i < x.length; i++) {
+    const a = Math.abs(x[i]);
+    if (i < e.start + nEarly && a > pe) pe = a;
+    if (a > pl) pl = a;
+  }
+  const clickDb = 20 * Math.log10(pe / (pl + 1e-30) + 1e-12);
+  return { ...e, halfMs: half, peakMs: peakAt, crestDb: crest, clickDb };
 }

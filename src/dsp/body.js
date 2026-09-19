@@ -146,6 +146,59 @@ export function boxModes(Lx, Ly, Lz, fMax = 1200, limit = 160) {
   return modes.slice(0, limit);
 }
 
+/**
+ * Soundboard ring-up.
+ *
+ * A real soundboard is a plate with a dense forest of modes, and its response
+ * to a sharp bridge force is not sharp: the energy spreads over tens of
+ * milliseconds as those modes take it up. Measured on the Salamander C4, the
+ * note reaches half its level 8 ms after contact and peaks at 28 ms. Ours,
+ * with the board modelled as an EQ, reached half in 2 ms and peaked at 3 --
+ * it came out of digital silence and rose 117 dB in under a millisecond and a
+ * half, which is the click that survived softening the felt.
+ *
+ * This is a chain of allpass diffusers, which is the one structure that
+ * spreads a transient in time WITHOUT touching the magnitude spectrum. That
+ * matters here: the spectral balance has been fitted against the samples over
+ * many rounds, and a reverb with a magnitude of its own would undo that work
+ * silently. An allpass chain cannot -- it only moves energy in time.
+ *
+ * Delays ASCEND, from about a millisecond up to `spreadMs`, and are mutually
+ * prime so the chain does not build a periodic echo. Order matters more than
+ * it looks: a long allpass first is one discrete echo, not diffusion, and it
+ * leaves the first few milliseconds as sparse as it found them. Putting the
+ * short ones first fills that gap, which is the part that sounds like a click.
+ */
+class Diffuser {
+  constructor(fs, { spreadMs = 24, stages = 5, g = 0.62 } = {}) {
+    const ratios = [0.04, 0.07, 0.13, 0.22, 0.37, 0.6];
+    this.g = g;
+    this.buf = [];
+    this.pos = [];
+    for (let i = 0; i < stages; i++) {
+      let n = Math.max(2, Math.round((spreadMs * ratios[i % ratios.length] * fs) / 1000));
+      if (n % 2 === 0) n += 1;                 // odd lengths, mutually prime enough
+      this.buf.push(new Float64Array(n));
+      this.pos.push(0);
+    }
+  }
+
+  process(x) {
+    let y = x;
+    for (let i = 0; i < this.buf.length; i++) {
+      const b = this.buf[i], p = this.pos[i];
+      const d = b[p];
+      const v = y + this.g * d;
+      b[p] = v;
+      this.pos[i] = (p + 1) % b.length;
+      y = d - this.g * v;
+    }
+    return y;
+  }
+
+  reset() { this.buf.forEach((b) => b.fill(0)); this.pos.fill(0); }
+}
+
 export class Body {
   constructor(fs, opts = {}) {
     this.fs = fs;
@@ -170,6 +223,14 @@ export class Body {
     const lidMs = opts.lidDelayMs ?? 3.4;
     this.lidBuf = new Float64Array(Math.max(2, Math.round((lidMs * fs) / 1000)));
     this.lidPos = 0;
+
+    // --- soundboard ring-up ---
+    this.boardMix = opts.boardMix ?? 0.5;
+    this.diffuser = new Diffuser(fs, {
+      spreadMs: opts.boardSpreadMs ?? 24,
+      stages: opts.boardStages ?? 5,
+      g: opts.boardG ?? 0.62,
+    });
   }
 
   process(x) {
@@ -180,7 +241,8 @@ export class Body {
     const d = this.lidBuf[this.lidPos];
     this.lidBuf[this.lidPos] = y;
     this.lidPos = (this.lidPos + 1) % this.lidBuf.length;
-    return y + this.lidGain * d;
+    y += this.lidGain * d;
+    return this.boardMix > 0 ? y + this.boardMix * (this.diffuser.process(y) - y) : y;
   }
 
   reset() {
@@ -188,6 +250,7 @@ export class Body {
     this.cavity.forEach((b) => b.reset());
     this.lidBuf.fill(0);
     this.lidPos = 0;
+    this.diffuser.reset();
   }
 }
 
