@@ -47,7 +47,7 @@ export class Piano {
     // velocity, tau how long that takes to fade.
     this.transientDepth = opts.transientDepth ?? 0.14;
     this.transientTauS = opts.transientTauS ?? 0.25;    // fall
-    this.transientRiseS = opts.transientRiseS ?? 0.001;  // 1 ms = on at once
+    this.transientRiseS = opts.transientRiseS ?? 0.04;   // spare the strike itself
     this.transientSustain = opts.transientSustain ?? 0;
     this.transientFc = opts.transientFc ?? null;   // null = scale with the note
     this.couplingFc = opts.couplingFc ?? null;     // bridge admittance corner
