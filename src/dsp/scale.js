@@ -122,6 +122,27 @@ export const DEFAULT_SCALE = {
     // Skewing changes the middle and the end, and it stretches the effective
     // length about threefold, which is why transientTauS came down with it.
     transientSkew:  [[21, 6], [108, 6]],
+    // The knock: how much of the blow goes round the string to the board.
+    //
+    // A heavy bass hammer shakes the bridge hard and a 3 g treble hammer
+    // barely at all, so this falls steeply. The noise half is the felt
+    // crushing and the action arriving; it is lowpassed, because what a big
+    // plate does with a tap is low.
+    // SOLVED, not set -- tools/fit/fit-knock.mjs, at 12 dB under each note's
+    // own peak. Hand-scaling this fixed C4 and left A0 forty decibels out,
+    // because how loud a knock sounds against its note is not proportional to
+    // the blow: the transient stage takes nearly all of the bass string's
+    // first milliseconds away, so the same knock stands right out at A0 and
+    // hides under C4. The curve is bumpy in the treble for that reason. It is
+    // compensation for the note, not a property of the hammer, and smoothing
+    // it would put the unevenness back into what you hear.
+    //
+    // knockNoise carries the same fitted scale as knockGain; the ratio
+    // between them is the voicing, the common factor is the level.
+    knockGain:  [[21, 0.0672], [27, 0.0651], [33, 0.0381], [39, 0.0467], [45, 0.0288], [51, 0.0296], [57, 0.0182], [63, 0.0292], [69, 0.0175], [75, 0.0238], [81, 0.0245], [87, 0.0182], [93, 0.0314], [99, 0.0481], [105, 0.0162], [108, 0.0189]],
+    knockNoise: [[21, 0.0856], [27, 0.0901], [33, 0.0583], [39, 0.0789], [45, 0.0536], [51, 0.0611], [57, 0.0424], [63, 0.0769], [69, 0.0522], [75, 0.08], [81, 0.0919], [87, 0.0743], [93, 0.134], [99, 0.216], [105, 0.0778], [108, 0.0944]],
+    knockDecayS: [[21, 0.035], [48, 0.024], [72, 0.014], [108, 0.008]],
+    knockFc:     [[21, 420], [48, 700], [72, 1100], [108, 1900]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
@@ -367,6 +388,10 @@ export function buildScale(scale = DEFAULT_SCALE) {
       transientTauS: lerpTable(scale.voicing.transientTauS, midi),
       transientSkew: lerpTable(scale.voicing.transientSkew, midi),
       hammerWidthM: lerpTable(scale.voicing.hammerWidthMm, midi) * 1e-3,
+      knockGain: lerpTable(scale.voicing.knockGain, midi),
+      knockNoise: lerpTable(scale.voicing.knockNoise, midi),
+      knockDecayS: lerpTable(scale.voicing.knockDecayS, midi),
+      knockFc: lerpTable(scale.voicing.knockFc, midi),
       // String wave impedance: what the hammer actually pushes against.
       Z: Math.sqrt(phys.T * phys.mu),
       gain: lerpTable(scale.voicing.gain, midi),

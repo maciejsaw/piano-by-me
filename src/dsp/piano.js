@@ -19,7 +19,7 @@
 import { buildScale, DEFAULT_SCALE } from './scale.js';
 import { compileString } from './design.js';
 import { WaveguideString } from './string.js';
-import { makeHammerPulse } from './hammer.js';
+import { makeHammerPulse, makeKnock } from './hammer.js';
 import { Soundboard } from './soundboard.js';
 import { Body } from './body.js';
 
@@ -54,6 +54,11 @@ export class Piano {
     this.swellS = opts.swellS ?? null;
     this.swellFloor = opts.swellFloor ?? null;
     this.swellSkew = opts.swellSkew ?? null;
+
+    // How much of the blow goes round the string and shakes the board
+    // directly. 0 is the old behaviour, where a strike could only ever be
+    // heard as tone. See makeKnock.
+    this.knockScale = opts.knockScale ?? 1;
     // Hammer knobs, for fitting the attack against the samples.
     this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
     this.feltTauUs = opts.feltTauUs ?? 2;
@@ -211,6 +216,18 @@ export class Piano {
 
     this.noteJunction = new Float64Array(notes.length);
     this.noteAcc = new Float64Array(notes.length);
+    // One ring buffer per zone holding knocks already scheduled. A knock is
+    // built once, at the strike, and then just read out -- it is an excitation
+    // of the board, not a running voice, so it costs nothing per sample once
+    // knockUntil has run out.
+    let kn = 2048;
+    while (kn < 0.15 * fs) kn *= 2;
+    this.knockMask = kn - 1;
+    this.knockPos = 0;
+    this.knockUntil = 0;
+    this.zoneKnock = [];
+    for (let z = 0; z < ZONES; z++) this.zoneKnock.push(new Float64Array(kn));
+
     this.zoneAcc = new Float64Array(ZONES);
     this.zoneVel = new Float64Array(ZONES);
     this.zoneDrive = new Float64Array(ZONES);
@@ -272,6 +289,10 @@ export class Piano {
         padded.set(pulse, skew);
         s.excite(padded, velocity);
       } else s.excite(pulse, velocity);
+      // Each string passes its own share of the blow on to the bridge, at its
+      // own moment -- the same micro offsets that keep the strike from being
+      // one event for the strings keep it from being one for the board.
+      this.addKnock(note, pulse, skew, s.tuning.index);
     }
     this.refreshActive();
   }
@@ -367,6 +388,25 @@ export class Piano {
     }
   }
 
+  /** Schedule one string's share of the knock into its note's zone. */
+  addKnock(note, pulse, skew, index) {
+    if (this.knockScale <= 0) return;
+    const k = makeKnock(this.fs, pulse, {
+      gain: note.knockGain * this.knockScale,
+      noise: note.knockNoise * this.knockScale,
+      decayS: note.knockDecayS,
+      fc: note.knockFc,
+      // A different draw per string, or the three noise bursts would be the
+      // same burst three times over and read as one loud click.
+      seed: (note.midi * 2654435761 + index * 40503 + 1) >>> 0,
+    });
+    if (!k) return;
+    const buf = this.zoneKnock[note.zone], mask = this.knockMask;
+    const n = Math.min(k.length + skew, mask + 1);
+    for (let i = skew; i < n; i++) buf[(this.knockPos + i) & mask] += k[i - skew];
+    this.knockUntil = Math.max(this.knockUntil, n);
+  }
+
   render(out, n) {
     if (this.tensionDrift > 0 || this.unisonLock > 0) this.drift(this.fs / Math.max(n, 1));
     const active = this.active, activeNotes = this.activeNotes;
@@ -391,6 +431,15 @@ export class Piano {
         const idx = activeNotes[k];
         nj[idx] = acc[idx];
       }
+      if (this.knockUntil > 0) {
+        for (let z = 0; z < ZONES; z++) {
+          const b = this.zoneKnock[z];
+          zAcc[z] += b[this.knockPos];
+          b[this.knockPos] = 0;
+        }
+        this.knockPos = (this.knockPos + 1) & this.knockMask;
+        this.knockUntil--;
+      }
 
       let mix = 0;
       for (let z = 0; z < ZONES; z++) { zVel[z] = zones[z].process(zAcc[z]); mix += zVel[z]; }
@@ -410,6 +459,8 @@ export class Piano {
     this.zones.forEach((z) => z.reset());
     this.body.reset();
     this.noteJunction.fill(0); this.zoneVel.fill(0); this.zoneDrive.fill(0);
+    this.zoneKnock.forEach((b) => b.fill(0));
+    this.knockPos = 0; this.knockUntil = 0;
     this.notes.forEach((n) => (n.held = false));
     this.refreshActive();
   }
