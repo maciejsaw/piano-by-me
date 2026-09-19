@@ -1,0 +1,237 @@
+// The instrument.
+//
+// Coupling is hierarchical, because a piano's two coupling mechanisms differ by
+// orders of magnitude:
+//
+//   strings of one note  --> near-common bridge point  (strong: beating, double decay)
+//   note                 --> soundboard zone           (weak:   sympathetic resonance)
+//   zone                 --> neighbouring zones        (weaker: register-dependent halo)
+//
+// Every junction value is an AVERAGE of the waves meeting there, so each update
+// is a convex blend: passive by construction, and first-order in the coupling
+// coefficient. Both properties matter. A send/return "sympathetic bus" would be
+// second-order and ~50 dB too quiet, and an additive send is a positive-feedback
+// loop that detonates.
+//
+// The junction is instantaneous, which would be a delay-free loop; feeding back
+// the previous sample's junction values resolves it for the cost of one sample.
+
+import { buildScale, DEFAULT_SCALE } from './scale.js';
+import { compileString } from './design.js';
+import { WaveguideString } from './string.js';
+import { makeHammerPulse } from './hammer.js';
+import { Soundboard } from './soundboard.js';
+
+// Output limiter. Ceiling is exactly 1.0 so the signal can never clip the
+// device, and it is applied once per output sample rather than per string.
+const softclip = Math.tanh;
+
+const ZONES = 16;             // soundboard regions across the compass
+
+export class Piano {
+  constructor(fs, opts = {}) {
+    this.fs = fs;
+    this.quality = opts.quality ?? 32;
+    // Coupling as a fraction of each string's own loss: 0 = isolated strings,
+    // 1 = every bit of the string's loss goes into the bridge instead of into
+    // internal damping. Stability is guaranteed for anything below 1.
+    this.unisonCoupling = opts.unisonCoupling ?? 0.55;
+    this.bridgeCoupling = opts.bridgeCoupling ?? 0.30;
+    this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
+    this.masterGain = opts.gain ?? 0.15;
+    this.sustain = false;
+    this.unaCorda = false;
+    this.build(opts.scale ?? DEFAULT_SCALE);
+  }
+
+  build(scaleDef) {
+    const fs = this.fs;
+    this.model = buildScale(scaleDef);
+    const notes = this.model.notes;
+
+    this.zones = [];
+    for (let z = 0; z < ZONES; z++) {
+      this.zones.push(new Soundboard(fs, { spread: 0.75 + (1.0 * z) / (ZONES - 1) }));
+    }
+    // Normalised spread kernel: bridge motion in one region is felt, weaker, in
+    // its neighbours. Rows sum to 1 so the drive stays a convex combination.
+    this.kernel = [];
+    for (let z = 0; z < ZONES; z++) {
+      const row = new Float64Array(ZONES);
+      let sum = 0;
+      for (let w = 0; w < ZONES; w++) {
+        const g = Math.exp(-Math.pow((z - w) / this.zoneSpread, 2));
+        row[w] = g; sum += g;
+      }
+      for (let w = 0; w < ZONES; w++) row[w] /= sum;
+      this.kernel.push(row);
+    }
+
+    this.strings = [];
+    this.notes = [];
+    const zoneCount = new Float64Array(ZONES);
+
+    for (let ni = 0; ni < notes.length; ni++) {
+      const n = notes[ni];
+      const zone = Math.min(ZONES - 1, Math.floor((ni * ZONES) / notes.length));
+      const voices = [];
+      for (const st of n.strings) {
+        const coeffs = compileString(fs, n.phys, {
+          ...st,
+          couplingFraction: (this.unisonCoupling + this.bridgeCoupling) * st.coupling,
+          maxAllpass: this.quality,
+        });
+        const s = new WaveguideString(fs, Math.ceil(coeffs.delay) + 8);
+        s.setCoefficients(coeffs);
+        s.coeffs = coeffs;
+        s.note = n;
+        s.tuning = st;
+        s.noteIndex = ni;
+        s.zone = zone;
+        s.wUnison = 1 / n.count;
+        const total = coeffs.kappa;
+        const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
+        s.kUnison = total * split;
+        s.kBridge = total * (1 - split);
+        s.damperTarget = n.hasDamper ? 1 : 0;
+        s.damperClosed = n.hasDamper ? 1 : 0;
+        voices.push(s);
+        this.strings.push(s);
+        zoneCount[zone] += 1;
+      }
+      this.notes.push({ ...n, voices, zone, held: false });
+    }
+
+    // Each string's share of its zone's motion.
+    //
+    // A strict average (1/N) is unconditionally passive but it is not physics:
+    // how hard one string pushes the bridge does not depend on how many other
+    // strings happen to exist, and dividing by N makes the sympathetic halo
+    // ~50 dB too quiet to hear. Strings ring at unrelated frequencies and
+    // phases, so their contributions add incoherently; 1/sqrt(N) is the
+    // matching normalisation and it is what real instruments behave like.
+    // Worst-case coherent alignment is then bounded by the output softclip
+    // rather than by construction, which the stability tests cover.
+    for (const s of this.strings) s.wZone = 1 / Math.sqrt(zoneCount[s.zone]);
+
+    this.noteJunction = new Float64Array(notes.length);
+    this.noteAcc = new Float64Array(notes.length);
+    this.zoneAcc = new Float64Array(ZONES);
+    this.zoneVel = new Float64Array(ZONES);
+    this.zoneDrive = new Float64Array(ZONES);
+    this.refreshActive();
+  }
+
+  /** Only strings that can move are ticked: struck, ringing, or damper-up. */
+  refreshActive() {
+    this.active = this.strings.filter(
+      (s) => s.active || s.damperClosed < 0.999 || s.damperTarget < 0.5
+    );
+    const seen = new Set();
+    for (const s of this.active) seen.add(s.noteIndex);
+    this.activeNotes = [...seen];
+  }
+
+  noteOn(midi, velocity) {
+    const note = this.notes[midi - 21];
+    if (!note) return;
+    note.held = true;
+    for (const s of note.voices) {
+      s.setDamper(false);
+      // Una corda shifts the action so the hammer misses the outer string, which
+      // then rings only sympathetically -- the real soft-pedal timbre, not a
+      // volume cut.
+      if (this.unaCorda && s.tuning.index === 0 && note.voices.length === 3) continue;
+      const pulse = makeHammerPulse(this.fs, s.coeffs.f0, velocity, {
+        Z: note.Z,
+        strings: note.count,
+        mass: note.hammerMass,
+        K: note.feltK,
+        p: note.feltP,
+        strikeDelay: s.coeffs.strikeDelay,
+        gain: note.gain,
+      });
+      const skew = Math.round(this.fs * s.tuning.contactOffsetUs * 1e-6);
+      if (skew > 0) {
+        const padded = new Float64Array(pulse.length + skew);
+        padded.set(pulse, skew);
+        s.excite(padded);
+      } else s.excite(pulse);
+    }
+    this.refreshActive();
+  }
+
+  noteOff(midi) {
+    const note = this.notes[midi - 21];
+    if (!note) return;
+    note.held = false;
+    if (!this.sustain && note.hasDamper) for (const s of note.voices) s.setDamper(true);
+  }
+
+  setSustain(on) {
+    this.sustain = on;
+    for (const note of this.notes) {
+      if (!note.hasDamper) continue;
+      for (const s of note.voices) s.setDamper(on ? false : !note.held);
+    }
+    this.refreshActive();
+  }
+
+  setUnaCorda(on) { this.unaCorda = on; }
+
+  /** Recompile one string after a parameter edit, preserving its ringing state. */
+  recompileString(s, tuning = s.tuning) {
+    Object.assign(s.tuning, tuning);
+    const frac = (this.unisonCoupling + this.bridgeCoupling) * (s.tuning.coupling ?? 1);
+    const c = compileString(this.fs, s.note.phys, {
+      ...s.tuning, couplingFraction: frac, maxAllpass: this.quality,
+    });
+    s.coeffs = c;
+    const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
+    s.kUnison = c.kappa * split;
+    s.kBridge = c.kappa * (1 - split);
+    s.setCoefficients(c);
+  }
+
+  render(out, n) {
+    const active = this.active, activeNotes = this.activeNotes;
+    const nj = this.noteJunction, acc = this.noteAcc;
+    const zAcc = this.zoneAcc, zVel = this.zoneVel, zDrive = this.zoneDrive;
+    const kernel = this.kernel, zones = this.zones, gain = this.masterGain;
+
+    for (let i = 0; i < n; i++) {
+      for (let k = 0; k < activeNotes.length; k++) acc[activeNotes[k]] = 0;
+      zAcc.fill(0);
+
+      for (let k = 0; k < active.length; k++) {
+        const s = active[k];
+        const o = s.tick(nj[s.noteIndex], zDrive[s.zone]);
+        acc[s.noteIndex] += o * s.wUnison;
+        zAcc[s.zone] += o * s.wZone;
+      }
+      for (let k = 0; k < activeNotes.length; k++) {
+        const idx = activeNotes[k];
+        nj[idx] = acc[idx];
+      }
+
+      let mix = 0;
+      for (let z = 0; z < ZONES; z++) { zVel[z] = zones[z].process(zAcc[z]); mix += zVel[z]; }
+      for (let z = 0; z < ZONES; z++) {
+        const row = kernel[z];
+        let d = 0;
+        for (let w = 0; w < ZONES; w++) d += row[w] * zVel[w];
+        zDrive[z] = d;
+      }
+      out[i] = softclip(mix * gain);
+    }
+    this.refreshActive();
+  }
+
+  panic() {
+    for (const s of this.strings) { s.reset(); s.active = false; s.setDamper(s.note.hasDamper); s.damperClosed = s.note.hasDamper ? 1 : 0; }
+    this.zones.forEach((z) => z.reset());
+    this.noteJunction.fill(0); this.zoneVel.fill(0); this.zoneDrive.fill(0);
+    this.notes.forEach((n) => (n.held = false));
+    this.refreshActive();
+  }
+}
