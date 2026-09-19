@@ -32,6 +32,13 @@ const speed = 0.18 * Math.pow(VEL, 0.15) * Math.exp(3.5 * VEL * VEL);
 // Measured contact durations, bass to treble. C4 at 2 ms is the one everybody
 // reports (Chaigne & Askenfelt; Russell); the rest follows the usual curve.
 const TARGET = [[21, 4.5], [33, 3.4], [45, 2.6], [60, 2.0], [72, 1.4], [84, 1.0], [96, 0.7], [108, 0.5]];
+
+// How steep that curve is, pivoting on C3. The literature curve is gamma = 1,
+// and the ear says C3 is right while everything below is too zingy (contact
+// too short) and everything above too choked (contact too long) -- which is
+// not an offset, it is a slope. gamma > 1 steepens both ends about C3.
+const GAMMA = Number(process.env.GAMMA ?? 1);
+const PIVOT = 48;
 const lerpT = (t, x) => {
   if (x <= t[0][0]) return t[0][1];
   for (let i = 0; i < t.length - 1; i++) {
@@ -61,11 +68,12 @@ function contactFor(note, hardness) {
 
 const anchors = [21, 27, 33, 39, 45, 51, 57, 63, 69, 75, 81, 87, 93, 99, 105, 108];
 const solved = [];
-console.log(`solving at velocity ${VEL} (${speed.toFixed(2)} m/s)\n`);
+console.log(`solving at velocity ${VEL} (${speed.toFixed(2)} m/s), gamma ${GAMMA}\n`);
 console.log('note   target   solved   hardness   period   contact/period');
 for (const midi of anchors) {
   const note = model.notes[midi - 21];
-  const want = lerpT(TARGET, midi);
+  const base = lerpT(TARGET, PIVOT);
+  const want = base * Math.pow(lerpT(TARGET, midi) / base, GAMMA);
   // Contact shortens as the felt gets harder, so the bracket is monotone.
   let lo = -1.6, hi = 2.4;
   for (let i = 0; i < 48; i++) {
