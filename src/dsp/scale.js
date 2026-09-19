@@ -73,7 +73,7 @@ export const DEFAULT_SCALE = {
     // movement is not beating at all -- see tensionDrift in piano.js. With the
     // drift carrying the broadband part, detune only has to supply the slow
     // coherent layer underneath it.
-    detune:   [[21, 0.0], [30, 0.43], [48, 0.72], [72, 1.15], [108, 1.87]],
+    detune:   [[21, 0.0], [30, 0.14], [48, 0.23], [72, 0.37], [108, 0.60]],
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
