@@ -20,6 +20,17 @@ export class WaveguideString {
     this.nlPhase = 1;                 // 0 at the strike, 1 when the build ends
     this.nlPhaseInc = 1;              // 1 / (build length in samples)
     this.nlSkew = 1;                  // how far the release is pushed to the end
+    // Radiated level, as opposed to string state. A soundboard does not begin
+    // radiating the instant the string moves: it has to be set going, and
+    // until it is, the note is simply QUIETER -- not just darker. Damping was
+    // modelled here as a change to the string's spectrum only, which leaves
+    // the strike at full level however much top is taken off it, and that is
+    // what makes the attack peak and click. This swells what LEAVES for the
+    // soundboard; the string's own physics and its junctions are untouched.
+    this.swell = 1;
+    this.swellInc = 1;                // 1 / (swell length in samples)
+    this.swellFloor = 0;              // level at the moment of contact
+    this.swellSkew = 1;
     this.nlRiseA = 1;                 // per-sample rise coefficient
     this.nlB = 0;                     // its lowpass coefficient
     this.apX = new Float64Array(0);   // x[n-1] per section
@@ -89,9 +100,25 @@ export class WaveguideString {
     this.exc = pulse; this.excPos = 0; this.active = true;
     this.nlPeak = this.nlDepth * strength;
     this.nlR = 0; this.nlPhase = 0; this.nlOn = this.nlDepth > 0;
+    this.swell = this.swellFloor < 1 ? 0 : 1;
   }
 
   setDamper(closed) { this.damperTarget = closed ? 1 : 0; }
+
+  /**
+   * How much of this string's motion is reaching the soundboard right now.
+   * Eased in from `swellFloor` to 1, with the same skew as the build, so the
+   * note arrives rather than appears. A handful of multiplies while it is
+   * running and one compare once it is done.
+   */
+  radiation() {
+    if (this.swell >= 1) return 1;
+    let q = this.swell;
+    for (let k = 1; k < this.swellSkew; k++) q *= this.swell;
+    const eased = q * q * q * (q * (q * 6 - 15) + 10);
+    this.swell += this.swellInc;
+    return this.swellFloor + (1 - this.swellFloor) * eased;
+  }
 
   /**
    * One sample. `bridge` is last sample's bridge velocity.
