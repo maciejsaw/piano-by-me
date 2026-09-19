@@ -128,6 +128,13 @@ function wrapForDensity(muWanted, coreMm) {
 
 /** Build the full instrument spec: 88 notes, each with 1-3 string specs. */
 export function buildScale(scale = DEFAULT_SCALE) {
+  // A fitted scale is written by the fitting pipeline and carries only the
+  // curves that run measured. Any voicing curve added since it was written is
+  // missing, so fall back to the defaults key by key rather than requiring
+  // every stored scale to be rewritten whenever the model gains a parameter.
+  if (scale !== DEFAULT_SCALE) {
+    scale = { ...scale, voicing: { ...DEFAULT_SCALE.voicing, ...(scale.voicing ?? {}) } };
+  }
   const notes = [];
   for (let midi = 21; midi <= 108; midi++) {
     const bp = interpBreakpoints(scale.breakpoints, midi);
@@ -160,9 +167,17 @@ export function buildScale(scale = DEFAULT_SCALE) {
     const detune = lerpTable(scale.voicing.detune, midi);
     const count = bp.strings;
 
+    // No two unisons on a real instrument are tuned alike: measured across the
+    // Salamander library, warble scatters from 1.4 to 8.4 dB between
+    // neighbouring notes. A smooth detune curve makes every note equally, and
+    // unnaturally, steady. This is a fixed hash of the note number, not noise,
+    // so an instrument is identical every time it is built.
+    const h = Math.sin(midi * 12.9898) * 43758.5453;
+    const jitter = 0.45 + 1.6 * (h - Math.floor(h));
+    const detuneJ = detune * jitter;
     // Unison spread: centre string at nominal, outers either side.
     const shape = count === 1 ? [0] : count === 2 ? [-0.5, 0.5] : [-1, 0, 1];
-    const offsets = shape.map((k) => k * detune);
+    const offsets = shape.map((k) => k * detuneJ);
     // The three strings of one note are NOT identical wire at identical length.
     // The bridge pins are offset, so their speaking lengths differ by a fraction
     // of a percent. Holding f0 and the wire fixed, a different length means a
