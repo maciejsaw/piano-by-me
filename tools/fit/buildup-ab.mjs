@@ -13,6 +13,11 @@
 // Turned around -- full damping at the moment of contact, releasing over the
 // following tens of milliseconds -- the high partials are not there at the
 // strike and grow in as the loss lets go. This varies how long that takes.
+//
+// The release is a smootherstep rather than an exponential. An exponential is
+// a straight line in dB and sounds like one; easing in holds the damping
+// through the strike and cuts more of the zing, and easing out means the
+// build can be longer without the note seeming to fade up.
 import { readWav } from './wavread.mjs';
 import { renderNote } from './decay-report.mjs';
 import { writeWav } from '../wav.mjs';
@@ -25,13 +30,11 @@ const rms = (x, a, n) => { let v = 0; for (let i = a; i < a + n; i++) v += (x[i]
 const ref = rms(s.data, Math.round(0.3 * s.rate), 9600);
 
 // depth, fall time. rise is ~0 throughout: the damping is there at contact.
-const TAKES = [
-  ['as committed (damping arrives after the strike)', { transientRiseS: 0.04, transientDepth: 0.077 }],
-  ['build over 30 ms', { transientRiseS: 0.0005, transientDepth: 0.35, transientTauS: 0.03 }],
-  ['build over 80 ms', { transientRiseS: 0.0005, transientDepth: 0.35, transientTauS: 0.08 }],
-  ['build over 150 ms', { transientRiseS: 0.0005, transientDepth: 0.35, transientTauS: 0.15 }],
-  ['build over 80 ms, deeper', { transientRiseS: 0.0005, transientDepth: 0.7, transientTauS: 0.08 }],
-];
+const LENS = (process.env.LENS ?? '0.08,0.2,0.35,0.55,0.8').split(',').map(Number);
+const TAKES = LENS.map((L) => [
+  `eased build over ${Math.round(L * 1000)} ms`,
+  { transientRiseS: 0.0005, transientDepth: 0.7, transientTauS: L },
+]);
 
 const len = Math.round(3.5 * FS), gap = Math.round(0.45 * FS);
 const out = new Float32Array((TAKES.length + 1) * (len + gap));

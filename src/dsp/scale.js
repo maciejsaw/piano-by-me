@@ -103,9 +103,14 @@ export const DEFAULT_SCALE = {
     // at every instant. Damping at contact, releasing over 80 ms, takes it to
     // -24 to -30. The same setting at C2 takes that note from -26, which is
     // right, to -43, which is not -- so it has to be a curve, not a constant.
+    //
+    // transientTauS is now the WHOLE length of the build, not an exponential
+    // time constant, since the release became a smootherstep. At A0 a 200 ms
+    // build tracks the real note within a few dB at every instant measured;
+    // longer over-damps the tail badly (-45 dB at 200 ms against a real -31).
     transientDepth: [[21, 0.70], [27, 0.45], [33, 0.15], [36, 0.077], [108, 0.077]],
     transientRiseS: [[21, 0.0005], [33, 0.020], [36, 0.040], [108, 0.040]],
-    transientTauS:  [[21, 0.080], [36, 0.250], [108, 0.250]],
+    transientTauS:  [[21, 0.200], [36, 0.400], [108, 0.400]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
