@@ -7,23 +7,31 @@
 // and rising through the note where the real one falls 27 dB.
 //
 // Scored on the brightness trace (high band over low band at a series of
-// times), the measure that caught the over-damping on C3. The two knobs are
-// close to separable -- the T60 scale sets the standing tilt, the depth sets
-// the early bend -- so this is coordinate descent rather than a full grid,
-// which is what makes a range wide enough for the bass affordable.
+// times), the measure that caught the over-damping on C3, with the bands
+// following the note. The two knobs are close to separable -- the T60 scale
+// sets the standing tilt, the depth sets the early bend -- so this is
+// coordinate descent rather than a full grid, which is what makes a range
+// wide enough for the bass affordable.
 //
 //   node tools/fit/fit-damping.mjs [outJson]
+//   SHARD=0 SHARDS=4 node tools/fit/fit-damping.mjs out-0.json   (one core each)
 import { writeFileSync } from 'node:fs';
 import { readWav } from './wavread.mjs';
 import { brightness, TIMES } from './brightness.mjs';
 import { indexLibrary } from './samples.mjs';
 import { renderNote } from './decay-report.mjs';
 import { DEFAULT_SCALE } from '../../src/dsp/scale.js';
+import { noteHz } from '../../src/dsp/physics.js';
 
 const DIR = process.env.SAMPLES ?? '/home/user/samples/salamander';
 const OUT = process.argv[2] || 'fitted/transient-damping.json';
+const SHARD = Number(process.env.SHARD ?? 0);
+const SHARDS = Number(process.env.SHARDS ?? 1);
 const KHI = [0.03, 0.08, 0.2, 0.5, 1, 2];
 const DEPTHS = [0, 0.07, 0.14, 0.25, 0.4];
+// Four seconds is enough to see the standing tilt and costs a third less
+// render time than six. The tail past four is the aftersound's business.
+const FIT_TIMES = TIMES.filter((t) => t <= 4);
 
 const hiScaled = (k) => (k === 1 ? undefined : {
   ...DEFAULT_SCALE,
@@ -33,18 +41,23 @@ const hiScaled = (k) => (k === 1 ? undefined : {
   },
 });
 
-const notes = indexLibrary(DIR).filter((n) => n.layer === 12).sort((a, b) => a.midi - b.midi);
+const notes = indexLibrary(DIR)
+  .filter((n) => n.layer === 12)
+  .sort((a, b) => a.midi - b.midi)
+  .filter((_, i) => i % SHARDS === SHARD);
+
 const results = [];
 for (const n of notes) {
   const s = readWav(n.path);
   const lenS = s.data.length / s.rate;
-  const times = TIMES.filter((t) => t + 0.2 < lenS);
+  const times = FIT_TIMES.filter((t) => t + 0.2 < lenS);
   if (times.length < 4) { console.log(`${n.note} too short (${lenS.toFixed(1)}s), skipped`); continue; }
-  const realB = brightness(s.data, s.rate, { times });
+  const f0 = noteHz(n.midi);
+  const realB = brightness(s.data, s.rate, { times, f0 });
   const seconds = Math.min(8, Math.ceil(times[times.length - 1] + 1));
   const score = (depth, k) => {
     const x = renderNote(seconds, n.midi, { transientDepth: depth, scale: hiScaled(k) });
-    const b = brightness(x, 48000, { times });
+    const b = brightness(x, 48000, { times, f0 });
     return b.reduce((a, v, i) => a + Math.abs(v - realB[i]), 0) / times.length;
   };
   let depth = 0.14, k = 1, err = Infinity;

@@ -154,6 +154,76 @@
       "depth": 0,
       "t60HighScale": 0.03,
       "errDb": 7.09
+    },
+    {
+      "midi": 81,
+      "note": "A5",
+      "depth": 0,
+      "t60HighScale": 0.03,
+      "errDb": 16.63
+    },
+    {
+      "midi": 84,
+      "note": "C6",
+      "depth": 0.14,
+      "t60HighScale": 0.08,
+      "errDb": 17.31
+    },
+    {
+      "midi": 87,
+      "note": "D#6",
+      "depth": 0.07,
+      "t60HighScale": 0.08,
+      "errDb": 10.81
+    },
+    {
+      "midi": 90,
+      "note": "F#6",
+      "depth": 0.4,
+      "t60HighScale": 0.2,
+      "errDb": 12.29
+    },
+    {
+      "midi": 93,
+      "note": "A6",
+      "depth": 0.14,
+      "t60HighScale": 0.2,
+      "errDb": 13.52
+    },
+    {
+      "midi": 96,
+      "note": "C7",
+      "depth": 0.25,
+      "t60HighScale": 0.2,
+      "errDb": 14.05
+    },
+    {
+      "midi": 99,
+      "note": "D#7",
+      "depth": 0.25,
+      "t60HighScale": 0.5,
+      "errDb": 21.8
+    },
+    {
+      "midi": 102,
+      "note": "F#7",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 15.86
+    },
+    {
+      "midi": 105,
+      "note": "A7",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 16.3
+    },
+    {
+      "midi": 108,
+      "note": "C8",
+      "depth": 0,
+      "t60HighScale": 2,
+      "errDb": 18.02
     }
   ]
 }
