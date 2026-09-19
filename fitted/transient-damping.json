@@ -1,0 +1,96 @@
+{
+  "khi": [
+    0.03,
+    0.08,
+    0.2,
+    0.5,
+    1,
+    2
+  ],
+  "depths": [
+    0,
+    0.07,
+    0.14,
+    0.25,
+    0.4
+  ],
+  "results": [
+    {
+      "midi": 21,
+      "note": "A0",
+      "depth": 0.14,
+      "t60HighScale": 0.08,
+      "errDb": 7.93
+    },
+    {
+      "midi": 24,
+      "note": "C1",
+      "depth": 0.25,
+      "t60HighScale": 0.08,
+      "errDb": 9.18
+    },
+    {
+      "midi": 27,
+      "note": "D#1",
+      "depth": 0.25,
+      "t60HighScale": 0.2,
+      "errDb": 5.08
+    },
+    {
+      "midi": 30,
+      "note": "F#1",
+      "depth": 0.14,
+      "t60HighScale": 0.2,
+      "errDb": 5.36
+    },
+    {
+      "midi": 33,
+      "note": "A1",
+      "depth": 0.25,
+      "t60HighScale": 1,
+      "errDb": 1.88
+    },
+    {
+      "midi": 36,
+      "note": "C2",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 4.31
+    },
+    {
+      "midi": 39,
+      "note": "D#2",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 3.62
+    },
+    {
+      "midi": 42,
+      "note": "F#2",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 4.11
+    },
+    {
+      "midi": 45,
+      "note": "A2",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 2.28
+    },
+    {
+      "midi": 48,
+      "note": "C3",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 3.49
+    },
+    {
+      "midi": 51,
+      "note": "D#3",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 3.81
+    }
+  ]
+}
