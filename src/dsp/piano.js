@@ -54,6 +54,7 @@ export class Piano {
     this.hammerWidth = opts.hammerWidth ?? 1;   // scales the contact patch
     this.feltKScale = opts.feltKScale ?? 1;
     this.feltP = opts.feltP ?? null;            // null = per-note from the scale
+    this.strikeOffsetScale = opts.strikeOffsetScale ?? 1;
     this.transientSustain = opts.transientSustain ?? 0;
     this.transientFc = opts.transientFc ?? null;   // null = scale with the note
     this.couplingFc = opts.couplingFc ?? null;     // bridge admittance corner
@@ -248,7 +249,7 @@ export class Piano {
       });
       // A fresh strike re-arms the detuning; the pull starts over from it.
       s.lock = 1;
-      const skew = Math.round(this.fs * s.tuning.contactOffsetUs * 1e-6);
+      const skew = Math.round(this.fs * s.tuning.contactOffsetUs * this.strikeOffsetScale * 1e-6);
       if (skew > 0) {
         const padded = new Float64Array(pulse.length + skew);
         padded.set(pulse, skew);

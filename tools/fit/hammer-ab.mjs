@@ -8,15 +8,16 @@ import { readWav } from './wavread.mjs';
 import { renderNote } from './decay-report.mjs';
 import { writeWav } from '../wav.mjs';
 
-const FS = 48000, MIDI = 60, VEL = 0.9;
+const FS = 48000, MIDI = 60, VEL = 0.7;
 const s = readWav(`${process.env.SAMPLES ?? '/home/user/samples/salamander'}/C4v12.wav`);
 const rms = (x, a, n) => { let v = 0; for (let i = a; i < a + n; i++) v += (x[i] ?? 0) ** 2; return Math.sqrt(v / n); };
 const ref = rms(s.data, Math.round(0.3 * s.rate), 9600);
 
 const takes = [
   ['real', null],
-  ['plain felt, no patch', { velocity: VEL, feltEps: 0, hammerWidth: 0 }],
-  ['fitted', { velocity: VEL }],
+  ['strings struck together (the click)', { velocity: VEL, strikeOffsetScale: 0 }],
+  ['strings struck 0.6 ms apart', { velocity: VEL }],
+  ['same, softer blow', { velocity: 0.6 }],
 ];
 const len = Math.round(5 * FS), gap = Math.round(0.6 * FS);
 const out = new Float32Array(takes.length * (len + gap));

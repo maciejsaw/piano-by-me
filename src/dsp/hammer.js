@@ -58,14 +58,14 @@ function contact(fs, { mass, K, p, Z, velocity, strikeDelay, maxMs = 12, eps = 0
   const Keff = K / Math.max(1 - eps, 1e-3);
   let hyst = 0;
   const maxSteps = Math.round(fs * OS * maxMs * 1e-3);
-  const out = [];
+  const out = [], comp = [];
 
   // Ring buffer holding the outgoing wave, for the round trip to the agraffe.
   const rt = Math.max(1, Math.round(strikeDelay * OS));
   const ring = new Float64Array(rt);
   let rp = 0;
 
-  let d = 0, vh = velocity, acc = 0, sub = 0, touched = false;
+  let d = 0, vh = velocity, acc = 0, accD = 0, sub = 0, touched = false;
   for (let i = 0; i < maxSteps; i++) {
     const u = d > 0 ? Math.pow(d, p) : 0;
     hyst = u + (hyst - u) * aH;
@@ -82,17 +82,18 @@ function contact(fs, { mass, K, p, Z, velocity, strikeDelay, maxMs = 12, eps = 0
     vh -= (F / mass) * (dt * 0.5);
 
     acc += F;
-    if (++sub === OS) { out.push(acc / OS); acc = 0; sub = 0; }
+    accD += d > 0 ? d : 0;
+    if (++sub === OS) { out.push(acc / OS); comp.push(accD / OS); acc = 0; accD = 0; sub = 0; }
     if (touched && d <= 0) break;            // felt lets go
   }
-  if (sub > 0) out.push(acc / sub);
-  while (out.length && out[out.length - 1] === 0) out.pop();
-  return out;
+  if (sub > 0) { out.push(acc / sub); comp.push(accD / sub); }
+  while (out.length && out[out.length - 1] === 0) { out.pop(); comp.pop(); }
+  return { force: out, comp };
 }
 
 /** Contact duration in ms, for checking a voicing against reality. */
 export function contactMs(fs, params) {
-  return (contact(fs, params).length / fs) * 1000;
+  return (contact(fs, params).force.length / fs) * 1000;
 }
 
 /**
@@ -126,7 +127,7 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
   // 6 m/s (fff), and the curve is strongly exponential.
   const v = 0.18 * Math.pow(velocity, 0.15) * Math.exp(3.5 * velocity);
 
-  const force = contact(fs, { mass, K, p, Z: Zload, velocity: v, strikeDelay, eps, tauUs });
+  const { force, comp } = contact(fs, { mass, K, p, Z: Zload, velocity: v, strikeDelay, eps, tauUs });
   const n = force.length;
   if (!n) return new Float64Array(0);
 
@@ -140,17 +141,38 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
     out[i] += s;
     out[i + strikeDelay] -= s;
   }
-  return smear > 0.25 ? spread(out, smear) : out;
+  return smear > 0.25 ? spread(out, smear, comp, strikeDelay) : out;
 }
 
-/** Raised-cosine smear, for the width of the contact patch. */
-function spread(x, samples) {
-  const m = Math.max(1, Math.round(samples));
-  const k = new Float64Array(m);
-  let sum = 0;
-  for (let i = 0; i < m; i++) { k[i] = 0.5 * (1 - Math.cos((2 * Math.PI * (i + 1)) / (m + 1))); sum += k[i]; }
-  for (let i = 0; i < m; i++) k[i] /= sum;
-  const out = new Float64Array(x.length + m - 1);
-  for (let i = 0; i < x.length; i++) for (let j = 0; j < m; j++) out[i + j] += x[i] * k[j];
+/**
+ * Smear the injection over the contact patch -- and let the patch GROW as the
+ * felt sinks in.
+ *
+ * Felt does not meet the string on one flat face. It wraps: the deeper the
+ * string presses in, the further round it the felt closes, so the area in
+ * contact is smallest at first touch and largest at peak compression. Taking
+ * the patch as fixed misses that, and misses it exactly where it matters,
+ * because the widest patch coincides with the largest force.
+ *
+ * The half-width of contact between a cylinder and a compliant surface goes as
+ * the square root of the indentation, so the kernel is scaled by
+ * sqrt(d / dMax). The effect on the sound is to round off the top of the
+ * pulse while leaving its edges alone, which is what takes the click out.
+ */
+function spread(x, samples, comp, offset) {
+  const dMax = Math.max(...comp, 1e-12);
+  const mMax = Math.max(1, Math.round(samples));
+  const out = new Float64Array(x.length + mMax);
+  const k = new Float64Array(mMax);
+  for (let i = 0; i < x.length; i++) {
+    // The pulse carries the force and, `offset` later, its own inversion from
+    // the agraffe; both are the same blow, so both see the same patch.
+    const d = comp[Math.min(i, comp.length - 1)] ?? 0;
+    const dOff = comp[Math.min(Math.max(i - offset, 0), comp.length - 1)] ?? 0;
+    const m = Math.max(1, Math.round(mMax * Math.sqrt(Math.max(d, dOff) / dMax)));
+    let sum = 0;
+    for (let j = 0; j < m; j++) { k[j] = 0.5 * (1 - Math.cos((2 * Math.PI * (j + 1)) / (m + 1))); sum += k[j]; }
+    for (let j = 0; j < m; j++) out[i + j] += (x[i] * k[j]) / sum;
+  }
   return out;
 }

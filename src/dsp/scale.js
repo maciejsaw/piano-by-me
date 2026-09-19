@@ -65,9 +65,15 @@ export const DEFAULT_SCALE = {
     // which lands among the partials in the bass and above hearing on top.
     hammerWidthMm: [[21, 14], [36, 11], [60, 7], [84, 5], [108, 3.5]],
     // Arrival spread across the strings of one unison, microseconds. The
-    // strings are not perfectly level with the hammer face, so it reaches them
-    // a fraction of a millisecond apart.
-    strikeOffsetUs: [[21, 400], [48, 260], [72, 160], [108, 90]],
+    // strings are not perfectly level with the hammer face, so the felt
+    // reaches them a fraction of a millisecond apart.
+    //
+    // Measured, not guessed: the first 5 ms of a real C4 has a crest factor of
+    // 7.3 dB and ours had 10.0, which is the click. Widening this spread to
+    // about 0.6 ms at C4 takes it to 7.9 dB and costs nothing on the partial
+    // ladder. Three strings landing together make one sharp edge; three
+    // landing a little apart make a strike.
+    strikeOffsetUs: [[21, 1200], [48, 780], [72, 480], [108, 270]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
@@ -229,7 +235,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
     const lvlSpread = lerpTable(scale.voicing.levelSpread, midi);
     const gaugeSpread = lerpTable(scale.voicing.gaugeSpread, midi);
     const strikeSpread = lerpTable(scale.voicing.strikeSpread, midi);
-    const offsetUs = lerpTable(scale.voicing.strikeOffsetUs, midi) / 2.2;
+    // Clamped to a fraction of the period: an offset approaching a whole
+    // period is not a misaligned string any more, it is a second strike.
+    const offsetUs = Math.min(lerpTable(scale.voicing.strikeOffsetUs, midi), 0.2 * 1e6 / f0) / 2.2;
     const massSpread = lerpTable(scale.voicing.hammerMassSpread, midi);
     const forceSpread = lerpTable(scale.voicing.hammerForceSpread, midi);
     const strings = offsets.map((cents, i) => ({
