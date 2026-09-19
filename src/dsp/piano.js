@@ -44,11 +44,11 @@ export class Piano {
     this.bridgeSpread = opts.bridgeSpread ?? 1.3;
     // Tension drift: relative RMS wander of each string's length, and the
     // bandwidth it wanders over.
-    this.tensionDrift = opts.tensionDrift ?? 5e-4;
+    this.tensionDrift = opts.tensionDrift ?? 12e-4;
     this.driftHz = opts.driftHz ?? 1.2;
     // How far a unison is pulled to a common pitch, and how long it takes.
-    this.unisonLock = opts.unisonLock ?? 0.85;
-    this.lockTimeS = opts.lockTimeS ?? 0.2;
+    this.unisonLock = opts.unisonLock ?? 0.90;
+    this.lockTimeS = opts.lockTimeS ?? 0.3;
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
@@ -144,14 +144,8 @@ export class Piano {
     // loop, so equal delay lines would mean unequal pitches. Work in loop
     // periods, and convert the wanted change back into a delay-line scaling.
     for (const note of this.notes) {
-      let mean = 0;
-      for (const v of note.voices) mean += fs / v.coeffs.f0;
-      mean /= note.voices.length;
-      for (const v of note.voices) {
-        const period = fs / v.coeffs.f0;
-        v.lockTarget = 1 + (this.unisonLock * (mean - period)) / v.coeffs.delay;
-        v.lock = 1;
-      }
+      this.setLockTargets(note);
+      for (const v of note.voices) v.lock = 1;
     }
 
     // Each string's share of its zone's motion.
@@ -263,14 +257,32 @@ export class Piano {
   recompileString(s, tuning = s.tuning) {
     Object.assign(s.tuning, tuning);
     const frac = (this.unisonCoupling + this.bridgeCoupling) * (s.tuning.coupling ?? 1);
-    const c = compileString(this.fs, s.note.phys, {
+    // Per-string geometry, as build() uses: a recompile must not silently drop
+    // back to the note's nominal physics and lose this string's own length,
+    // gauge and inharmonicity.
+    const c = compileString(this.fs, s.tuning.phys ?? s.note.phys, {
       ...s.tuning, couplingFraction: frac, maxAllpass: this.quality,
     });
     s.coeffs = c;
     const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
     s.kUnison = c.kappa * split;
-    s.kBridge = c.kappa * (1 - split);
+    s.kBridge = c.kappa * (1 - split) * this.bridgeWeight(s.tuning.shape ?? 0);
     s.setCoefficients(c);
+    // Entrainment aims at the unison's mean pitch, so retuning any string moves
+    // the target for all of them. Leaving it stale makes the lock pull toward
+    // the pitches the note used to have -- which, on a unison just set to zero
+    // detune, means pulling it APART.
+    this.setLockTargets(this.notes[s.noteIndex]);
+  }
+
+  /** Point every string of a note at the unison's mean loop period. */
+  setLockTargets(note) {
+    let mean = 0;
+    for (const v of note.voices) mean += this.fs / v.coeffs.f0;
+    mean /= note.voices.length;
+    for (const v of note.voices) {
+      v.lockTarget = 1 + (this.unisonLock * (mean - this.fs / v.coeffs.f0)) / v.coeffs.delay;
+    }
   }
 
   /**
