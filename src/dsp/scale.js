@@ -57,8 +57,23 @@ export const DEFAULT_SCALE = {
     gain:     [[21, 3.22], [27, 1.13], [33, 1.74], [39, 1.08], [46, 0.91], [53, 0.81],
                [60, 0.82], [67, 1.09], [74, 1.27], [81, 1.77], [88, 2.62], [95, 1.83],
                [102, 1.49], [108, 1.25]],
+    // Prompt (common-mode) T60. Measured on a Yamaha C5: C4's fundamental falls
+    // at roughly 2 s while the aftersound runs on for tens of seconds.
+    t60Prompt: [[21, 4.0], [36, 3.0], [48, 2.4], [60, 2.1], [72, 1.6], [84, 1.0], [108, 0.5]],
     // Unison spread in cents; the outer strings sit either side of the centre one.
-    detune:   [[21, 0.0], [30, 0.6], [48, 1.0], [72, 1.6], [108, 2.6]],
+    // A tuner sets a unison far tighter than this used to assume: measured
+    // against a real C3, 1.0 cent here put every partial into an audible sweep.
+    // A sampled concert instrument is freshly and carefully tuned, and a tuner
+    // nulls a unison by ear until the beat is gone -- so the residual really is
+    // this small. Measured against the Salamander C3, 1.0 cent (the old value)
+    // put every partial into a slow sweep: a flanger, not a piano.
+    detune:   [[21, 0.0], [30, 0.09], [48, 0.14], [72, 0.22], [108, 0.40]],
+    // Fractional difference in speaking length between the outer strings of a
+    // unison and the centre one, from the offset of the bridge pins. Small, but
+    // it is what gives each string its own inharmonicity.
+    lengthSpread: [[21, 0.0015], [48, 0.0030], [108, 0.0050]],
+    // Fractional difference in how hard the hammer drives each string.
+    levelSpread:  [[21, 0.03], [48, 0.06], [108, 0.08]],
   },
   // Lowest notes on a grand have no dampers at all.
   lowestDamped: 29,
@@ -146,19 +161,41 @@ export function buildScale(scale = DEFAULT_SCALE) {
     const count = bp.strings;
 
     // Unison spread: centre string at nominal, outers either side.
-    const offsets = count === 1 ? [0] : count === 2 ? [-detune / 2, detune / 2]
-                                                    : [-detune, 0, detune];
+    const shape = count === 1 ? [0] : count === 2 ? [-0.5, 0.5] : [-1, 0, 1];
+    const offsets = shape.map((k) => k * detune);
+    // The three strings of one note are NOT identical wire at identical length.
+    // The bridge pins are offset, so their speaking lengths differ by a fraction
+    // of a percent. Holding f0 and the wire fixed, a different length means a
+    // different tension, hence a different inharmonicity -- and that is what
+    // stops a unison sounding like a flanger. A pure cents detune alone makes
+    // partial n of the three strings differ by n*df, so every partial beats at a
+    // rate proportional to its own index: a spectrum swept by rising, evenly
+    // spaced notches, which is exactly what a flanger is. Differing B adds an
+    // n^3 term, so the partials diverge irregularly and the beating scatters
+    // instead of sweeping.
+    const lenSpread = lerpTable(scale.voicing.lengthSpread, midi);
+    const lvlSpread = lerpTable(scale.voicing.levelSpread, midi);
     const strings = offsets.map((cents, i) => ({
       index: i,
+      shape: shape[i],
       detuneCents: cents,
-      t60Low: lerpTable(scale.voicing.t60Low, midi) * (1 + 0.03 * (i - 1)),
-      t60High: lerpTable(scale.voicing.t60High, midi) * (1 + 0.05 * (i - 1)),
+      // Per-string geometry, and the physics that follows from it.
+      spec: { ...spec, lengthM: spec.lengthM * (1 + lenSpread * shape[i]) },
+      // Hammers do not strike three strings equally hard, even after voicing.
+      // Equal drive makes the three contributions cancel almost completely at a
+      // beat null, which deepens the swing far past anything a piano does.
+      drive: 1 + lvlSpread * shape[i],
+      t60Low: lerpTable(scale.voicing.t60Low, midi) * (1 + 0.03 * shape[i]),
+      t60High: lerpTable(scale.voicing.t60High, midi) * (1 + 0.05 * shape[i]),
       t60Damped: lerpTable(scale.voicing.t60Damped, midi),
+      // Prompt decay: how fast the common (bridge-driving) mode dies.
+      t60Prompt: lerpTable(scale.voicing.t60Prompt, midi),
       strikePosition: lerpTable(scale.voicing.strikePos, midi),
       coupling: lerpTable(scale.voicing.coupling, midi),
       // Hammer never hits three strings at the same instant.
       contactOffsetUs: [0, 35, 70][i] ?? 0,
     }));
+    for (const st of strings) st.phys = derive(st.spec, f0 * Math.pow(2, st.detuneCents / 1200));
 
     // A fitted scale supplies explicit per-note geometry and voicing, measured
     // from a real instrument, which replaces the interpolated breakpoint values.
@@ -167,7 +204,18 @@ export function buildScale(scale = DEFAULT_SCALE) {
       if (ov.spec) Object.assign(spec, ov.spec);
       Object.assign(phys, derive(spec, f0));
       if (ov.strings) {
-        for (let i = 0; i < strings.length; i++) Object.assign(strings[i], ov.strings);
+        // Fitted values are per NOTE, so they must not overwrite the per-STRING
+        // spread that makes a unison a unison. Assigning them wholesale would
+        // give all three strings one t60 and one length, collapsing the note to
+        // a single string.
+        for (const st of strings) {
+          if (ov.strings.strikePosition != null) st.strikePosition = ov.strings.strikePosition;
+          const k = shape[st.index];
+          if (ov.strings.t60Low != null) st.t60Low = ov.strings.t60Low * (1 + 0.03 * k);
+          if (ov.strings.t60High != null) st.t60High = ov.strings.t60High * (1 + 0.05 * k);
+          st.spec = { ...spec, lengthM: spec.lengthM * (1 + lenSpread * k) };
+          st.phys = derive(st.spec, f0 * Math.pow(2, st.detuneCents / 1200));
+        }
       }
     }
 

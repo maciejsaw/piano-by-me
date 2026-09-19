@@ -211,17 +211,42 @@ function designDispersionMatched(fs, f0, B, loss, maxSections) {
 /** Compile one string's physical parameters into a runnable coefficient set. */
 export function compileString(fs, phys, tuning) {
   const f0 = phys.f0 * Math.pow(2, (tuning.detuneCents ?? 0) / 1200);
-  // Coupling is expressed as a FRACTION of the string's total per-round-trip
-  // loss, not as an absolute number. The coupling loss can never exceed the total
-  // loss (that would need an internal loop gain above 1), so this both guarantees
-  // stability and automatically scales coupling correctly across the compass.
-  const eps = 1 - Math.exp(-6.9078 / (f0 * Math.max(tuning.t60Low, 1e-3)));
-  const kappa = Math.min(0.95, tuning.couplingFraction ?? 0) * eps;
-  const loss = designLoss(fs, f0, tuning.t60Low, tuning.t60High, 5000, kappa);
+  // Two decay times, because a unison has two of them. The loss filter alone
+  // sets the AFTERSOUND: the differential mode exerts no net force on the
+  // bridge, so nothing but the string's own damping acts on it. The coupling
+  // term is then whatever extra loss the PROMPT (common) mode needs on top,
+  // since that one does move the bridge.
+  //
+  // Expressing coupling as a fraction of the string's own loss, as this used to,
+  // pins it near 0.3% per trip -- far too weak to split the two decays at all,
+  // so the model had no aftersound and its measured prompt decay came entirely
+  // from unison beating. Asking for the prompt T60 directly is both stronger and
+  // something a sample can be measured for.
+  const perTrip = (t60) => 1 - Math.exp(-6.9078 / (f0 * Math.max(t60, 1e-3)));
+  const eps = perTrip(tuning.t60Low);
+  const prompt = tuning.t60Prompt ?? tuning.t60Low;
+  let kappa = Math.max(0, Math.min(0.5, (perTrip(prompt) - eps) * (tuning.couplingFraction ?? 1)));
+  // Bridge coupling is NOT flat with frequency, and treating it as flat is what
+  // makes a whole note die at the rate its fundamental should. A soundboard is
+  // stiffness-controlled low down and mass-controlled above its first
+  // resonances, so its admittance falls with frequency: the fundamental drives
+  // it hard and decays fast, while the upper partials see a nearly rigid
+  // termination and ring on. Measured on a real C3, the fundamental is 40 dB
+  // down inside a second while the note overall is only 22 dB down at two.
+  //
+  // So the coupling term is lowpassed. The per-trip figure above was derived
+  // for the FUNDAMENTAL, so it is divided by the filter's gain there to leave
+  // the prompt T60 exactly as asked while the partials above it escape.
+  const fc = tuning.couplingFc ?? 520;
+  const aC = Math.exp((-2 * Math.PI * fc) / fs);
+  const gAtF0 = (1 - aC) / Math.hypot(1 - aC * Math.cos(2 * Math.PI * f0 / fs), aC * Math.sin(2 * Math.PI * f0 / fs));
+  kappa = Math.min(0.5, kappa / Math.max(gAtF0, 0.05));
+  // The loss filter is designed WITHOUT the coupling term: it is the aftersound.
+  const loss = designLoss(fs, f0, tuning.t60Low, tuning.t60High, 5000, 0);
   const disp = designDispersionMatched(fs, f0, phys.B, loss, tuning.maxAllpass ?? 48);
-  const damped = designLoss(fs, f0, tuning.t60Damped ?? 0.12, (tuning.t60Damped ?? 0.12) * 0.35, 5000, kappa);
+  const damped = designLoss(fs, f0, tuning.t60Damped ?? 0.12, (tuning.t60Damped ?? 0.12) * 0.35, 5000, 0);
   return {
-    f0, B: phys.B, kappa, eps,
+    f0, B: phys.B, kappa, eps, couplingA: aC,
     delay: disp.dLine, allpassA: disp.a, allpassN: disp.M,
     dispErr: disp.err, loss,
     lossG: loss.g, lossB: loss.b,
