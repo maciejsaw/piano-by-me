@@ -1,0 +1,484 @@
+{
+  "notes": [
+    {
+      "midi": 21,
+      "note": "A0",
+      "f0": 27.5,
+      "fTop": 2560,
+      "partialsUsable": 93.1,
+      "lo": [
+        19.3,
+        68.8
+      ],
+      "hi": [
+        110,
+        660
+      ],
+      "usable": true
+    },
+    {
+      "midi": 24,
+      "note": "C1",
+      "f0": 32.7,
+      "fTop": 2032,
+      "partialsUsable": 62.1,
+      "lo": [
+        22.9,
+        81.8
+      ],
+      "hi": [
+        130.8,
+        784.9
+      ],
+      "usable": true
+    },
+    {
+      "midi": 27,
+      "note": "D#1",
+      "f0": 38.89,
+      "fTop": 2560,
+      "partialsUsable": 65.8,
+      "lo": [
+        27.2,
+        97.2
+      ],
+      "hi": [
+        155.6,
+        933.4
+      ],
+      "usable": true
+    },
+    {
+      "midi": 30,
+      "note": "F#1",
+      "f0": 46.25,
+      "fTop": 2560,
+      "partialsUsable": 55.4,
+      "lo": [
+        32.4,
+        115.6
+      ],
+      "hi": [
+        185,
+        1110
+      ],
+      "usable": true
+    },
+    {
+      "midi": 33,
+      "note": "A1",
+      "f0": 55,
+      "fTop": 3225,
+      "partialsUsable": 58.6,
+      "lo": [
+        38.5,
+        137.5
+      ],
+      "hi": [
+        220,
+        1320
+      ],
+      "usable": true
+    },
+    {
+      "midi": 36,
+      "note": "C2",
+      "f0": 65.41,
+      "fTop": 3225,
+      "partialsUsable": 49.3,
+      "lo": [
+        45.8,
+        163.5
+      ],
+      "hi": [
+        261.6,
+        1569.8
+      ],
+      "usable": true
+    },
+    {
+      "midi": 39,
+      "note": "D#2",
+      "f0": 77.78,
+      "fTop": 3225,
+      "partialsUsable": 41.5,
+      "lo": [
+        54.4,
+        194.5
+      ],
+      "hi": [
+        311.1,
+        1866.8
+      ],
+      "usable": true
+    },
+    {
+      "midi": 42,
+      "note": "F#2",
+      "f0": 92.5,
+      "fTop": 2560,
+      "partialsUsable": 27.7,
+      "lo": [
+        64.7,
+        231.2
+      ],
+      "hi": [
+        370,
+        2220
+      ],
+      "usable": true
+    },
+    {
+      "midi": 45,
+      "note": "A2",
+      "f0": 110,
+      "fTop": 2560,
+      "partialsUsable": 23.3,
+      "lo": [
+        77,
+        275
+      ],
+      "hi": [
+        440,
+        2560
+      ],
+      "usable": true
+    },
+    {
+      "midi": 48,
+      "note": "C3",
+      "f0": 130.81,
+      "fTop": 3225,
+      "partialsUsable": 24.7,
+      "lo": [
+        91.6,
+        327
+      ],
+      "hi": [
+        523.3,
+        3139.5
+      ],
+      "usable": true
+    },
+    {
+      "midi": 51,
+      "note": "D#3",
+      "f0": 155.56,
+      "fTop": 3225,
+      "partialsUsable": 20.7,
+      "lo": [
+        108.9,
+        388.9
+      ],
+      "hi": [
+        622.3,
+        3225.4
+      ],
+      "usable": true
+    },
+    {
+      "midi": 54,
+      "note": "F#3",
+      "f0": 185,
+      "fTop": 4064,
+      "partialsUsable": 22,
+      "lo": [
+        129.5,
+        462.5
+      ],
+      "hi": [
+        740,
+        4063.7
+      ],
+      "usable": true
+    },
+    {
+      "midi": 57,
+      "note": "A3",
+      "f0": 220,
+      "fTop": 5120,
+      "partialsUsable": 23.3,
+      "lo": [
+        154,
+        550
+      ],
+      "hi": [
+        880,
+        5120
+      ],
+      "usable": true
+    },
+    {
+      "midi": 60,
+      "note": "C4",
+      "f0": 261.63,
+      "fTop": 4064,
+      "partialsUsable": 15.5,
+      "lo": [
+        183.1,
+        654.1
+      ],
+      "hi": [
+        1046.5,
+        4063.7
+      ],
+      "usable": true
+    },
+    {
+      "midi": 63,
+      "note": "D#4",
+      "f0": 311.13,
+      "fTop": 4064,
+      "partialsUsable": 13.1,
+      "lo": [
+        217.8,
+        777.8
+      ],
+      "hi": [
+        1244.5,
+        4063.7
+      ],
+      "usable": true
+    },
+    {
+      "midi": 66,
+      "note": "F#4",
+      "f0": 369.99,
+      "fTop": 4064,
+      "partialsUsable": 11,
+      "lo": [
+        259,
+        925
+      ],
+      "hi": [
+        1480,
+        4063.7
+      ],
+      "usable": true
+    },
+    {
+      "midi": 69,
+      "note": "A4",
+      "f0": 440,
+      "fTop": 4064,
+      "partialsUsable": 9.2,
+      "lo": [
+        308,
+        1100
+      ],
+      "hi": [
+        1760,
+        4063.7
+      ],
+      "usable": true
+    },
+    {
+      "midi": 72,
+      "note": "C5",
+      "f0": 523.25,
+      "fTop": 5120,
+      "partialsUsable": 9.8,
+      "lo": [
+        366.3,
+        1308.1
+      ],
+      "hi": [
+        2093,
+        5120
+      ],
+      "usable": true
+    },
+    {
+      "midi": 75,
+      "note": "D#5",
+      "f0": 622.25,
+      "fTop": 5120,
+      "partialsUsable": 8.2,
+      "lo": [
+        435.6,
+        1555.6
+      ],
+      "hi": [
+        2489,
+        5120
+      ],
+      "usable": true
+    },
+    {
+      "midi": 78,
+      "note": "F#5",
+      "f0": 739.99,
+      "fTop": 5120,
+      "partialsUsable": 6.9,
+      "lo": [
+        518,
+        1850
+      ],
+      "hi": [
+        2960,
+        5120
+      ],
+      "usable": true
+    },
+    {
+      "midi": 81,
+      "note": "A5",
+      "f0": 880,
+      "fTop": 5120,
+      "partialsUsable": 5.8,
+      "lo": [
+        616,
+        2200
+      ],
+      "hi": [
+        3520,
+        5120
+      ],
+      "usable": false
+    },
+    {
+      "midi": 84,
+      "note": "C6",
+      "f0": 1046.5,
+      "fTop": 6451,
+      "partialsUsable": 6.2,
+      "lo": [
+        732.6,
+        2616.3
+      ],
+      "hi": [
+        4186,
+        6450.8
+      ],
+      "usable": true
+    },
+    {
+      "midi": 87,
+      "note": "D#6",
+      "f0": 1244.51,
+      "fTop": 6451,
+      "partialsUsable": 5.2,
+      "lo": [
+        871.2,
+        3111.3
+      ],
+      "hi": [
+        4978,
+        6450.8
+      ],
+      "usable": false
+    },
+    {
+      "midi": 90,
+      "note": "F#6",
+      "f0": 1479.98,
+      "fTop": 6451,
+      "partialsUsable": 4.4,
+      "lo": [
+        1036,
+        3699.9
+      ],
+      "hi": [
+        5919.9,
+        6450.8
+      ],
+      "usable": false
+    },
+    {
+      "midi": 93,
+      "note": "A6",
+      "f0": 1760,
+      "fTop": 5120,
+      "partialsUsable": 2.9,
+      "lo": [
+        1232,
+        4400
+      ],
+      "hi": [
+        7040,
+        5120
+      ],
+      "usable": false
+    },
+    {
+      "midi": 96,
+      "note": "C7",
+      "f0": 2093,
+      "fTop": 6451,
+      "partialsUsable": 3.1,
+      "lo": [
+        1465.1,
+        5232.5
+      ],
+      "hi": [
+        8372,
+        6450.8
+      ],
+      "usable": false
+    },
+    {
+      "midi": 99,
+      "note": "D#7",
+      "f0": 2489.02,
+      "fTop": 5120,
+      "partialsUsable": 2.1,
+      "lo": [
+        1742.3,
+        6222.5
+      ],
+      "hi": [
+        9956.1,
+        5120
+      ],
+      "usable": false
+    },
+    {
+      "midi": 102,
+      "note": "F#7",
+      "f0": 2959.96,
+      "fTop": 6451,
+      "partialsUsable": 2.2,
+      "lo": [
+        2072,
+        7399.9
+      ],
+      "hi": [
+        11839.8,
+        6450.8
+      ],
+      "usable": false
+    },
+    {
+      "midi": 105,
+      "note": "A7",
+      "f0": 3520,
+      "fTop": 8127,
+      "partialsUsable": 2.3,
+      "lo": [
+        2464,
+        8800
+      ],
+      "hi": [
+        14080,
+        8127.5
+      ],
+      "usable": false
+    },
+    {
+      "midi": 108,
+      "note": "C8",
+      "f0": 4186.01,
+      "fTop": 6451,
+      "partialsUsable": 1.5,
+      "lo": [
+        2930.2,
+        10465
+      ],
+      "hi": [
+        16744,
+        6450.8
+      ],
+      "usable": false
+    }
+  ]
+}
