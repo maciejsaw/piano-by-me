@@ -40,6 +40,15 @@ export class Piano {
     this.bridgeCoupling = opts.bridgeCoupling ?? 0.30;
     // How much of a unison's differential mode still reaches the bridge.
     this.diffLeak = opts.diffLeak ?? 0.05;
+    // Transient damping: a second, fast loss stage that fades out after the
+    // strike, weighted toward high frequency. It is what bends each partial's
+    // decay away from the straight line the loss filter would give it. depth
+    // is the fraction of the high part removed on the first trip at full
+    // velocity, tau how long that takes to fade.
+    this.transientDepth = opts.transientDepth ?? 0.28;
+    this.transientTauS = opts.transientTauS ?? 0.25;
+    this.transientFc = opts.transientFc ?? null;   // null = scale with the note
+    this.couplingFc = opts.couplingFc ?? null;     // bridge admittance corner
     // Spread of bridge coupling across the strings of one unison.
     this.bridgeSpread = opts.bridgeSpread ?? 1.3;
     // Tension drift: relative RMS wander of each string's length, and the
@@ -95,6 +104,8 @@ export class Piano {
         const coeffs = compileString(fs, st.phys ?? n.phys, {
           ...st,
           couplingFraction: (this.unisonCoupling + this.bridgeCoupling) * st.coupling,
+          transientFc: this.transientFc ?? st.transientFc,
+          couplingFc: this.couplingFc ?? st.couplingFc,
           maxAllpass: this.quality,
         });
         const s = new WaveguideString(fs, Math.ceil(coeffs.delay) + 8);
@@ -108,6 +119,8 @@ export class Piano {
         const total = coeffs.kappa;
         const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
         s.diffLeak = this.diffLeak;
+        s.nlDepth = this.transientDepth;
+        s.nlDecay = Math.exp(-1 / (this.transientTauS * fs));
         // Each string wanders independently -- a shared sequence would move all
         // three together, which is a common mode and produces no beating at all.
         s.driftSeed = (this.strings.length * 2654435761 + 40503) & 0x7fffffff;
@@ -220,8 +233,8 @@ export class Piano {
       if (skew > 0) {
         const padded = new Float64Array(pulse.length + skew);
         padded.set(pulse, skew);
-        s.excite(padded);
-      } else s.excite(pulse);
+        s.excite(padded, velocity);
+      } else s.excite(pulse, velocity);
     }
     this.refreshActive();
   }

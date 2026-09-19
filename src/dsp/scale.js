@@ -35,8 +35,13 @@ export const DEFAULT_SCALE = {
   ],
   // Voicing curves, interpolated the same way (midi -> value).
   voicing: {
-    t60Low:   [[21, 38], [36, 26], [48, 16], [60, 11], [72, 6.0], [84, 2.6], [96, 1.4], [108, 0.9]],
-    t60High:  [[21, 2.2], [36, 1.8], [48, 1.3], [60, 0.95], [72, 0.6], [84, 0.35], [96, 0.22], [108, 0.16]],
+    // Aftersound T60, lengthened by 1.8x once transient damping went in. The
+    // fast stage now takes the energy the static loss used to take, and with
+    // the old figures the note carried on falling at the early rate for the
+    // whole six seconds: measured against the Salamander C3, we were 11 dB
+    // low at 6 s. These land it within 1 dB from 1 s to 6 s.
+    t60Low:   [[21, 68], [36, 47], [48, 29], [60, 20], [72, 11], [84, 4.7], [96, 2.5], [108, 1.6]],
+    t60High:  [[21, 4.0], [36, 3.2], [48, 2.3], [60, 1.7], [72, 1.1], [84, 0.63], [96, 0.40], [108, 0.29]],
     t60Damped:[[21, 0.30], [48, 0.18], [72, 0.10], [108, 0.06]],
     strikePos:[[21, 0.125], [36, 0.122], [60, 0.115], [84, 0.10], [108, 0.085]],
     // Felt hardness, calibrated so hammer contact times match measured pianos
