@@ -12,6 +12,11 @@ import { MATERIALS, noteHz, noteName, derive, linearDensity } from './physics.js
 export const DEFAULT_SCALE = {
   name: 'Model X — medium grand',
   a4: 440,
+  // Stretch tuning, cents on top of equal temperament. Real pianos are tuned to
+  // their own inharmonicity, not to a calculator: octaves are widened so upper
+  // partials of the lower note line up with the higher note, which pulls the
+  // bass flat and the treble sharp (the Railsback curve). Empty = dead equal.
+  tuningCents: [],
   maxLengthM: 1.95,                 // longest string the case allows
   breakpoints: [
     // midi, core wire (mm), wound?, wrap outer (mm), target tension (N), strings
@@ -111,7 +116,9 @@ export function buildScale(scale = DEFAULT_SCALE) {
   const notes = [];
   for (let midi = 21; midi <= 108; midi++) {
     const bp = interpBreakpoints(scale.breakpoints, midi);
-    const f0 = noteHz(midi, scale.a4);
+    const stretch = scale.tuningCents && scale.tuningCents.length
+      ? lerpTable(scale.tuningCents, midi) : 0;
+    const f0 = noteHz(midi, scale.a4) * Math.pow(2, stretch / 1200);
 
     let spec = {
       lengthM: 0,
@@ -134,7 +141,7 @@ export function buildScale(scale = DEFAULT_SCALE) {
     }
     spec.lengthM = L;
 
-    const phys = derive(spec, f0);
+    const phys = { ...derive(spec, f0) };
     const detune = lerpTable(scale.voicing.detune, midi);
     const count = bp.strings;
 
@@ -153,11 +160,22 @@ export function buildScale(scale = DEFAULT_SCALE) {
       contactOffsetUs: [0, 35, 70][i] ?? 0,
     }));
 
+    // A fitted scale supplies explicit per-note geometry and voicing, measured
+    // from a real instrument, which replaces the interpolated breakpoint values.
+    const ov = scale.overrides && scale.overrides[midi];
+    if (ov) {
+      if (ov.spec) Object.assign(spec, ov.spec);
+      Object.assign(phys, derive(spec, f0));
+      if (ov.strings) {
+        for (let i = 0; i < strings.length; i++) Object.assign(strings[i], ov.strings);
+      }
+    }
+
     notes.push({
       midi, name: noteName(midi), f0,
       spec, phys,
       count, strings,
-      hardness: lerpTable(scale.voicing.hardness, midi),
+      hardness: (ov && ov.hardness != null) ? ov.hardness : lerpTable(scale.voicing.hardness, midi),
       hammerMass: lerpTable(scale.voicing.hammerMass, midi)
                   * Math.pow(10, -0.35 * lerpTable(scale.voicing.hardness, midi)),
       feltK: 3e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),

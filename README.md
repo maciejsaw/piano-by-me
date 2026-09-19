@@ -40,6 +40,7 @@ the silent hold and it stops.
 | **Dampers** | lossy terminations that ramp, not gates; bottom two octaves have none |
 | **Bridge** | 16 soundboard zones with a spread kernel, so coupling depends on register |
 | **Pedals** | sustain, una corda (hammer misses the outer string, which then rings sympathetically) |
+| **Body** | plate radiation efficiency, case as baffle, enclosed air as analytic box modes from real case dimensions, one lid reflection |
 
 ### Coupling
 
@@ -63,6 +64,97 @@ Coupling is expressed as a *fraction of each string's own loss*, never as an
 absolute number. The coupling loss can never exceed the total loss (that would
 need an internal loop gain above 1), so this both guarantees stability and makes
 the requested T60 stay the T60 you actually get.
+
+## The body
+
+The string model stops at the bridge: it knows how the soundboard *loads* the
+strings, but not how soundboard motion becomes pressure in a room. Measured
+against a real grand, a model with no body is about **22 dB bass-heavy and
+treble-shy**, and the error is the same smooth tilt for every note — the
+signature of a missing radiation path, not a missing string parameter.
+
+`src/dsp/body.js` supplies it, cheaply (~3% of a core):
+
+- **radiation EQ** — plate radiation efficiency rising toward the critical
+  frequency, with the case acting as a baffle. Either the physically-shaped
+  default or a curve fitted to a real instrument.
+- **cavity** — the enclosed air as real box modes, from the closed-form
+  rectangular solution `f = (c/2)·√((nx/Lx)² + (ny/Ly)² + (nz/Lz)²)`. Case
+  dimensions are live parameters, which a convolved impulse response can never
+  be. For the default 2 m case the lowest air mode lands at 86 Hz — and the
+  response measured from a real piano has a bump at 94–120 Hz.
+- **lid** — one early reflection, which is most of the lid's audible effect.
+
+**Why an LTI body is not a cheat, when commuted synthesis is.** Commuted
+synthesis fails because it puts the soundboard *inside* the string feedback
+loop, where an LTI block cannot support sympathetic resonance. The body sits
+*downstream* of every coupling path — all the feedback has already happened —
+and air loading back onto a spruce plate is a small perturbation. The test suite
+checks this directly: enabling the body must tilt the spectrum and must leave
+measured inharmonicity unchanged.
+
+Truly simulating the air in 3D is possible but pointless in real time: ~4 mm
+cells for 10 kHz gives ~15 M cells, CFL forces ~148 kHz stepping, and a 1 s
+impulse response is ~2×10¹² cell updates — hours in optimised C. Since the
+radiation path is genuinely LTI, the right move is to simulate once offline and
+convolve, or to use the analytic modes above and skip the simulation entirely.
+
+## Fitting the model to a real piano
+
+The parameters are physical, so most of them can be **measured from recordings
+of a real instrument rather than guessed** — and most need no optimiser at all.
+
+```bash
+node tools/fit/selftest.mjs                         # recover known params from renders
+node tools/fit/analyze-samples.mjs <sampleDir> 12   # measure a real piano
+node tools/fit/fit.mjs <sampleDir> 12 fitted.json   # fit a scale design
+node tools/fit/body.mjs <sampleDir> fitted.json 12 body.json
+node tools/fit/validate.mjs <sampleDir> fitted.json 12 body.json
+```
+
+| quantity | how it is obtained |
+|---|---|
+| tuning | measured directly per note |
+| inharmonicity | measured, then **inverted in closed form** to wire gauge and length |
+| strike position | fitted from the comb notch in the attack spectrum |
+| decay | measured per partial, then fitted (2-D) to the loss filter |
+| body | pooled residual across all notes in *absolute* frequency |
+| hammer | the only genuine search — and it is 2-D per note |
+
+The key structural point: a naive approach throws every parameter into one
+black-box search against a spectrogram distance. Because this model is actually
+physical, inharmonicity **inverts**: combining `B = π³Ed⁴/(64TL²)` with
+`T = μ(2Lf₀)²` gives `d⁶ = 64BT²/(π⁴Eρf₀²)`, so a measured B plus a chosen
+tension *determines* the wire gauge exactly. Round-trip error: 0.00%.
+
+The body separates for a different reason — string parameters vary per note
+while the body does not, so pooling residuals by *absolute* frequency across
+many notes isolates it.
+
+### Results against a Yamaha C5 (Salamander, CC-BY)
+
+Rendering the fitted model and re-measuring it with the same extractor used on
+the samples:
+
+| | hand-designed | fitted |
+|---|---|---|
+| inharmonicity error | 30.2% | **12.6%** |
+| tuning error | 6.4 cents | **1.7 cents** |
+| attack spectrum RMS | 11.9 dB | **7.4 dB** |
+
+The measured stretch curve is a textbook Railsback: −23 cents at A0 rising to
++20 cents in the treble.
+
+`fitted/` holds the scale and body fitted from that library.
+
+**Caveats, which matter.** The extracted body conflates soundboard radiation,
+case, lid, microphones and room — it is "everything downstream of the bridge"
+for *that recording*, not a pure instrument response. Decay fits inherit the
+room's reverb tail, so they are biased long. Strike position is reliable in the
+bass and mid and degrades in the treble where too few partials clear the noise
+floor. And fitting is only as good as the model's ability to realise what it is
+told: see the dispersion matching loop in `design.js`, which exists because the
+allpass chain otherwise misses its target B by ~20%.
 
 ## Scale design
 
@@ -130,8 +222,8 @@ so turning a knob costs the audio thread nothing.
 ## Known limits
 
 - **Treble dispersion.** Above ~C6 the delay budget allows too few allpass
-  sections, so inharmonicity drifts tens of cents on partials above 8 kHz. Mostly
-  inaudible, but it is the least accurate part of the model.
+  sections. The design now iterates so the REALISED inharmonicity matches the
+  target (mean error 6.9%, from ~30% before), but the top octave still drifts.
 - **One polarisation per string.** Real strings vibrate vertically and
   horizontally with different bridge coupling. Double decay currently comes from
   unison coupling alone; adding the second polarisation would make it stronger and
@@ -141,6 +233,11 @@ so turning a knob costs the audio thread nothing.
 - **Hammer contact ignores returning waves** except the first agraffe reflection.
 - **Sympathetic strings run at full quality.** Tiering them down would roughly
   double the affordable polyphony with the pedal held.
+- **The body is one static filter.** Real radiation is directional and varies
+  across the soundboard; this is a single average response. Per-zone radiation
+  would be more faithful and is not expensive.
+- **The hammer is not yet fitted.** It is the largest remaining term in the
+  7.4 dB spectral residual.
 
 ## Next
 

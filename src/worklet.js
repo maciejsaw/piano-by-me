@@ -29,6 +29,16 @@ class PianoProcessor extends AudioWorkletProcessor {
       case 'unaCorda':    p.setUnaCorda(m.on); break;
       case 'gain':        this.gain = m.value; break;
       case 'panic':       p.panic(); break;
+      case 'body': {
+        // Rebuilding the cavity reallocates resonators, so do it only when a
+        // dimension actually changed; mixes and gains are free to set live.
+        const b = p.body;
+        if (m.enabled !== undefined) b.enabled = m.enabled;
+        if (m.cavityMix !== undefined) b.cavityMix = m.cavityMix;
+        if (m.lidGain !== undefined) b.lidGain = m.lidGain;
+        if (m.rebuild) p.rebuildBody(m.opts);
+        break;
+      }
       case 'coupling':
         p.unisonCoupling = m.unison; p.bridgeCoupling = m.bridge;
         for (const s of p.strings) p.recompileString(s);

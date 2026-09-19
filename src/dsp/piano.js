@@ -21,6 +21,7 @@ import { compileString } from './design.js';
 import { WaveguideString } from './string.js';
 import { makeHammerPulse } from './hammer.js';
 import { Soundboard } from './soundboard.js';
+import { Body } from './body.js';
 
 // Output limiter. Ceiling is exactly 1.0 so the signal can never clip the
 // device, and it is applied once per output sample rather than per string.
@@ -38,7 +39,9 @@ export class Piano {
     this.unisonCoupling = opts.unisonCoupling ?? 0.55;
     this.bridgeCoupling = opts.bridgeCoupling ?? 0.30;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
-    this.masterGain = opts.gain ?? 0.15;
+    this.masterGain = opts.gain ?? 0.075;
+    // Everything downstream of the bridge: radiation, case, cavity, lid.
+    this.body = new Body(fs, opts.body ?? {});
     this.sustain = false;
     this.unaCorda = false;
     this.build(opts.scale ?? DEFAULT_SCALE);
@@ -179,6 +182,15 @@ export class Piano {
 
   setUnaCorda(on) { this.unaCorda = on; }
 
+  /** Rebuild the body after a case dimension changes. */
+  rebuildBody(opts = {}) {
+    const prev = this.body;
+    this.body = new Body(this.fs, {
+      curve: prev.curve, enabled: prev.enabled,
+      cavityMix: prev.cavityMix, lidGain: prev.lidGain, ...opts,
+    });
+  }
+
   /** Recompile one string after a parameter edit, preserving its ringing state. */
   recompileString(s, tuning = s.tuning) {
     Object.assign(s.tuning, tuning);
@@ -222,7 +234,7 @@ export class Piano {
         for (let w = 0; w < ZONES; w++) d += row[w] * zVel[w];
         zDrive[z] = d;
       }
-      out[i] = softclip(mix * gain);
+      out[i] = softclip(this.body.process(mix) * gain);
     }
     this.refreshActive();
   }
@@ -230,6 +242,7 @@ export class Piano {
   panic() {
     for (const s of this.strings) { s.reset(); s.active = false; s.setDamper(s.note.hasDamper); s.damperClosed = s.note.hasDamper ? 1 : 0; }
     this.zones.forEach((z) => z.reset());
+    this.body.reset();
     this.noteJunction.fill(0); this.zoneVel.fill(0); this.zoneDrive.fill(0);
     this.notes.forEach((n) => (n.held = false));
     this.refreshActive();

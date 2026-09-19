@@ -258,6 +258,34 @@ $('unaBtn').onclick = (e) => {
 };
 $('panicBtn').onclick = () => { down.clear(); silent.clear(); post({ type: 'panic' }); for (let m = LOW; m <= HIGH; m++) paintKey(m); };
 
+// ------------------------------------------------------------------ body ---
+const caseOpts = () => ({
+  caseWidth: +$('cw').value, caseLength: +$('cl').value, caseDepth: +$('cd').value,
+  cavityQ: +$('cq').value,
+});
+const fmtM = (v) => (v * 100).toFixed(0) + ' cm';
+for (const [id, fmt] of [['cw', fmtM], ['cl', fmtM], ['cd', fmtM], ['cq', (v) => v.toFixed(0)]]) {
+  $(id).addEventListener('input', (e) => { $(id + 'V').textContent = fmt(+e.target.value); });
+  $(id).addEventListener('change', () => post({ type: 'body', rebuild: true, opts: caseOpts() }));
+  $(id + 'V').textContent = fmt(+$(id).value);
+}
+$('cmix').addEventListener('input', (e) => {
+  $('cmixV').textContent = (+e.target.value).toFixed(2);
+  post({ type: 'body', cavityMix: +e.target.value });
+});
+$('lid').addEventListener('input', (e) => {
+  $('lidV').textContent = (+e.target.value).toFixed(2);
+  post({ type: 'body', lidGain: +e.target.value });
+});
+$('cmixV').textContent = (+$('cmix').value).toFixed(2);
+$('lidV').textContent = (+$('lid').value).toFixed(2);
+$('bodyBtn').onclick = (e) => {
+  const on = !e.target.classList.contains('on');
+  e.target.classList.toggle('on', on);
+  e.target.textContent = on ? 'enabled' : 'bypassed';
+  post({ type: 'body', enabled: on });
+};
+
 $('gain').addEventListener('input', (e) => { $('gainV').textContent = (+e.target.value).toFixed(2); post({ type: 'gain', value: +e.target.value }); });
 const pushCoupling = () => post({ type: 'coupling', unison: unisonCoupling, bridge: bridgeCoupling });
 $('uc').addEventListener('input', (e) => { unisonCoupling = +e.target.value; $('ucV').textContent = unisonCoupling.toFixed(2); });

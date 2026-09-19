@@ -153,7 +153,32 @@ console.log('\n=== 6. Sympathetic halo is loud enough to hear ===');
     `pedal down ${db.toFixed(1)} dB vs pedal up ${offDb.toFixed(1)} dB`);
 }
 
-console.log('\n=== 7. Stability: loud cluster, pedal down, long tail ===');
+console.log('\n=== 7. Body: does the case change the sound, and only downstream? ===');
+{
+  const spec = (x, lo, hi) => {
+    let s = 0;
+    for (let f = lo; f < hi; f *= 1.06) s += Math.pow(findPeak(x, FS, f, 0.001, Math.round(0.05 * FS), 1 << 14).mag, 2);
+    return 10 * Math.log10(s + 1e-18);
+  };
+  const run = (body) => {
+    const p = new Piano(FS, { quality: 20, body, gain: 1 });
+    return render(p, 2, [{ at: 0, run: (q) => q.noteOn(60, 0.75) }]);
+  };
+  const off = run({ enabled: false }), on = run({});
+  const tiltOff = spec(off, 2000, 8000) - spec(off, 100, 400);
+  const tiltOn = spec(on, 2000, 8000) - spec(on, 100, 400);
+  check('body tilts the spectrum toward treble', tiltOn - tiltOff > 3,
+    `high-minus-low tilt ${tiltOff.toFixed(1)} dB -> ${tiltOn.toFixed(1)} dB`);
+
+  // The body is downstream of every coupling path, so it must not disturb the
+  // string physics at all -- same partials, same inharmonicity.
+  const bOff = measureB(off, FS, noteHz(60), 12, Math.round(0.15 * FS), 1 << 16, 3e-4);
+  const bOn = measureB(on, FS, noteHz(60), 12, Math.round(0.15 * FS), 1 << 16, 3e-4);
+  check('body leaves string physics untouched', Math.abs(bOn.B / bOff.B - 1) < 0.10,
+    `B ${bOff.B.toExponential(2)} -> ${bOn.B.toExponential(2)}`);
+}
+
+console.log('\n=== 8. Stability: loud cluster, pedal down, long tail ===');
 {
   const p = new Piano(FS, { quality: 32 });
   const script = [{ at: 0, run: (q) => q.setSustain(true) }];

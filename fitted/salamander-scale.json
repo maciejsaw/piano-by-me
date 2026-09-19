@@ -1,0 +1,1896 @@
+{
+ "name": "fitted from 44.1khz16bit (layer 12)",
+ "a4": 440,
+ "tuningCents": [
+  [
+   21,
+   -21.99
+  ],
+  [
+   22,
+   -20.89
+  ],
+  [
+   23,
+   -19.83
+  ],
+  [
+   24,
+   -18.79
+  ],
+  [
+   25,
+   -17.79
+  ],
+  [
+   26,
+   -16.83
+  ],
+  [
+   27,
+   -15.9
+  ],
+  [
+   28,
+   -15.01
+  ],
+  [
+   29,
+   -14.15
+  ],
+  [
+   30,
+   -13.34
+  ],
+  [
+   31,
+   -12.56
+  ],
+  [
+   32,
+   -11.82
+  ],
+  [
+   33,
+   -11.11
+  ],
+  [
+   34,
+   -10.44
+  ],
+  [
+   35,
+   -9.81
+  ],
+  [
+   36,
+   -9.22
+  ],
+  [
+   37,
+   -8.65
+  ],
+  [
+   38,
+   -8.12
+  ],
+  [
+   39,
+   -7.62
+  ],
+  [
+   40,
+   -7.16
+  ],
+  [
+   41,
+   -6.71
+  ],
+  [
+   42,
+   -6.3
+  ],
+  [
+   43,
+   -5.91
+  ],
+  [
+   44,
+   -5.54
+  ],
+  [
+   45,
+   -5.2
+  ],
+  [
+   46,
+   -4.87
+  ],
+  [
+   47,
+   -4.56
+  ],
+  [
+   48,
+   -4.27
+  ],
+  [
+   49,
+   -3.99
+  ],
+  [
+   50,
+   -3.72
+  ],
+  [
+   51,
+   -3.46
+  ],
+  [
+   52,
+   -3.21
+  ],
+  [
+   53,
+   -2.97
+  ],
+  [
+   54,
+   -2.73
+  ],
+  [
+   55,
+   -2.49
+  ],
+  [
+   56,
+   -2.26
+  ],
+  [
+   57,
+   -2.03
+  ],
+  [
+   58,
+   -1.79
+  ],
+  [
+   59,
+   -1.56
+  ],
+  [
+   60,
+   -1.32
+  ],
+  [
+   61,
+   -1.07
+  ],
+  [
+   62,
+   -0.82
+  ],
+  [
+   63,
+   -0.56
+  ],
+  [
+   64,
+   -0.3
+  ],
+  [
+   65,
+   -0.03
+  ],
+  [
+   66,
+   0.26
+  ],
+  [
+   67,
+   0.55
+  ],
+  [
+   68,
+   0.86
+  ],
+  [
+   69,
+   1.17
+  ],
+  [
+   70,
+   1.5
+  ],
+  [
+   71,
+   1.84
+  ],
+  [
+   72,
+   2.2
+  ],
+  [
+   73,
+   2.57
+  ],
+  [
+   74,
+   2.96
+  ],
+  [
+   75,
+   3.36
+  ],
+  [
+   76,
+   3.78
+  ],
+  [
+   77,
+   4.22
+  ],
+  [
+   78,
+   4.67
+  ],
+  [
+   79,
+   5.13
+  ],
+  [
+   80,
+   5.62
+  ],
+  [
+   81,
+   6.12
+  ],
+  [
+   82,
+   6.64
+  ],
+  [
+   83,
+   7.17
+  ],
+  [
+   84,
+   7.72
+  ],
+  [
+   85,
+   8.28
+  ],
+  [
+   86,
+   8.85
+  ],
+  [
+   87,
+   9.44
+  ],
+  [
+   88,
+   10.04
+  ],
+  [
+   89,
+   10.64
+  ],
+  [
+   90,
+   11.25
+  ],
+  [
+   91,
+   11.87
+  ],
+  [
+   92,
+   12.49
+  ],
+  [
+   93,
+   13.1
+  ],
+  [
+   94,
+   13.72
+  ],
+  [
+   95,
+   14.33
+  ],
+  [
+   96,
+   14.93
+  ],
+  [
+   97,
+   15.52
+  ],
+  [
+   98,
+   16.1
+  ],
+  [
+   99,
+   16.66
+  ],
+  [
+   100,
+   17.21
+  ],
+  [
+   101,
+   17.74
+  ],
+  [
+   102,
+   18.24
+  ],
+  [
+   103,
+   18.73
+  ],
+  [
+   104,
+   19.19
+  ],
+  [
+   105,
+   19.63
+  ],
+  [
+   106,
+   20.04
+  ],
+  [
+   107,
+   20.42
+  ],
+  [
+   108,
+   20.78
+  ]
+ ],
+ "maxLengthM": 1.95,
+ "breakpoints": [
+  {
+   "midi": 21,
+   "core": 1.35,
+   "wound": true,
+   "wrap": 3.2,
+   "tension": 700,
+   "strings": 1
+  },
+  {
+   "midi": 27,
+   "core": 1.3,
+   "wound": true,
+   "wrap": 2.7,
+   "tension": 720,
+   "strings": 2
+  },
+  {
+   "midi": 33,
+   "core": 1.22,
+   "wound": true,
+   "wrap": 2.15,
+   "tension": 740,
+   "strings": 2
+  },
+  {
+   "midi": 39,
+   "core": 1.15,
+   "wound": true,
+   "wrap": 1.72,
+   "tension": 750,
+   "strings": 3
+  },
+  {
+   "midi": 46,
+   "core": 1.1,
+   "wound": true,
+   "wrap": 1.4,
+   "tension": 750,
+   "strings": 3
+  },
+  {
+   "midi": 52,
+   "core": 1.08,
+   "wound": true,
+   "wrap": 1.22,
+   "tension": 740,
+   "strings": 3
+  },
+  {
+   "midi": 53,
+   "core": 1.05,
+   "wound": false,
+   "wrap": 0,
+   "tension": 735,
+   "strings": 3
+  },
+  {
+   "midi": 60,
+   "core": 1,
+   "wound": false,
+   "wrap": 0,
+   "tension": 720,
+   "strings": 3
+  },
+  {
+   "midi": 72,
+   "core": 0.95,
+   "wound": false,
+   "wrap": 0,
+   "tension": 710,
+   "strings": 3
+  },
+  {
+   "midi": 84,
+   "core": 0.9,
+   "wound": false,
+   "wrap": 0,
+   "tension": 700,
+   "strings": 3
+  },
+  {
+   "midi": 96,
+   "core": 0.85,
+   "wound": false,
+   "wrap": 0,
+   "tension": 690,
+   "strings": 3
+  },
+  {
+   "midi": 108,
+   "core": 0.8,
+   "wound": false,
+   "wrap": 0,
+   "tension": 670,
+   "strings": 3
+  }
+ ],
+ "voicing": {
+  "t60Low": [
+   [
+    21,
+    38
+   ],
+   [
+    36,
+    26
+   ],
+   [
+    48,
+    16
+   ],
+   [
+    60,
+    11
+   ],
+   [
+    72,
+    6
+   ],
+   [
+    84,
+    2.6
+   ],
+   [
+    96,
+    1.4
+   ],
+   [
+    108,
+    0.9
+   ]
+  ],
+  "t60High": [
+   [
+    21,
+    2.2
+   ],
+   [
+    36,
+    1.8
+   ],
+   [
+    48,
+    1.3
+   ],
+   [
+    60,
+    0.95
+   ],
+   [
+    72,
+    0.6
+   ],
+   [
+    84,
+    0.35
+   ],
+   [
+    96,
+    0.22
+   ],
+   [
+    108,
+    0.16
+   ]
+  ],
+  "t60Damped": [
+   [
+    21,
+    0.3
+   ],
+   [
+    48,
+    0.18
+   ],
+   [
+    72,
+    0.1
+   ],
+   [
+    108,
+    0.06
+   ]
+  ],
+  "strikePos": [
+   [
+    21,
+    0.125
+   ],
+   [
+    36,
+    0.122
+   ],
+   [
+    60,
+    0.115
+   ],
+   [
+    84,
+    0.1
+   ],
+   [
+    108,
+    0.085
+   ]
+  ],
+  "hardness": [
+   [
+    21,
+    0.215
+   ],
+   [
+    30,
+    0.027
+   ],
+   [
+    39,
+    0
+   ],
+   [
+    48,
+    0.049
+   ],
+   [
+    57,
+    0.064
+   ],
+   [
+    66,
+    0.117
+   ],
+   [
+    75,
+    0.24
+   ],
+   [
+    84,
+    0.334
+   ],
+   [
+    93,
+    0.395
+   ],
+   [
+    102,
+    0.354
+   ],
+   [
+    108,
+    0.453
+   ]
+  ],
+  "hammerMass": [
+   [
+    21,
+    0.012
+   ],
+   [
+    36,
+    0.0098
+   ],
+   [
+    48,
+    0.0085
+   ],
+   [
+    60,
+    0.0072
+   ],
+   [
+    72,
+    0.0062
+   ],
+   [
+    84,
+    0.0053
+   ],
+   [
+    96,
+    0.0045
+   ],
+   [
+    108,
+    0.0039
+   ]
+  ],
+  "coupling": [
+   [
+    21,
+    0.9
+   ],
+   [
+    36,
+    1
+   ],
+   [
+    60,
+    1
+   ],
+   [
+    84,
+    0.75
+   ],
+   [
+    108,
+    0.5
+   ]
+  ],
+  "gain": [
+   [
+    21,
+    3.22
+   ],
+   [
+    27,
+    1.13
+   ],
+   [
+    33,
+    1.74
+   ],
+   [
+    39,
+    1.08
+   ],
+   [
+    46,
+    0.91
+   ],
+   [
+    53,
+    0.81
+   ],
+   [
+    60,
+    0.82
+   ],
+   [
+    67,
+    1.09
+   ],
+   [
+    74,
+    1.27
+   ],
+   [
+    81,
+    1.77
+   ],
+   [
+    88,
+    2.62
+   ],
+   [
+    95,
+    1.83
+   ],
+   [
+    102,
+    1.49
+   ],
+   [
+    108,
+    1.25
+   ]
+  ],
+  "detune": [
+   [
+    21,
+    0
+   ],
+   [
+    30,
+    0.6
+   ],
+   [
+    48,
+    1
+   ],
+   [
+    72,
+    1.6
+   ],
+   [
+    108,
+    2.6
+   ]
+  ]
+ },
+ "lowestDamped": 29,
+ "overrides": {
+  "21": {
+   "spec": {
+    "coreDiameterMm": 1.3398139376746514,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 4.933098927928025
+   },
+   "strings": {
+    "strikePosition": 0.11883554223835323,
+    "t60Low": 19.450884292057626,
+    "t60High": 14.486441311213845
+   }
+  },
+  "22": {
+   "spec": {
+    "coreDiameterMm": 1.314130646286535,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 4.651827512520548
+   },
+   "strings": {
+    "strikePosition": 0.11895237469265184,
+    "t60Low": 19.186863721899837,
+    "t60High": 14.235556555940471
+   }
+  },
+  "23": {
+   "spec": {
+    "coreDiameterMm": 1.2899325114028062,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 4.386388196671906
+   },
+   "strings": {
+    "strikePosition": 0.11906415343942943,
+    "t60Low": 18.9251351178627,
+    "t60High": 13.961334176315276
+   }
+  },
+  "24": {
+   "spec": {
+    "coreDiameterMm": 1.2671707675341577,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 4.135885712414473
+   },
+   "strings": {
+    "strikePosition": 0.11917079910832519,
+    "t60Low": 18.66596776621722,
+    "t60High": 13.665995738165647
+   }
+  },
+  "25": {
+   "spec": {
+    "coreDiameterMm": 1.2460647480897467,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 3.8994678736702255
+   },
+   "strings": {
+    "strikePosition": 0.11927223630632414,
+    "t60Low": 18.408054735394686,
+    "t60High": 13.352771710352645
+   }
+  },
+  "26": {
+   "spec": {
+    "coreDiameterMm": 1.226563264992097,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 3.6763424547566523
+   },
+   "strings": {
+    "strikePosition": 0.11936839487280682,
+    "t60Low": 18.151536135310383,
+    "t60High": 13.02444332062026
+   }
+  },
+  "27": {
+   "spec": {
+    "coreDiameterMm": 1.2086560365291004,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 3.465752522977633
+   },
+   "strings": {
+    "strikePosition": 0.11945921128043348,
+    "t60Low": 17.896228389027915,
+    "t60High": 12.683629549872089
+   }
+  },
+  "28": {
+   "spec": {
+    "coreDiameterMm": 1.1924321723698421,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 3.266979573760163
+   },
+   "strings": {
+    "strikePosition": 0.11954463017177266,
+    "t60Low": 17.641475942126462,
+    "t60High": 12.334290591117796
+   }
+  },
+  "29": {
+   "spec": {
+    "coreDiameterMm": 1.1778603727315715,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 3.079350054722412
+   },
+   "strings": {
+    "strikePosition": 0.11962460601517878,
+    "t60Low": 17.38712764594099,
+    "t60High": 11.979074784080955
+   }
+  },
+  "30": {
+   "spec": {
+    "coreDiameterMm": 1.1649267464912711,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.902223294679892
+   },
+   "strings": {
+    "strikePosition": 0.11969910485632917,
+    "t60Low": 17.132993239614322,
+    "t60High": 11.620693775442962
+   }
+  },
+  "31": {
+   "spec": {
+    "coreDiameterMm": 1.1536299344354117,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.734992855523974
+   },
+   "strings": {
+    "strikePosition": 0.11976810613423654,
+    "t60Low": 16.878771308611775,
+    "t60High": 11.262288431069592
+   }
+  },
+  "32": {
+   "spec": {
+    "coreDiameterMm": 1.143929280080346,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.5770867706830396
+   },
+   "strings": {
+    "strikePosition": 0.11983160452277938,
+    "t60Low": 16.624459597051974,
+    "t60High": 10.90618188746329
+   }
+  },
+  "33": {
+   "spec": {
+    "coreDiameterMm": 1.135792058753408,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.4279622633213727
+   },
+   "strings": {
+    "strikePosition": 0.11988961175122716,
+    "t60Low": 16.370116053442057,
+    "t60High": 10.554631632439701
+   }
+  },
+  "34": {
+   "spec": {
+    "coreDiameterMm": 1.1291615819163767,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.287106481496096
+   },
+   "strings": {
+    "strikePosition": 0.1199421583503822,
+    "t60Low": 16.115928672172384,
+    "t60High": 10.209612686564776
+   }
+  },
+  "35": {
+   "spec": {
+    "coreDiameterMm": 1.1239877865479344,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.1540333075547684
+   },
+   "strings": {
+    "strikePosition": 0.11998929526534347,
+    "t60Low": 15.862205933607825,
+    "t60High": 9.872825928712032
+   }
+  },
+  "36": {
+   "spec": {
+    "coreDiameterMm": 1.1202277946142465,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 2.028281411130082
+   },
+   "strings": {
+    "strikePosition": 0.12003109527212574,
+    "t60Low": 15.609411954547031,
+    "t60High": 9.545675312346669
+   }
+  },
+  "37": {
+   "spec": {
+    "coreDiameterMm": 1.117809257208583,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.9094148330228828
+   },
+   "strings": {
+    "strikePosition": 0.12006765413400748,
+    "t60Low": 15.35805117831225,
+    "t60High": 9.229346911933758
+   }
+  },
+  "38": {
+   "spec": {
+    "coreDiameterMm": 1.1166891000794557,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.797018154460849
+   },
+   "strings": {
+    "strikePosition": 0.12009909143505064,
+    "t60Low": 15.108750677760515,
+    "t60High": 8.924721201507625
+   }
+  },
+  "39": {
+   "spec": {
+    "coreDiameterMm": 1.1168352648739481,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.6906959103110484
+   },
+   "strings": {
+    "strikePosition": 0.12012555103312994,
+    "t60Low": 14.862158463318732,
+    "t60High": 8.632465428411145
+   }
+  },
+  "40": {
+   "spec": {
+    "coreDiameterMm": 1.1181902391162504,
+    "lengthM": 1.35,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.590073297562399
+   },
+   "strings": {
+    "strikePosition": 0.12014720108323534,
+    "t60Low": 14.618916620205821,
+    "t60High": 8.353037023415926
+   }
+  },
+  "41": {
+   "spec": {
+    "coreDiameterMm": 1.1180348510559157,
+    "lengthM": 1.3435028842544403,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.5026110524387186
+   },
+   "strings": {
+    "strikePosition": 0.1201642335937435,
+    "t60Low": 14.379621294287588,
+    "t60High": 8.086705721793809
+   }
+  },
+  "42": {
+   "spec": {
+    "coreDiameterMm": 1.104220985401208,
+    "lengthM": 1.3018334354841177,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.4611640610564802
+   },
+   "strings": {
+    "strikePosition": 0.12017686349349559,
+    "t60Low": 14.144787858221266,
+    "t60High": 7.833574606639722
+   }
+  },
+  "43": {
+   "spec": {
+    "coreDiameterMm": 1.091684969738787,
+    "lengthM": 1.2614563865896506,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.4207221101808067
+   },
+   "strings": {
+    "strikePosition": 0.12018532720525955,
+    "t60Low": 13.91482479882003,
+    "t60High": 7.593599145773247
+   }
+  },
+  "44": {
+   "spec": {
+    "coreDiameterMm": 1.0803840137192893,
+    "lengthM": 1.22233165310896,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.3812555334804524
+   },
+   "strings": {
+    "strikePosition": 0.12018988074065023,
+    "t60Low": 13.690018563826403,
+    "t60High": 7.366603682650891
+   }
+  },
+  "45": {
+   "spec": {
+    "coreDiameterMm": 1.0702864051130772,
+    "lengthM": 1.1844203938206463,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.3427343068330564
+   },
+   "strings": {
+    "strikePosition": 0.12019079735171519,
+    "t60Low": 13.470530047834998,
+    "t60High": 7.152295244797854
+   }
+  },
+  "46": {
+   "spec": {
+    "coreDiameterMm": 1.06134812361755,
+    "lengthM": 1.1476849721842248,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.3051298478210933
+   },
+   "strings": {
+    "strikePosition": 0.12018836479393345,
+    "t60Low": 13.25640187946357,
+    "t60High": 6.950274927816839
+   }
+  },
+  "47": {
+   "spec": {
+    "coreDiameterMm": 1.053552134160065,
+    "lengthM": 1.1120889189763161,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.2684119273156
+   },
+   "strings": {
+    "strikePosition": 0.12018288227302888,
+    "t60Low": 13.04757443635722,
+    "t60High": 6.760047468371154
+   }
+  },
+  "48": {
+   "spec": {
+    "coreDiameterMm": 1.046880018819327,
+    "lengthM": 1.0775968960856894,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.2325507254474715
+   },
+   "strings": {
+    "strikePosition": 0.12017465716255239,
+    "t60Low": 12.843907701482372,
+    "t60High": 6.5810298969774
+   }
+  },
+  "49": {
+   "spec": {
+    "coreDiameterMm": 1.0413150449332447,
+    "lengthM": 1.044174661431225,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.1975164661722968
+   },
+   "strings": {
+    "strikePosition": 0.12016400158961417,
+    "t60Low": 12.645205716781433,
+    "t60High": 6.412560318610563
+   }
+  },
+  "50": {
+   "spec": {
+    "coreDiameterMm": 1.0368389492021757,
+    "lengthM": 1.0117890349679646,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.1632799132684128
+   },
+   "strings": {
+    "strikePosition": 0.12015122899171786,
+    "t60Low": 12.451240440848158,
+    "t60High": 6.253907868646877
+   }
+  },
+  "51": {
+   "spec": {
+    "coreDiameterMm": 1.0334316980064417,
+    "lengthM": 0.980407865747499,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.1298119556132393
+   },
+   "strings": {
+    "strikePosition": 0.12013665074800335,
+    "t60Low": 12.261772186868487,
+    "t60High": 6.1042847129136515
+   }
+  },
+  "52": {
+   "spec": {
+    "coreDiameterMm": 1.0310576316225906,
+    "lengthM": 0.95,
+    "wound": true,
+    "wrapOuterDiameterMm": 1.0970850702499397
+   },
+   "strings": {
+    "strikePosition": 0.1201205729833749,
+    "t60Low": 12.076564412464087,
+    "t60High": 5.962860611203906
+   }
+  },
+  "53": {
+   "spec": {
+    "coreDiameterMm": 1.0403329739970089,
+    "lengthM": 0.9396832249869795,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12010329363441655,
+    "t60Low": 11.895391380197754,
+    "t60High": 5.82878008623851
+   }
+  },
+  "54": {
+   "spec": {
+    "coreDiameterMm": 1.0306106998316673,
+    "lengthM": 0.8943533840651816,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1200850998524471,
+    "t60Low": 11.718038057792976,
+    "t60High": 5.701181710378487
+   }
+  },
+  "55": {
+   "spec": {
+    "coreDiameterMm": 1.0215588501859372,
+    "lengthM": 0.8507159002768233,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12006626580257526,
+    "t60Low": 11.544292549444958,
+    "t60High": 5.5792185361498206
+   }
+  },
+  "56": {
+   "spec": {
+    "coreDiameterMm": 1.0131148887180432,
+    "lengthM": 0.8087750096854088,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12004705089936639,
+    "t60Low": 11.373932312857715,
+    "t60High": 5.462078348219135
+   }
+  },
+  "57": {
+   "spec": {
+    "coreDiameterMm": 1.0052134809233715,
+    "lengthM": 0.7685304583798932,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12002769850094547,
+    "t60Low": 11.206706369344074,
+    "t60High": 5.349002272918282
+   }
+  },
+  "58": {
+   "spec": {
+    "coreDiameterMm": 0.9977888240452598,
+    "lengthM": 0.7299756841535373,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12000843506518409,
+    "t60Low": 11.042316567729863,
+    "t60High": 5.239300372187413
+   }
+  },
+  "59": {
+   "spec": {
+    "coreDiameterMm": 0.9907767450317646,
+    "lengthM": 0.6930965734660052,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11998946975504546,
+    "t60Low": 10.880401584581291,
+    "t60High": 5.132363147563626
+   }
+  },
+  "60": {
+   "spec": {
+    "coreDiameterMm": 0.9841164950177589,
+    "lengthM": 0.6578709306977111,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11997099446595,
+    "t60Low": 10.720527568594337,
+    "t60High": 5.027668320750835
+   }
+  },
+  "61": {
+   "spec": {
+    "coreDiameterMm": 0.9777520710338177,
+    "lengthM": 0.624268612368715,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11995318423668576,
+    "t60Low": 10.562189001724356,
+    "t60High": 4.924782752343137
+   }
+  },
+  "62": {
+   "spec": {
+    "coreDiameterMm": 0.971633011293323,
+    "lengthM": 0.5922522030261493,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11993619799717468,
+    "t60Low": 10.40482234452152,
+    "t60High": 4.8233598224951155
+   }
+  },
+  "63": {
+   "spec": {
+    "coreDiameterMm": 0.9657134361811873,
+    "lengthM": 0.5617787944503706,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11992017960131099,
+    "t60Low": 10.247833367392865,
+    "t60High": 4.72313296039138
+   }
+  },
+  "64": {
+   "spec": {
+    "coreDiameterMm": 0.9599498941248233,
+    "lengthM": 0.5328021952075808,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1199052590909371,
+    "t60Low": 10.09063692130341,
+    "t60High": 4.623906238080804
+   }
+  },
+  "65": {
+   "spec": {
+    "coreDiameterMm": 0.954322818191885,
+    "lengthM": 0.5052622343938815,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11989155413744662,
+    "t60Low": 9.932705625998492,
+    "t60High": 4.525543035041087
+   }
+  },
+  "66": {
+   "spec": {
+    "coreDiameterMm": 0.9487937112631184,
+    "lengthM": 0.4791096259712536,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11987917161008316,
+    "t60Low": 9.773622027120808,
+    "t60High": 4.427953753445218
+   }
+  },
+  "67": {
+   "spec": {
+    "coreDiameterMm": 0.943332993107704,
+    "lengthM": 0.4542903950155912,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11986820922422463,
+    "t60Low": 9.613127672219662,
+    "t60High": 4.331083454535006
+   }
+  },
+  "68": {
+   "spec": {
+    "coreDiameterMm": 0.9379301186323915,
+    "lengthM": 0.43074247440294766,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11985875722832892,
+    "t60Low": 9.451162606503313,
+    "t60High": 4.23490013041718
+   }
+  },
+  "69": {
+   "spec": {
+    "coreDiameterMm": 0.9325583765456421,
+    "lengthM": 0.4084132739855573,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11985090009429339,
+    "t60Low": 9.28789004682688,
+    "t60High": 4.139384154488975
+   }
+  },
+  "70": {
+   "spec": {
+    "coreDiameterMm": 0.9271966274825884,
+    "lengthM": 0.38724896677956994,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11984471818234578,
+    "t60Low": 9.123703200782746,
+    "t60High": 4.044519289948947
+   }
+  },
+  "71": {
+   "spec": {
+    "coreDiameterMm": 0.9218362096371454,
+    "lengthM": 0.36719225906481096,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.119840289357902,
+    "t60Low": 8.95921386035219,
+    "t60High": 3.9502854920654755
+   }
+  },
+  "72": {
+   "spec": {
+    "coreDiameterMm": 0.9164551594850809,
+    "lengthM": 0.34819343974675726,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11983769054382606,
+    "t60Low": 8.795224932888315,
+    "t60High": 3.8566536204973683
+   }
+  },
+  "73": {
+   "spec": {
+    "coreDiameterMm": 0.9110350329149189,
+    "lengthM": 0.3302030559597914,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11983699919702903,
+    "t60Low": 8.632700014709739,
+    "t60High": 3.763582081849926
+   }
+  },
+  "74": {
+   "spec": {
+    "coreDiameterMm": 0.9055628171553869,
+    "lengthM": 0.3131714929206458,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11983829470322821,
+    "t60Low": 8.472674846652744,
+    "t60High": 3.6710153457463672
+   }
+  },
+  "75": {
+   "spec": {
+    "coreDiameterMm": 0.9000175397173883,
+    "lengthM": 0.29705387959142243,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1198416596878748,
+    "t60Low": 8.316283903713725,
+    "t60High": 3.5788842151653597
+   }
+  },
+  "76": {
+   "spec": {
+    "coreDiameterMm": 0.894379365324663,
+    "lengthM": 0.2818065462285983,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11984718124475628,
+    "t60Low": 8.164652576381014,
+    "t60High": 3.4871060861481955
+   }
+  },
+  "77": {
+   "spec": {
+    "coreDiameterMm": 0.8886311986368448,
+    "lengthM": 0.2673866387142307,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1198549520865898,
+    "t60Low": 8.018884750826361,
+    "t60High": 3.395594084296004
+   }
+  },
+  "78": {
+   "spec": {
+    "coreDiameterMm": 0.8827516553320023,
+    "lengthM": 0.25375431379220137,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11986507162409317,
+    "t60Low": 7.880020016513892,
+    "t60High": 3.3042533397130067
+   }
+  },
+  "79": {
+   "spec": {
+    "coreDiameterMm": 0.8767211039380776,
+    "lengthM": 0.24087075277761874,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11987764698163061,
+    "t60Low": 7.749007829042713,
+    "t60High": 3.212988149259479
+   }
+  },
+  "80": {
+   "spec": {
+    "coreDiameterMm": 0.8705224923643785,
+    "lengthM": 0.22869808170840702,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11989279395861718,
+    "t60Low": 7.626725696538069,
+    "t60High": 3.121716720729877
+   }
+  },
+  "81": {
+   "spec": {
+    "coreDiameterMm": 0.8641392750311424,
+    "lengthM": 0.21719999520128327,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11991063794654348,
+    "t60Low": 7.513918108041176,
+    "t60High": 3.030363346831375
+   }
+  },
+  "82": {
+   "spec": {
+    "coreDiameterMm": 0.8575588582805728,
+    "lengthM": 0.2063408971928417,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11993131481178469,
+    "t60Low": 7.411211807084166,
+    "t60High": 2.9388680181669953
+   }
+  },
+  "83": {
+   "spec": {
+    "coreDiameterMm": 0.8507728508158481,
+    "lengthM": 0.19608603812346526,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11995497175438445,
+    "t60Low": 7.319205521490753,
+    "t60High": 2.8472045883075268
+   }
+  },
+  "84": {
+   "spec": {
+    "coreDiameterMm": 0.8437778382070643,
+    "lengthM": 0.1864014457098071,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.11998176815278644,
+    "t60Low": 7.238316754791112,
+    "t60High": 2.7553663347539676
+   }
+  },
+  "85": {
+   "spec": {
+    "coreDiameterMm": 0.8365760624402264,
+    "lengthM": 0.17725391656148892,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12001187640410366,
+    "t60Low": 7.168911328450515,
+    "t60High": 2.663373524833321
+   }
+  },
+  "86": {
+   "spec": {
+    "coreDiameterMm": 0.8291757451276347,
+    "lengthM": 0.16861109260028756,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12004548276898885,
+    "t60Low": 7.1112837972164415,
+    "t60High": 2.571295237262681
+   }
+  },
+  "87": {
+   "spec": {
+    "coreDiameterMm": 0.8215911000743521,
+    "lengthM": 0.16044155139242086,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12008278822955044,
+    "t60Low": 7.0656379292187745,
+    "t60High": 2.479223646490036
+   }
+  },
+  "88": {
+   "spec": {
+    "coreDiameterMm": 0.8138413505280421,
+    "lengthM": 0.15271508404423326,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12012400936807147,
+    "t60Low": 7.032381290975228,
+    "t60High": 2.387277548623719
+   }
+  },
+  "89": {
+   "spec": {
+    "coreDiameterMm": 0.8059531642680736,
+    "lengthM": 0.14540225610320656,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1201693792735505,
+    "t60Low": 7.011124571966591,
+    "t60High": 2.295630045188292
+   }
+  },
+  "90": {
+   "spec": {
+    "coreDiameterMm": 0.7979552978217073,
+    "lengthM": 0.1384754233364021,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12021914848232007,
+    "t60Low": 7.002191927505764,
+    "t60High": 2.20446739708611
+   }
+  },
+  "91": {
+   "spec": {
+    "coreDiameterMm": 0.7898794262792211,
+    "lengthM": 0.1319085188836845,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12027358595821258,
+    "t60Low": 7.006210406026067,
+    "t60High": 2.114002003607104
+   }
+  },
+  "92": {
+   "spec": {
+    "coreDiameterMm": 0.781763980666471,
+    "lengthM": 0.12567629952616347,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12033298011693726,
+    "t60Low": 7.021966528937257,
+    "t60High": 2.024465292830761
+   }
+  },
+  "93": {
+   "spec": {
+    "coreDiameterMm": 0.7736442188168422,
+    "lengthM": 0.11975594595983986,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12039763989852721,
+    "t60Low": 7.050066828405455,
+    "t60High": 1.936101753911761
+   }
+  },
+  "94": {
+   "spec": {
+    "coreDiameterMm": 0.7655547515226024,
+    "lengthM": 0.11412650230540035,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12046789589089107,
+    "t60Low": 7.090946261836427,
+    "t60High": 1.8491467038329668
+   }
+  },
+  "95": {
+   "spec": {
+    "coreDiameterMm": 0.7575381185468404,
+    "lengthM": 0.1087673721391735,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.1205441015066666,
+    "t60Low": 7.143590600522348,
+    "t60High": 1.7638719093919517
+   }
+  },
+  "96": {
+   "spec": {
+    "coreDiameterMm": 0.7496261207379789,
+    "lengthM": 0.10366105780490126,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12062663421471273,
+    "t60Low": 7.208360009943623,
+    "t60High": 1.6805232413565176
+   }
+  },
+  "97": {
+   "spec": {
+    "coreDiameterMm": 0.7418478598321278,
+    "lengthM": 0.09879174699865058,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12071589682671023,
+    "t60Low": 7.28778595522814,
+    "t60High": 1.5984810547771717
+   }
+  },
+  "98": {
+   "spec": {
+    "coreDiameterMm": 0.7342419117312758,
+    "lengthM": 0.09414348180067755,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12081231883842157,
+    "t60Low": 7.3762257349738,
+    "t60High": 1.519794857923127
+   }
+  },
+  "99": {
+   "spec": {
+    "coreDiameterMm": 0.7268300616200984,
+    "lengthM": 0.08970360668597828,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12091635782421696,
+    "t60Low": 7.476359109763333,
+    "t60High": 1.4436618984363818
+   }
+  },
+  "100": {
+   "spec": {
+    "coreDiameterMm": 0.7196299398089104,
+    "lengthM": 0.08546089790626443,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12102850088247594,
+    "t60Low": 7.587978733744269,
+    "t60High": 1.3679572797850517
+   }
+  },
+  "101": {
+   "spec": {
+    "coreDiameterMm": 0.7126731474487337,
+    "lengthM": 0.08140315488582846,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12114926612844754,
+    "t60Low": 7.71083741742337,
+    "t60High": 1.297781294278629
+   }
+  },
+  "102": {
+   "spec": {
+    "coreDiameterMm": 0.7059679047545183,
+    "lengthM": 0.07752168690929385,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12127920423001735,
+    "t60Low": 7.844643541183021,
+    "t60High": 1.2305406726533936
+   }
+  },
+  "103": {
+   "spec": {
+    "coreDiameterMm": 0.6995189169231495,
+    "lengthM": 0.07380871861745994,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12141889998068627,
+    "t60Low": 7.989056218963913,
+    "t60High": 1.165779889930454
+   }
+  },
+  "104": {
+   "spec": {
+    "coreDiameterMm": 0.6933499368795434,
+    "lengthM": 0.07025485571773052,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12156897390280093,
+    "t60Low": 8.143680362640914,
+    "t60High": 1.1047162331994413
+   }
+  },
+  "105": {
+   "spec": {
+    "coreDiameterMm": 0.6874564394780822,
+    "lengthM": 0.06685412542490762,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12173008387277356,
+    "t60Low": 8.308061805628883,
+    "t60High": 1.0467787764200545
+   }
+  },
+  "106": {
+   "spec": {
+    "coreDiameterMm": 0.6818310905388316,
+    "lengthM": 0.06360114815190702,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12190292675858709,
+    "t60Low": 8.491701868751418,
+    "t60High": 0.9902531728980964
+   }
+  },
+  "107": {
+   "spec": {
+    "coreDiameterMm": 0.6764938035990026,
+    "lengthM": 0.06048810573478367,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12209175720376904,
+    "t60Low": 8.673673310956106,
+    "t60High": 0.938797743836646
+   }
+  },
+  "108": {
+   "spec": {
+    "coreDiameterMm": 0.6714290419792384,
+    "lengthM": 0.05751079985480918,
+    "wound": false,
+    "wrapOuterDiameterMm": 0
+   },
+   "strings": {
+    "strikePosition": 0.12229062705040342,
+    "t60Low": 8.8635726638344,
+    "t60High": 0.8904040251461767
+   }
+  }
+ }
+}
