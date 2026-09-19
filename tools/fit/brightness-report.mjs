@@ -1,0 +1,12 @@
+import { readWav } from './wavread.mjs';
+import { brightness, printBrightness, TIMES } from './brightness.mjs';
+import { renderNote } from './decay-report.mjs';
+const MIDI = Number(process.env.MIDI ?? 48), NAME = process.env.NOTE ?? 'C3';
+const s = readWav(`/home/user/samples/salamander/${NAME}v12.wav`);
+const real = brightness(s.data, s.rate);
+console.log('high band over low band, dB');
+console.log(' '.repeat(22) + TIMES.map((t) => `${t}s`.padStart(7)).join(''));
+printBrightness('real ' + NAME, real);
+const ours = brightness(renderNote(8, MIDI), 48000);
+printBrightness('model ' + NAME, ours);
+printBrightness('model - real', ours.map((v, i) => v - real[i]));
