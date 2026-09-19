@@ -30,10 +30,13 @@ const rms = (x, a, n) => { let v = 0; for (let i = a; i < a + n; i++) v += (x[i]
 const ref = rms(s.data, Math.round(0.3 * s.rate), 9600);
 
 // depth, fall time. rise is ~0 throughout: the damping is there at contact.
-const LENS = (process.env.LENS ?? '0.08,0.2,0.35,0.55,0.8').split(',').map(Number);
-const TAKES = LENS.map((L) => [
-  `eased build over ${Math.round(L * 1000)} ms`,
-  { transientRiseS: 0.0005, transientDepth: 0.7, transientTauS: L },
+// SKEWS pushes the release toward the end of the build: 1 is a symmetric S,
+// higher holds the damping near full for most of it and then opens quickly.
+const LEN = Number(process.env.LEN ?? 0.2);
+const SKEWS = (process.env.SKEWS ?? '1,3,6,10').split(',').map(Number);
+const TAKES = SKEWS.map((k) => [
+  `build ${Math.round(LEN * 1000)} ms, skew ${k}`,
+  { transientRiseS: 0.0005, transientDepth: 0.7, transientTauS: LEN, transientSkew: k },
 ]);
 
 const len = Math.round(3.5 * FS), gap = Math.round(0.45 * FS);

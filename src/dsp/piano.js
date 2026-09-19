@@ -48,6 +48,7 @@ export class Piano {
     this.transientDepth = opts.transientDepth ?? null;   // null = per note
     this.transientTauS = opts.transientTauS ?? null;    // fall; null = per note
     this.transientRiseS = opts.transientRiseS ?? null;   // rise; null = per note
+    this.transientSkew = opts.transientSkew ?? null;     // release skew; null = per note
     // Hammer knobs, for fitting the attack against the samples.
     this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
     this.feltTauUs = opts.feltTauUs ?? 2;
@@ -137,6 +138,7 @@ export class Piano {
         // release most of it happens in the middle, so the figure is roughly
         // three times the old exponential time constant for the same feel.
         s.nlPhaseInc = 1 / Math.max((this.transientTauS ?? n.transientTauS) * fs, 1);
+        s.nlSkew = Math.max(1, Math.round(this.transientSkew ?? n.transientSkew ?? 1));
         s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS ?? n.transientRiseS, 1e-5) * fs));
         s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all

@@ -19,6 +19,7 @@ export class WaveguideString {
     this.nlR = 0;                     // rise state, 0 at the strike
     this.nlPhase = 1;                 // 0 at the strike, 1 when the build ends
     this.nlPhaseInc = 1;              // 1 / (build length in samples)
+    this.nlSkew = 1;                  // how far the release is pushed to the end
     this.nlRiseA = 1;                 // per-sample rise coefficient
     this.nlB = 0;                     // its lowpass coefficient
     this.apX = new Float64Array(0);   // x[n-1] per section
@@ -177,12 +178,20 @@ export class WaveguideString {
       // then lets go gently instead of arriving at zero still moving. Easing
       // out at the end is also what allows the whole build to be longer
       // without the note sounding as though it fades up.
-      const p = this.nlPhase;
-      const fall = 1 - p * p * p * (p * (p * 6 - 15) + 10);
+      // Skewed: the phase is raised to a power before the smootherstep, so
+      // the curve is asymmetric. At skew 1 it is the plain S, half the
+      // release done halfway through. At skew 6 the damping is still 96 per
+      // cent of full at the halfway point and most of the release happens in
+      // the last tenth -- the note holds dark and then opens, rather than
+      // opening steadily. That last part is what the ear was asking for: a
+      // slope that eats almost all of the beginning.
+      let q = this.nlPhase;
+      for (let k = 1; k < this.nlSkew; k++) q *= this.nlPhase;
+      const fall = 1 - q * q * q * (q * (q * 6 - 15) + 10);
       const m = this.nlPeak * this.nlR * fall;
       this.nlZ = (1 - this.nlB) * x + this.nlB * this.nlZ;
       x -= m * (x - this.nlZ);
-      this.nlPhase = p + this.nlPhaseInc;
+      this.nlPhase += this.nlPhaseInc;
       if (this.nlPhase >= 1) this.nlOn = false;
     }
 
