@@ -91,6 +91,69 @@
       "depth": 0.14,
       "t60HighScale": 1,
       "errDb": 3.81
+    },
+    {
+      "midi": 54,
+      "note": "F#3",
+      "depth": 0.07,
+      "t60HighScale": 2,
+      "errDb": 5.24
+    },
+    {
+      "midi": 57,
+      "note": "A3",
+      "depth": 0.07,
+      "t60HighScale": 2,
+      "errDb": 5.61
+    },
+    {
+      "midi": 60,
+      "note": "C4",
+      "depth": 0.07,
+      "t60HighScale": 2,
+      "errDb": 2.3
+    },
+    {
+      "midi": 63,
+      "note": "D#4",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 6.32
+    },
+    {
+      "midi": 66,
+      "note": "F#4",
+      "depth": 0.14,
+      "t60HighScale": 1,
+      "errDb": 4.33
+    },
+    {
+      "midi": 69,
+      "note": "A4",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 4.86
+    },
+    {
+      "midi": 72,
+      "note": "C5",
+      "depth": 0.14,
+      "t60HighScale": 2,
+      "errDb": 7.77
+    },
+    {
+      "midi": 75,
+      "note": "D#5",
+      "depth": 0,
+      "t60HighScale": 1,
+      "errDb": 6.75
+    },
+    {
+      "midi": 78,
+      "note": "F#5",
+      "depth": 0,
+      "t60HighScale": 0.03,
+      "errDb": 7.09
     }
   ]
 }
