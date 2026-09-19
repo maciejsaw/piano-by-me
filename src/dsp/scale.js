@@ -73,11 +73,16 @@ export const DEFAULT_SCALE = {
     // movement is not beating at all -- see tensionDrift in piano.js. With the
     // drift carrying the broadband part, detune only has to supply the slow
     // coherent layer underneath it.
-    detune:   [[21, 0.0], [30, 0.18], [48, 0.30], [72, 0.48], [108, 0.78]],
+    detune:   [[21, 0.0], [30, 0.36], [48, 0.60], [72, 0.96], [108, 1.56]],
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
     lengthSpread: [[21, 0.0015], [48, 0.0030], [108, 0.0050]],
+    // Fractional spread in wire gauge across a unison: drawing tolerance.
+    gaugeSpread:  [[21, 0.004], [48, 0.008], [108, 0.010]],
+    // Fractional spread in where the hammer meets each string, from the strings
+    // being neither parallel nor level with one another.
+    strikeSpread: [[21, 0.04], [48, 0.06], [108, 0.08]],
     // Fractional difference in how hard the hammer drives each string.
     levelSpread:  [[21, 0.03], [48, 0.06], [108, 0.08]],
   },
@@ -175,6 +180,15 @@ export function buildScale(scale = DEFAULT_SCALE) {
 
     // Unison spread: centre string at nominal, outers either side.
     const shape = count === 1 ? [0] : count === 2 ? [-0.5, 0.5] : [-1, 0, 1];
+    // Each imperfection gets its OWN pattern across the unison, because in a
+    // real instrument they are unrelated: the wire is not mis-drawn by the same
+    // proportion that the bridge pin is offset. Keying them all to one pattern
+    // makes the three strings differ by a single scalar, which leaves their
+    // partial ladders parallel -- and parallel ladders beat as one object, at
+    // one rate, across the whole spectrum. That is a sweep, not a unison.
+    // Zero-mean, so none of them shifts the note as a whole.
+    const gShape = count === 3 ? [0.8, -1, 0.2] : shape;
+    const sShape = count === 3 ? [-0.4, 1, -0.6] : shape;
     const offsets = shape.map((k) => k * detune);
     // The three strings of one note are NOT identical wire at identical length.
     // The bridge pins are offset, so their speaking lengths differ by a fraction
@@ -188,12 +202,24 @@ export function buildScale(scale = DEFAULT_SCALE) {
     // instead of sweeping.
     const lenSpread = lerpTable(scale.voicing.lengthSpread, midi);
     const lvlSpread = lerpTable(scale.voicing.levelSpread, midi);
+    const gaugeSpread = lerpTable(scale.voicing.gaugeSpread, midi);
+    const strikeSpread = lerpTable(scale.voicing.strikeSpread, midi);
     const strings = offsets.map((cents, i) => ({
       index: i,
       shape: shape[i],
       detuneCents: cents,
-      // Per-string geometry, and the physics that follows from it.
-      spec: { ...spec, lengthM: spec.lengthM * (1 + lenSpread * shape[i]) },
+      // Per-string geometry, and the physics that follows from it. Drawn wire
+      // holds its gauge to about a percent, and a string a percent thicker is
+      // heavier, so it needs more tension for the same pitch and is stiffer
+      // besides -- B goes as d^4 over T. Length and gauge therefore move the
+      // partial ladder in DIFFERENT proportions, which is the point: three
+      // strings that differ only by a scalar keep parallel ladders and beat as
+      // one object, and that is heard as a sweep rather than as a piano.
+      spec: {
+        ...spec,
+        lengthM: spec.lengthM * (1 + lenSpread * shape[i]),
+        coreDiameterMm: spec.coreDiameterMm * (1 + gaugeSpread * gShape[i]),
+      },
       // Hammers do not strike three strings equally hard, even after voicing.
       // Equal drive makes the three contributions cancel almost completely at a
       // beat null, which deepens the swing far past anything a piano does.
@@ -203,7 +229,12 @@ export function buildScale(scale = DEFAULT_SCALE) {
       t60Damped: lerpTable(scale.voicing.t60Damped, midi),
       // Prompt decay: how fast the common (bridge-driving) mode dies.
       t60Prompt: lerpTable(scale.voicing.t60Prompt, midi),
-      strikePosition: lerpTable(scale.voicing.strikePos, midi),
+      // The three strings of a unison are not parallel and do not sit at one
+      // height, so one hammer face meets each at a slightly different fraction
+      // of its speaking length. Strike position sets where the comb notch
+      // falls, so each string gets its own notch and their partial amplitudes
+      // stop rising and falling together.
+      strikePosition: lerpTable(scale.voicing.strikePos, midi) * (1 + strikeSpread * sShape[i]),
       coupling: lerpTable(scale.voicing.coupling, midi),
       // Hammer never hits three strings at the same instant.
       contactOffsetUs: [0, 35, 70][i] ?? 0,

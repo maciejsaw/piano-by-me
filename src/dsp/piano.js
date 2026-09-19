@@ -44,8 +44,8 @@ export class Piano {
     this.bridgeSpread = opts.bridgeSpread ?? 1.3;
     // Tension drift: relative RMS wander of each string's length, and the
     // bandwidth it wanders over.
-    this.tensionDrift = opts.tensionDrift ?? 3e-4;
-    this.driftHz = opts.driftHz ?? 0.25;
+    this.tensionDrift = opts.tensionDrift ?? 6e-4;
+    this.driftHz = opts.driftHz ?? 1.2;
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
