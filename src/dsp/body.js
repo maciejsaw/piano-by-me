@@ -171,7 +171,9 @@ export function boxModes(Lx, Ly, Lz, fMax = 1200, limit = 160) {
  */
 class Diffuser {
   constructor(fs, { spreadMs = 24, stages = 5, g = 0.62 } = {}) {
-    const ratios = [0.04, 0.07, 0.13, 0.22, 0.37, 0.6];
+    // Ascending, and enough of them that a bigger board can have more stages
+    // without the lengths starting to repeat and ring.
+    const ratios = [0.04, 0.07, 0.13, 0.22, 0.37, 0.6, 0.78, 0.95];
     this.g = g;
     this.buf = [];
     this.pos = [];
