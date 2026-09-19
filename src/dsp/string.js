@@ -108,13 +108,18 @@ export class WaveguideString {
   /**
    * How much of this string's motion is reaching the soundboard right now.
    * Eased in from `swellFloor` to 1, with the same skew as the build, so the
-   * note arrives rather than appears. A handful of multiplies while it is
-   * running and one compare once it is done.
+   * note arrives rather than appears.
+   *
+   * The skew is CONTINUOUS, not an integer power. It was integer while it was
+   * only used for the build, and that turned out to matter here: whole steps
+   * are too coarse for the ear on this one. 2 was audibly too curved and 1 is
+   * no skew at all, so the useful setting sits between them and has to be
+   * reachable. One pow per sample per string, and only for the tens of
+   * milliseconds the swell is running -- the compare below ends it.
    */
   radiation() {
     if (this.swell >= 1) return 1;
-    let q = this.swell;
-    for (let k = 1; k < this.swellSkew; k++) q *= this.swell;
+    const q = this.swellSkew === 1 ? this.swell : Math.pow(this.swell, this.swellSkew);
     const eased = q * q * q * (q * (q * 6 - 15) + 10);
     this.swell += this.swellInc;
     return this.swellFloor + (1 - this.swellFloor) * eased;

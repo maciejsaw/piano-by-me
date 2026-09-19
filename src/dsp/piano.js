@@ -144,9 +144,9 @@ export class Piano {
         // three times the old exponential time constant for the same feel.
         s.nlPhaseInc = 1 / Math.max((this.transientTauS ?? n.transientTauS) * fs, 1);
         s.nlSkew = Math.max(1, Math.round(this.transientSkew ?? n.transientSkew ?? 1));
-        s.swellInc = 1 / Math.max((this.swellS ?? n.swellS ?? 0.02) * fs, 1);
-        s.swellFloor = this.swellFloor ?? n.swellFloor ?? 1;
-        s.swellSkew = Math.max(1, Math.round(this.swellSkew ?? n.swellSkew ?? 2));
+        s.swellInc = 1 / Math.max((this.swellS ?? n.swellS ?? 0.024) * fs, 1);
+        s.swellFloor = this.swellFloor ?? n.swellFloor ?? 0.40;
+        s.swellSkew = Math.max(1, this.swellSkew ?? n.swellSkew ?? 1.6);
         s.nlRiseA = 1 - Math.exp(-1 / (Math.max(this.transientRiseS ?? n.transientRiseS, 1e-5) * fs));
         s.nlSustain = this.transientSustain;
         // Each string wanders independently -- a shared sequence would move all
