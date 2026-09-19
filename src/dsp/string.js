@@ -29,6 +29,8 @@ export class WaveguideString {
     this.diffLeak = 0.05;              // how much the differential mode still moves the bridge
     this.couplingA = 0;               // one-pole coefficient for the bridge's falling admittance
     this.delayScale = 1;              // tension drift, as a relative delay change
+    this.lock = 1;                    // entrainment toward the unison's common pitch
+    this.lockTarget = 1;
     this.drift = 0;                   // its lowpassed-noise state
     this.driftSeed = 22222;
     this.cLp = 0;                     // its state (common mode)

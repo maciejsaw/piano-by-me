@@ -46,6 +46,9 @@ export class Piano {
     // bandwidth it wanders over.
     this.tensionDrift = opts.tensionDrift ?? 6e-4;
     this.driftHz = opts.driftHz ?? 1.2;
+    // How far a unison is pulled to a common pitch, and how long it takes.
+    this.unisonLock = opts.unisonLock ?? 0;
+    this.lockTimeS = opts.lockTimeS ?? 1.5;
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
@@ -125,6 +128,32 @@ export class Piano {
       this.notes.push({ ...n, voices, zone, held: false });
     }
 
+    // Unison entrainment (Weinreich). Three strings joined at a bridge do not
+    // simply beat forever at whatever interval they were tuned to: the bridge
+    // pulls them toward a COMMON frequency, and once the coupling outweighs the
+    // detuning they lock to it. What you hear is the detuning present at the
+    // strike, fading over a second or two into one coherent tone.
+    //
+    // A waveguide cannot do this on its own. Each string's pitch is set by the
+    // length of its own delay line, and a junction that only exchanges energy
+    // damps the common mode without moving anybody's frequency. So the pull is
+    // explicit: each string's delay is drawn toward the unison mean, by
+    // unisonLock, over lockTimeS. At 0 they beat forever, as before.
+    // Pull the PITCH together, which is not the same as pulling the delay lines
+    // together: each string's dispersion chain contributes its own share of the
+    // loop, so equal delay lines would mean unequal pitches. Work in loop
+    // periods, and convert the wanted change back into a delay-line scaling.
+    for (const note of this.notes) {
+      let mean = 0;
+      for (const v of note.voices) mean += fs / v.coeffs.f0;
+      mean /= note.voices.length;
+      for (const v of note.voices) {
+        const period = fs / v.coeffs.f0;
+        v.lockTarget = 1 + (this.unisonLock * (mean - period)) / v.coeffs.delay;
+        v.lock = 1;
+      }
+    }
+
     // Each string's share of its zone's motion.
     //
     // A strict average (1/N) is unconditionally passive but it is not physics:
@@ -191,6 +220,8 @@ export class Piano {
         strikeDelay: s.coeffs.strikeDelay,
         gain: note.gain * (s.tuning.drive ?? 1),
       });
+      // A fresh strike re-arms the detuning; the pull starts over from it.
+      s.lock = 1;
       const skew = Math.round(this.fs * s.tuning.contactOffsetUs * 1e-6);
       if (skew > 0) {
         const padded = new Float64Array(pulse.length + skew);
@@ -261,17 +292,21 @@ export class Piano {
     const a = Math.exp((-2 * Math.PI * this.driftHz) / blockRate);
     // A one-pole on unit-variance white noise has variance (1-a)/(1+a).
     const scale = this.tensionDrift / Math.sqrt((1 - a) / (1 + a));
+    // Entrainment: how far each string has been pulled toward the unison's
+    // common pitch by now. Rises from 0 at the strike with lockTimeS.
+    const lockA = Math.exp(-1 / (Math.max(this.lockTimeS, 1e-3) * blockRate));
     for (let k = 0; k < this.active.length; k++) {
       const s = this.active[k];
       s.driftSeed = (s.driftSeed * 1103515245 + 12345) & 0x7fffffff;
       const white = s.driftSeed / 0x3fffffff - 1;
       s.drift = a * s.drift + (1 - a) * white * scale;
-      s.setDelayScale(1 + s.drift);
+      s.lock = s.lockTarget + (s.lock - s.lockTarget) * lockA;
+      s.setDelayScale(s.lock * (1 + s.drift));
     }
   }
 
   render(out, n) {
-    if (this.tensionDrift > 0) this.drift(this.fs / Math.max(n, 1));
+    if (this.tensionDrift > 0 || this.unisonLock > 0) this.drift(this.fs / Math.max(n, 1));
     const active = this.active, activeNotes = this.activeNotes;
     const nj = this.noteJunction, acc = this.noteAcc;
     const zAcc = this.zoneAcc, zVel = this.zoneVel, zDrive = this.zoneDrive;
