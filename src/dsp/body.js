@@ -209,6 +209,13 @@ export class Body {
     // --- radiation / baffle EQ, normally the fitted curve ---
     this.curve = opts.curve ?? DEFAULT_RADIATION;
     this.eq = new BandEq(fs, this.curve);
+    // Third-octave, so it needs narrower sections than the radiation curve's
+    // octave bands -- fitted the same way, against the cascade's real
+    // response rather than band by band.
+    this.correction = opts.correction === null ? null : (opts.correction ?? FINAL_EQ);
+    this.eqFix = this.correction
+      ? new BandEq(fs, this.correction, { centres: this.correction.map((c) => c[0]), q: 3 })
+      : null;
 
     // --- cavity ---
     const cw = opts.caseWidth ?? 1.45;      // m, across the keyboard
@@ -250,6 +257,7 @@ export class Body {
     let cav = 0;
     for (let i = 0; i < this.cavity.length; i++) cav += this.cavity[i].process(x);
     let y = this.eq.process(x + this.cavityMix * cav);
+    if (this.eqFix) y = this.eqFix.process(y);
     const d = this.lidBuf[this.lidPos];
     this.lidBuf[this.lidPos] = y;
     this.lidPos = (this.lidPos + 1) % this.lidBuf.length;
@@ -259,6 +267,7 @@ export class Body {
 
   reset() {
     this.eq.reset();
+    if (this.eqFix) this.eqFix.reset();
     this.cavity.forEach((b) => b.reset());
     this.lidBuf.fill(0);
     this.lidPos = 0;
@@ -274,6 +283,41 @@ export class Body {
  * acting as a baffle to keep the very bottom from cancelling. Replace it with a
  * curve fitted to a real instrument (tools/fit/body.mjs) for a specific piano.
  */
+/**
+ * The final correction, fitted rather than reasoned: tools/fit/final-eq.mjs.
+ *
+ * Every other curve here follows from something physical -- plate radiation
+ * efficiency, a baffle, box modes. This one is the residue: all thirty sampled
+ * notes played, measured a second after the blow when the hammer and the
+ * transient stage are long finished and only the instrument's own colour is
+ * left, and the difference in third-octave bands.
+ *
+ * Each note is measured separately, levelled against its own mean and given
+ * ONE vote. Summing the notes as audio instead would have let the bottom of
+ * the keyboard write the whole curve -- a second in, the bass is some 20 dB
+ * louder than the top two octaves -- and the treble would then have been
+ * fitted by notes that have no energy up there.
+ *
+ * It starts at 100 Hz and stops at about 3 kHz, and both ends are real limits
+ * rather than oversights: below the first band only a few notes have any
+ * fundamental at all, and a second after the strike a piano has almost
+ * nothing left above the last one. A band fewer than eight notes reach is a
+ * measurement of those notes, not of the instrument, and is left out -- which
+ * also matters because the count MOVES as the correction changes, so without
+ * a quorum a second pass chases its own first pass up into the top octaves.
+ *
+ * Two passes: the measurement is made with whatever correction is in force,
+ * so what comes back is a residual and the passes compose. The first left
+ * 8-12 dB of error, the second 2 dB across most of the range.
+ *
+ * One thing this does NOT fix, and should not be read as fixing: the boost
+ * above 2 kHz is compensating for our note going dark after a couple of
+ * hundred milliseconds, which is a string-loss problem. An EQ can make the
+ * average right while leaving every note's trajectory wrong, and here it is
+ * at the clamp, which is the measurement saying so.
+ */
+export const FINAL_EQ = [[101, 12], [127, 5.69], [160, 1.19], [202, -10.2], [254, -9], [320, -8.52], [403, -5.84], [508, -4.61], [640, -1.52], [806, -5.23], [1016, -1.59], [1280, 3.62], [1613, 3.32], [2032, 5.18], [2560, 9.13], [3225, 12]];
+
 export const DEFAULT_RADIATION = [
   [31, -10], [62, -8], [125, -6], [250, -4.5], [500, -1.5],
   [1000, 2.5], [2000, 6.5], [4000, 8.0], [8000, 6.0], [14000, 2.0],
