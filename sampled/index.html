@@ -22,8 +22,11 @@ button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 code{background:var(--panel2);padding:1px 5px;border-radius:3px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
-main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 620px;gap:14px;align-items:start}
-@media(max-width:1340px){main{grid-template-columns:1fr}}
+/* One column. The wrappers become display:contents so every panel is a direct
+   flex item of main and can be ordered independently of the markup. */
+main{padding:14px;max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:0}
+main>div{display:contents}
+
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
 .panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 #kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
@@ -54,13 +57,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
 .eqband output{flex:0 0 84px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 #velTable td:last-child{text-align:right}
-.envgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media(max-width:700px){.envgrid{grid-template-columns:1fr}}
+.envgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media(max-width:1100px){.envgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.envgrid{grid-template-columns:1fr}}
 .env.wide{grid-column:1/-1}
 .env h3{font-size:11px;color:var(--ink);margin:0 0 6px;display:flex;align-items:center;gap:6px;font-weight:600}
 .env h3 span{margin-left:auto;display:flex;gap:4px}
 .env h3 button{padding:1px 6px;font-size:10px}
-.env canvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;touch-action:none;cursor:grab}
+.env canvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;touch-action:none;cursor:grab}
 .env p{color:var(--dim);font-size:10px;line-height:1.6;margin:6px 0 0}
 .env .row label{flex:0 0 86px}
 .env .row output{flex:0 0 74px}
@@ -132,7 +136,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
 <main>
   <div>
-    <div class="panel">
+    <div class="panel" style="order:1">
       <h2>Keyboard — click to play (hit high on the key for more velocity), shift-click to lift its dampers silently</h2>
       <div id="kb"><div id="kbInner"></div></div>
       <div class="hint">
@@ -144,7 +148,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:3">
       <h2>Velocity response — <span id="noteName">C4</span></h2>
       <canvas id="velCanvas" height="240"></canvas>
       <div class="hint" id="velHint"></div>
@@ -155,7 +159,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         and changing the layer bias never changes the level. Both are per key: draw them on the right.</div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:6">
       <h2>Output &amp; stereo</h2>
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2" step="0.01" value="0.45"><output id="gainV"></output></div>
       <div class="row"><label>stereo spread</label><input type="range" id="spread" min="0" max="1" step="0.01" value="0.55"><output id="spreadV"></output></div>
@@ -167,7 +171,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         soundboard had and the microphones could not.</div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:7">
       <h2>Output EQ — after everything, including the room</h2>
       <canvas id="eqCanvas" height="220"></canvas>
       <div id="eqBands"></div>
@@ -179,7 +183,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         <b>Level trim</b> for a single note that is wrong, not this.</div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:8">
       <h2>Room</h2>
       <div class="row"><label>room level</label><input type="range" id="wet" min="0" max="1.2" step="0.01" value="0.34"><output id="wetV"></output></div>
       <div class="row"><label>size</label><input type="range" id="size" min="0.4" max="2" step="0.01" value="1"><output id="sizeV"></output></div>
@@ -192,7 +196,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         cannot move you across the room.</div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:5">
       <h2>Sympathetic resonance</h2>
       <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="0.8" step="0.005" value="0.15"><output id="resAmtV"></output></div>
       <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
@@ -206,8 +210,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         it up. <b>Build with velocity</b> is the exponent on velocity: 2 is the energy a hammer delivers.</div>
     </div>
 
-    <div class="panel">
-      <h2>Envelopes — drag the two handles on each curve</h2>
+    <div class="panel" style="order:4">
+      <h2>Envelopes — drag the two handles on each curve · shapes are global, their timings are per key where it matters</h2>
       <div class="envgrid">
         <div class="env">
           <h3>Note attack<span id="naPreset"></span></h3>
@@ -219,7 +223,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         <div class="env">
           <h3>Damper fall<span id="nrPreset"></span></h3>
           <canvas id="nrCanvas" height="220"></canvas>
-          <div class="hint" style="margin:6px 0 0">Duration is per key — the <b>Damper fall</b> curve on the right.
+          <div class="hint" style="margin:6px 0 0">Duration is per key — the <b>Damper fall</b> parameter above.
              This is the shape, and it is what decides whether a released chord sounds stopped or swallowed.
              The same shape stops a sympathetic voice, because it is the same damper.</div>
         </div>
@@ -253,7 +257,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel" style="order:9">
       <h2>Mechanics</h2>
       <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
       <div class="row"><label>una corda</label><input type="range" id="una" min="0" max="1" step="0.01" value="0"><output id="unaV"></output></div>
@@ -271,7 +275,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
   </div>
 
   <div>
-    <div class="panel">
+    <div class="panel" style="order:2">
       <h2>Parameters — pick the keys once, then edit; the chart is a preview</h2>
       <div id="editor"></div>
       <div class="hint">Every slider moves whatever the strip at the top has selected — the whole
@@ -285,7 +289,12 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         <b>total</b> across all three tiers, which is where a cliff shows up, and the caption names
         the biggest jump between neighbouring keys. Clicking one selects that key to edit.
         <b>smooth</b> rounds off the per-key layer only, so a deliberate single-key fix survives it
-        unless you ask. Edits are stored in this browser and reload with the page.</div>
+        unless you ask. Edits are stored in this browser and reload with the page.
+        <br><br>Everything not in this list is one value for the instrument, because it is a property of the
+        instrument rather than of a key: master, stereo spread and perspective, room, resonance, the envelope
+        <i>shapes</i>, the EQ, and the mechanical noise levels. A Bézier shape cannot be a per-key offset —
+        there is no meaningful "twenty percent of a curve" to add — but its <i>duration</i> can be, and the
+        damper fall's already is: the shape is global, the time it takes is the <b>Damper fall</b> parameter here.</div>
     </div>
   </div>
 </main>

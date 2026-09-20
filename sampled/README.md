@@ -398,9 +398,31 @@ a requirement, since they are the same strings.
 The eleven above are per-key. Everything else is one value for the instrument,
 because it is a property of the instrument and not of a key: master level,
 stereo spread and perspective, the five room controls, the five resonance
-controls, the five envelopes, the four EQ bands, and the mechanical noise
-levels. The envelope times and the resonance amount could reasonably become
-scoped; nothing else on that list could.
+controls, the envelope **shapes**, the four EQ bands, and the mechanical noise
+levels.
+
+The envelopes are worth being precise about, because "is it scoped?" has a
+different answer for the two halves of one:
+
+- **A Bézier shape cannot be a per-key offset.** The tiers here add, and there
+  is no meaningful "twenty percent of a curve" to add to another curve. The
+  shapes are global and should be.
+- **A duration can be**, and the damper fall's already is: the *shape* of the
+  fall is the Bézier in the Envelopes panel, the *time* it takes is the
+  per-key **Damper fall** parameter. That split is the right one, and the
+  other three envelope times could take it too.
+
+One thing that already varies per key without being a parameter: the
+release-level-against-hold-time editor draws the **selected key's own measured
+decay** behind the curve, so stepping through keys shows how differently the
+bass and the treble hold their energy.
+
+### The page
+
+One column, in the order the work happens: keyboard, parameters, the velocity
+readout for the selected key, envelopes, resonance, stereo, EQ, room,
+mechanics. The panels are ordered with CSS rather than by markup position
+(`display: contents` on the wrappers), so rearranging them is a number.
 
 ### Output EQ
 
