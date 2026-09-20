@@ -231,7 +231,9 @@ const ZOOMS = [1, 0.4, 0.15, 0.05];
  * The scope is the thing being played with, so it lives once at the top
  * rather than eleven times down the side.
  */
-export function createEditor(root, curves, onChange, selected = () => 60) {
+const NO_KEYS = new Set();
+
+export function createEditor(root, curves, onChange, selected = () => 60, pressed = () => NO_KEYS) {
   const rows = [];
   let timer = 0;
   const notify = () => { if (timer) return; timer = setTimeout(() => { timer = 0; onChange(); }, 60); };
@@ -289,6 +291,7 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
       mapX.fillStyle = inSel ? '#d9a441' : edge ? `rgba(217,164,65,${edge * 0.55})` : (BLACK.has(m % 12) ? '#100e0a' : '#241f18');
       mapX.fillRect(i * bw, 0, Math.max(1, bw - 0.5), h - 11 * devicePixelRatio);
     }
+    paintPressed(mapX, w, h - 11 * devicePixelRatio, bw);
     mapX.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
     mapX.textAlign = 'center';
     for (let m = 24; m <= HIGH; m += 12) {
@@ -301,6 +304,27 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
       mapX.strokeRect((cur - LOW) * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 11 * devicePixelRatio - 1);
     }
     bar.querySelector('.sel-what').textContent = scopeName();
+  }
+
+  /**
+   * The keys under your fingers, on every chart at once.
+   *
+   * The point is that editing and playing are the same activity here: you
+   * play, you hear one key that is wrong, and the chart tells you which
+   * column that key is. Without this you are counting octaves along a strip
+   * of eighty-eight bars to find the note you just heard.
+   *
+   * Drawn under the curve rather than over it, so it never hides the thing
+   * being edited.
+   */
+  function paintPressed(c, w, h, bw) {
+    const down = pressed();
+    if (!down || !down.size) return;
+    c.fillStyle = 'rgba(111,168,220,0.42)';
+    for (const m of down) {
+      if (m < LOW || m > HIGH) continue;
+      c.fillRect((m - LOW) * bw, 0, Math.max(1.5, bw), h);
+    }
   }
 
   const keyAt = (e) => {
@@ -397,6 +421,7 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
         if (m >= sel.lo && m <= sel.hi) { ctx.fillStyle = '#211c13'; ctx.fillRect(i * bw, 0, bw, h); }
         else if (BLACK.has(m % 12)) { ctx.fillStyle = '#131109'; ctx.fillRect(i * bw, 0, bw, h); }
       }
+      paintPressed(ctx, w, h, bw);
       ctx.strokeStyle = '#4a4134'; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
 
       const per = curves.k[p.key];
@@ -465,6 +490,15 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
   }
 
   function refresh() { drawMap(); for (const r of rows) r.draw(); }
+
+  // Coalesced to one frame, because a chord arrives as six note-ons in a few
+  // milliseconds and each one would otherwise redraw eleven charts.
+  let raf = 0;
+  function playing() {
+    if (raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; refresh(); });
+  }
+
   drawMap();
-  return { refresh };
+  return { refresh, playing };
 }

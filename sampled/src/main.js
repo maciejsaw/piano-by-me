@@ -61,12 +61,12 @@ async function start() {
 function noteOn(midi, vel) {
   if (!engine || midi < LOW || midi > HIGH) return;
   engine.noteOn(midi, vel);
-  down.add(midi); paint(midi);
+  down.add(midi); paint(midi); editor?.playing();
 }
 function noteOff(midi, vel = 64) {
   if (!engine) return;
   engine.noteOff(midi, vel);
-  down.delete(midi); paint(midi);
+  down.delete(midi); paint(midi); editor?.playing();
 }
 function toggleSilent(midi) {
   silent.has(midi) ? silent.delete(midi) : silent.add(midi);
@@ -170,7 +170,7 @@ function buildUI() {
     engine.refreshStrips();
     renderNote();
     save();
-  }, () => selNote);
+  }, () => selNote, () => down);
 
   bezierRow('na', envelopes.noteAttack);
   bezierRow('nr', envelopes.noteRelease);
@@ -232,7 +232,11 @@ function buildUI() {
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
   $('sostBtn').onclick = () => setSostenuto(!engine.sostenuto.size);
   $('unaBtn').onclick = () => setUna(engine.unaCorda >= 0.5 ? 0 : 1);
-  $('panicBtn').onclick = () => { engine.panic(); down.clear(); silent.clear(); for (let m = LOW; m <= HIGH; m++) paint(m); };
+  $('panicBtn').onclick = () => {
+    engine.panic(); down.clear(); silent.clear();
+    for (let m = LOW; m <= HIGH; m++) paint(m);
+    editor?.playing();
+  };
   renderNote();
 }
 
