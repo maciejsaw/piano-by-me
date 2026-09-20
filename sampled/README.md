@@ -313,6 +313,15 @@ ways of saying the same thing and no way to tell by looking which had been
 used. Clicking a chart selects that key — it moves the selection, it never
 changes a value.
 
+**Keys you are holding light up on every chart**, and on the scope strip,
+because editing and playing are the same activity here: you play, you hear one
+key that is wrong, and the chart tells you which column that key is. Without it
+you are counting octaves along a strip of eighty-eight bars to find the note
+you just heard. The highlight is drawn under the curve so it never hides what
+is being edited, and repaints are coalesced to one frame — a chord arrives as
+six note-ons a few milliseconds apart, and each one would otherwise redraw
+eleven charts.
+
 Two things make a cliff visible rather than something you discover later. The
 gold line on every chart is the **total** — global plus ranges plus per key,
 not the layer being edited — because a cliff is a property of the sum and
