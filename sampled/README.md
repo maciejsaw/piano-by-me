@@ -484,6 +484,13 @@ because it passed.
   estimator says so — `hzUncertain` in the manifest — rather than pretending.
 - **One microphone position.** The stereo spread is reconstructed, not recorded.
   No amount of matrixing invents the soundboard's near field.
+- **The stereo image is very wide, and that is the recording.** Salamander is a
+  spaced pair: measured natively, C3 and C4 sit at about +0.5 L/R correlation
+  and **C5 at −0.79**. Averaged over a mix of notes the result is near zero
+  correlation, which is wide and slightly hollow on headphones, and means the
+  library does not fold down to mono cleanly. Narrowing with the width control
+  makes that worse rather than better, since mono is where those channels
+  cancel.
 - **Sympathetic resonance is played, not solved.** It is driven by a physically
   motivated coupling matrix and a physically motivated accumulator, but the
   voices are recordings of *struck* notes with the strike cut off, not strings

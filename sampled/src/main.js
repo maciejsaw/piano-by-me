@@ -192,7 +192,7 @@ function buildUI() {
   bind('size', (v) => engine.setRoom({ width: 7.2 * v, depth: 9.5 * v, height: 3.8 * Math.sqrt(v) }), (v) => (9.5 * v).toFixed(1) + ' m deep');
   bind('absorb', (v) => engine.setRoom({ absorption: v }));
   bind('dist', (v) => engine.setRoom({ distance: v }), (v) => v < 0.5 ? 'over the strings' : v < 0.8 ? 'at the piano' : 'across the room');
-  bind('resAmt', (v) => { engine.res.amount = v; }, db);
+  bind('resAmt', (v) => { engine.res.amount = v; }, (v) => `${v.toFixed(3)} (${(20 * Math.log10(v / 0.15)).toFixed(1)} dB of default)`);
   bind('resDrive', (v) => { engine.res.drive = v; }, (v) => v.toFixed(1) + ' (vel^n)');
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
   bind('resTone', (v) => engine.res.setTone(v), (v) => (v / 1000).toFixed(1) + ' kHz');

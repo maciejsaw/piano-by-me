@@ -80,6 +80,10 @@ const r = await page.evaluate(async () => {
   engine.setLimiter(true);
 
   // --- sympathetic resonance, with the struck note fully damped ---
+  // Turned up so the held chord is easy to measure, and put back afterwards:
+  // leaving it up made the halo check further down read 8x the shipped level
+  // and blame the engine for it.
+  const shippedAmount = engine.res.amount;
   engine.res.amount = 1.2;
   for (const m of [60, 64, 67]) engine.silentHold(m, true);
   engine.noteOn(48, 120); await wait(420); engine.noteOff(48);
@@ -87,6 +91,7 @@ const r = await page.evaluate(async () => {
   out.sympathetic = await peakOver(500);
   out.ringing = engine.res.voices.size;
   for (const m of [60, 64, 67]) engine.silentHold(m, false);
+  engine.res.amount = shippedAmount;
   await settle();
 
   // --- the same gesture with everything damped leaves nothing ---
@@ -218,6 +223,46 @@ const r = await page.evaluate(async () => {
   engine.damperNoise = 1;
   engine.res.enabled = true;
 
+  // --- the halo has to be a halo -------------------------------------------
+  // This is the check that would have caught the worst bug in this engine.
+  // The resonance voices were not applying the manifest gain that restores a
+  // recording's true level, so they played peak-normalised pianissimo samples
+  // as if they were fortissimo -- about 20 dB too loud, on up to 24 voices at
+  // once. Over a pedalled passage the "sympathetic halo" came out 15 dB ABOVE
+  // the notes supposed to be causing it, and the instrument sounded like a
+  // granular synth because that is what it had become.
+  //
+  // The assertion is on ONE SYMPATHETIC STRING against one struck string,
+  // because that is the quantity with a reference behind it: the physically
+  // modelled variant in this repo measures its own pedal halo at -27 dB below
+  // a strike peak. Asserting on the total instead would be asserting on how
+  // many strings a chord happens to excite, which is a property of the chord.
+  engine.res.enabled = true;
+  await settle();
+  engine.setPedal(1);
+  let loudestVoice = 0, loudAt = null;
+  for (const n of [48, 55, 60, 64, 67, 72]) {
+    engine.noteOn(n, 96);
+    for (let t = 0; t < 320; t += 40) {
+      for (const [m, v] of engine.res.voices) if (v.target > loudestVoice) { loudestVoice = v.target; loudAt = m; }
+      await wait(40);
+    }
+    engine.noteOff(n);
+  }
+  for (let t = 0; t < 600; t += 40) {
+    for (const [m, v] of engine.res.voices) if (v.target > loudestVoice) { loudestVoice = v.target; loudAt = m; }
+    await wait(40);
+  }
+  out.ringingVoices = engine.res.voices.size;
+  out.loudAt = loudAt; out.resAmount = engine.res.amount;
+  engine.setPedal(0);
+  await settle();
+  const struckV = engine.noteOn(60, 96);
+  out.struckGain = struckV ? struckV.g.gain.value : 0;
+  out.voiceGain = loudestVoice;
+  out.haloDb = 20 * Math.log10(Math.max(loudestVoice, 1e-12) / Math.max(out.struckGain, 1e-12));
+  await settle();
+
   out.loaded = lib.loaded;
   out.aux = lib.auxResident(21, 108);
   out.auxTotal = lib.auxOrder(21, 108).length;
@@ -255,6 +300,8 @@ console.log('  damper gain, 900 ms hold       :', f(r.relLongHold), `(${(20 * Ma
 console.log('  ...with that key trimmed 40 dB :', f(r.relPerKey), `(${(20 * Math.log10(r.relPerKey / r.relShortHold)).toFixed(1)} dB)`);
 console.log('  key thud vs the ff note it left:', (20 * Math.log10(r.keyThudGain / r.ffNoteGain)).toFixed(1), 'dB');
 console.log('  a release sample is audible    :', f(r.releaseAudible));
+console.log('  one sympathetic string         :', r.haloDb.toFixed(1), 'dB under one struck string',
+  `(${r.ringingVoices} ringing; the modelled variant measures -27 dB)`);
 console.log('');
 console.log('  console errors                 :', errors.length ? errors.join(' | ') : 'none');
 
@@ -281,6 +328,8 @@ const checks = [
   ['per-key release level works', Math.abs(20 * Math.log10(r.relPerKey / r.relShortHold) + 40) < 1],
   ['the key thud sits well under the note', 20 * Math.log10(r.keyThudGain / r.ffNoteGain) < -28],
   ['release samples are audible', r.releaseAudible > 1e-4],
+  ['a sympathetic string stays well under a struck one', r.haloDb < -18],
+  ['...but is still audible', r.haloDb > -35],
   ['no console errors', errors.length === 0],
 ];
 console.log('');
