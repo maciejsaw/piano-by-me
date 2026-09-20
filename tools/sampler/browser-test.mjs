@@ -267,14 +267,29 @@ const r = await page.evaluate(async () => {
   // The middle tier between one slider for the whole compass and drawing
   // eighty-eight keys by hand. It has to move its own octave and leave the
   // neighbours alone, which is the only thing that can really go wrong.
-  const { octaveOf } = await import('/sampled/src/curves.js');
   const { curves } = window.piano;
-  curves.setOctave('trim', octaveOf(60), -40);
+  // A range edit with a hard edge, so the neighbour an octave away is
+  // untouched and the effect is unambiguous.
+  curves.setScope('trim', { lo: 57, hi: 62 }, -40, 0);
   engine.noteOn(60, 100); out.octTarget = await peakOver(400); engine.noteOff(60); await settle();
   engine.noteOn(72, 100); out.octNeighbour = await peakOver(400); engine.noteOff(72); await settle();
-  curves.setOctave('trim', octaveOf(60), 0);
+  curves.setScope('trim', { lo: 57, hi: 62 }, 0, 0);
   await wait(10);
   engine.noteOn(60, 100); out.octRestored = await peakOver(400); engine.noteOff(60); await settle();
+
+  // Feathering: the point of the whole tier. A range raised with a fade must
+  // not leave a step at its edge, and must still reach its full value inside.
+  const stepFor = (f) => { curves.setScope('trim', { lo: 84, hi: 108 }, 12, f); return curves.worstStep('trim').step; };
+  out.hardStep = stepFor(0);
+  out.featherStep = stepFor(6);
+  curves.setScope('trim', { lo: 84, hi: 108 }, 12, 6);
+  out.featherInside = curves.at('trim', 96) - curves.at('trim', 60);
+  // Widening the fade has to keep reducing the step, every time. That is the
+  // property; any particular number is just where the raised cosine is
+  // steepest for that width.
+  out.featherLadder = [0, 3, 6, 10, 14].map(stepFor).map((v) => +v.toFixed(2));
+  out.featherMonotonic = out.featherLadder.every((v, i, a) => i === 0 || v < a[i - 1]);
+  curves.reset('trim');
 
   // --- the output EQ --------------------------------------------------------
   // Measured on the output node, because the EQ sits after the master bus --
@@ -354,9 +369,11 @@ console.log('  one sympathetic string         :', r.haloDb.toFixed(1), 'dB under
   `(${r.ringingVoices} ringing; the modelled variant measures -27 dB)`);
 console.log('');
 console.log('');
-console.log('  C4 with its octave trimmed 40dB:', f(r.octTarget));
-console.log('  C5, a different octave         :', f(r.octNeighbour));
-console.log('  C4 once the octave is restored :', f(r.octRestored));
+console.log('  C4 inside a range trimmed 40dB :', f(r.octTarget));
+console.log('  C5, outside that range         :', f(r.octNeighbour));
+console.log('  C4 once the range is cleared   :', f(r.octRestored));
+console.log('  +12 dB range, inside it        :', r.featherInside.toFixed(1), 'dB');
+console.log('  biggest neighbour step, by fade:', r.featherLadder.map((v, i) => `${[0, 3, 6, 10, 14][i]}:${v}`).join('  '), 'dB');
 console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
 console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
 console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
@@ -388,9 +405,13 @@ const checks = [
   ['release samples are audible', r.releaseAudible > 1e-4],
   ['a sympathetic string stays well under a struck one', r.haloDb < -18],
   ['...but is still audible', r.haloDb > -35],
-  ['an octave band moves its own octave', r.octTarget < r.octRestored * 0.2],
-  ['...and leaves the neighbours alone', r.octNeighbour > r.octRestored * 0.4],
+  ['a range edit moves its own keys', r.octTarget < r.octRestored * 0.2],
+  ['...and leaves keys outside it alone', r.octNeighbour > r.octRestored * 0.4],
   ['...and is undone by setting it back', r.octRestored > r.octTarget * 5],
+  ['a feathered range still reaches full value inside', Math.abs(r.featherInside - 12) < 0.1],
+  ['...and a fade cuts the edge step fourfold', r.featherStep <= r.hardStep / 4],
+  ['...with a hard edge dropping it all at once', r.hardStep > 11],
+  ['...and a wider fade always being gentler', r.featherMonotonic],
   ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
   ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],

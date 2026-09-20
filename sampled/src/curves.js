@@ -4,16 +4,31 @@
 // the keyboard rather than a single number: velocity response, level, stereo
 // position, tuning, how much a key joins in sympathetically.
 //
-// Three tiers per parameter, and they add:
+// One control per parameter, whose SCOPE you choose. That is the whole idea:
+// you play, you notice something, and the fix is the same slider whether the
+// something is the whole instrument, the top octave and a half, or one key.
 //
-//   slider   one offset for the whole compass
-//   octave   nine bands, A0 and C1..C8. This is the tier people actually
-//            think in -- "the top octave is too bright", "lift the tenor" --
-//            and drawing eighty-eight keys by hand to say it is absurd.
-//   canvas   a per-key departure on top, for the one note that is wrong
+//   all keys    the slider moves the whole compass
+//   a range     the slider moves the keys you selected, FEATHERED at the
+//               edges so the range does not end in a cliff
+//   one key     the slider moves that key alone, and abruptly, because
+//               sometimes one key really is just wrong
 //
-// All three are offsets from the shipped default, so zero is always "as
-// shipped" and however far an edit wanders there is a defined way back.
+// The three tiers ADD, and they are all offsets from the shipped default, so
+// zero is always "as shipped" and however far an edit wanders there is a
+// defined way back.
+//
+// They add rather than average, which is worth being explicit about because
+// averaging is the obvious alternative and it is wrong: under averaging,
+// setting a per-key value does not give you that value, it gives you a third
+// of it, and the number under your finger stops meaning anything. Summing
+// keeps every tier a departure from what is underneath it.
+//
+// Feathering is what actually solves "I do not want one key to suddenly be
+// different". A range edit is a rectangle with a raised-cosine ramp of a few
+// keys on each side; at feather 0 it is a hard edge, which is occasionally
+// what you want. The editor draws the TOTAL across the keyboard, not just the
+// layer being edited, because a cliff is a thing you should be able to see.
 //
 // This is the same arrangement as the physically modelled variant's parameter
 // editor, for the same reason: on an 88-key instrument, a control that is not
@@ -62,15 +77,41 @@ const BY_KEY = new Map(PARAMS.map((p) => [p.key, p]));
 export class Curves {
   constructor() {
     this.g = {};                 // one offset for the whole keyboard
-    this.o = {};                 // nine octave bands
+    this.r = {};                 // feathered range offsets, in application order
     this.k = {};                 // per-key offsets, allocated only when drawn on
+    this.baked = {};             // the ranges summed onto the keyboard, cached
     this.def = {};
     for (const p of PARAMS) {
       this.g[p.key] = 0;
-      this.o[p.key] = new Float32Array(OCTAVES);
+      this.r[p.key] = [];
       this.k[p.key] = null;
+      this.baked[p.key] = null;
       this.def[p.key] = p.def;
     }
+  }
+
+  /**
+   * Sum the ranges onto the keyboard once, rather than per lookup.
+   *
+   * at() is called a few times per note-on and 88 times per stereo refresh,
+   * and walking a list of ranges there would put the cost of the edit history
+   * into the audio path.
+   */
+  bake(key) {
+    const out = new Float32Array(KEYS);
+    for (const r of this.r[key]) {
+      const f = Math.max(0, r.feather);
+      for (let i = 0; i < KEYS; i++) {
+        const m = LOW + i;
+        let w = 0;
+        if (m >= r.lo && m <= r.hi) w = 1;
+        else if (f > 0 && m >= r.lo - f && m < r.lo) w = 0.5 - 0.5 * Math.cos(Math.PI * (m - (r.lo - f)) / f);
+        else if (f > 0 && m > r.hi && m <= r.hi + f) w = 0.5 - 0.5 * Math.cos(Math.PI * ((r.hi + f) - m) / f);
+        if (w) out[i] += r.v * w;
+      }
+    }
+    this.baked[key] = out;
+    return out;
   }
   /**
    * The value in force at `midi`: default + global offset + per-key offset.
@@ -80,20 +121,86 @@ export class Curves {
    * PARAMS on every lookup.
    */
   at(key, midi) {
+    const i = midi - LOW;
     const per = this.k[key];
-    return this.def[key] + this.g[key] + this.o[key][octaveOf(midi)] + (per ? per[midi - LOW] : 0);
+    const ranges = this.baked[key] ?? this.bake(key);
+    return this.def[key] + this.g[key] + ranges[i] + (per ? per[i] : 0);
+  }
+
+  /** The total across the whole keyboard, for drawing. */
+  curve(key) {
+    const out = new Float32Array(KEYS);
+    for (let i = 0; i < KEYS; i++) out[i] = this.at(key, LOW + i);
+    return out;
   }
   setGlobal(key, v) { this.g[key] = v; }
-  setOctave(key, oct, v) { this.o[key][oct] = v; }
+
+  /**
+   * The value currently in force for a scope, so a slider can show it.
+   * `sel` is {lo, hi} -- the whole compass, a range, or one key.
+   */
+  scopeValue(key, sel) {
+    if (!sel || (sel.lo <= LOW && sel.hi >= HIGH)) return this.g[key];
+    if (sel.lo === sel.hi) return this.k[key]?.[sel.lo - LOW] ?? 0;
+    return this.r[key].find((r) => r.lo === sel.lo && r.hi === sel.hi)?.v ?? 0;
+  }
+
+  /** Move whatever the selection points at. One slider, three tiers. */
+  setScope(key, sel, v, feather = 3) {
+    if (!sel || (sel.lo <= LOW && sel.hi >= HIGH)) { this.g[key] = v; return; }
+    if (sel.lo === sel.hi) { this.setKey(key, sel.lo, v); return; }
+    const list = this.r[key];
+    const at = list.findIndex((r) => r.lo === sel.lo && r.hi === sel.hi);
+    if (v === 0) { if (at >= 0) list.splice(at, 1); }
+    else if (at >= 0) { list[at].v = v; list[at].feather = feather; }
+    else list.push({ lo: sel.lo, hi: sel.hi, v, feather });
+    this.baked[key] = null;
+  }
+
+  setFeather(key, sel, feather) {
+    const r = this.r[key].find((x) => x.lo === sel.lo && x.hi === sel.hi);
+    if (r) { r.feather = feather; this.baked[key] = null; }
+  }
+
+  /**
+   * Smooth the per-key layer.
+   *
+   * Opt-in, and only this layer. Automatic smoothing would take away the
+   * other half of what is wanted here -- one key really can just be wrong,
+   * and fixing it has to stay possible without the fix bleeding into its
+   * neighbours.
+   */
+  smooth(key, passes = 1) {
+    const a = this.k[key];
+    if (!a) return;
+    for (let p = 0; p < passes; p++) {
+      const src = Float32Array.from(a);
+      for (let i = 0; i < KEYS; i++) {
+        const l = src[Math.max(0, i - 1)], r = src[Math.min(KEYS - 1, i + 1)];
+        a[i] = 0.25 * l + 0.5 * src[i] + 0.25 * r;
+      }
+    }
+  }
+
+  /** The biggest jump between adjacent keys in the finished curve. */
+  worstStep(key) {
+    const c = this.curve(key);
+    let worst = 0, at = LOW;
+    for (let i = 1; i < KEYS; i++) {
+      const d = Math.abs(c[i] - c[i - 1]);
+      if (d > worst) { worst = d; at = LOW + i; }
+    }
+    return { step: worst, midi: at };
+  }
   setKey(key, midi, v) {
     let a = this.k[key];
     if (!a) a = this.k[key] = new Float32Array(KEYS);
     a[midi - LOW] = v;
   }
-  reset(key) { this.g[key] = 0; this.o[key].fill(0); this.k[key] = null; }
+  reset(key) { this.g[key] = 0; this.r[key] = []; this.k[key] = null; this.baked[key] = null; }
   toJSON() {
-    const out = { g: { ...this.g }, o: {}, k: {} };
-    for (const [key, a] of Object.entries(this.o)) if (a.some((v) => v !== 0)) out.o[key] = Array.from(a, (v) => +v.toFixed(3));
+    const out = { g: { ...this.g }, r: {}, k: {} };
+    for (const [key, list] of Object.entries(this.r)) if (list.length) out.r[key] = list.map((x) => ({ ...x }));
     for (const [key, a] of Object.entries(this.k)) if (a) out.k[key] = Array.from(a, (v) => +v.toFixed(3));
     return out;
   }
@@ -101,23 +208,133 @@ export class Curves {
     if (!o) return;
     for (const p of PARAMS) {
       this.g[p.key] = o.g?.[p.key] ?? 0;
-      this.o[p.key] = o.o?.[p.key] ? Float32Array.from(o.o[p.key]) : new Float32Array(OCTAVES);
+      this.r[p.key] = (o.r?.[p.key] ?? []).map((x) => ({ ...x }));
+      // Saved edits from when this had nine fixed octave bands become nine
+      // hard-edged ranges, which is exactly what they were.
+      for (const [i, v] of (o.o?.[p.key] ?? []).entries()) {
+        if (!v) continue;
+        const lo = i === 0 ? LOW : 12 * (i + 1);
+        this.r[p.key].push({ lo, hi: Math.min(HIGH, 12 * (i + 2) - 1), v, feather: 0 });
+      }
       this.k[p.key] = o.k?.[p.key] ? Float32Array.from(o.k[p.key]) : null;
+      this.baked[p.key] = null;
     }
   }
 }
 
 const ZOOMS = [1, 0.4, 0.15, 0.05];
 
-/** Build the editor UI into `root`. `onChange` fires (coalesced) on every edit. */
+/**
+ * Build the editor into `root`.
+ *
+ * One slider per parameter, and a shared SCOPE that decides what it moves.
+ * The scope is the thing being played with, so it lives once at the top
+ * rather than eleven times down the side.
+ */
 export function createEditor(root, curves, onChange, selected = () => 60) {
   const rows = [];
   let timer = 0;
   const notify = () => { if (timer) return; timer = setTimeout(() => { timer = 0; onChange(); }, 60); };
 
+  // The shared scope. Starts at the whole compass, because that is where
+  // editing starts: you change the instrument, then you change a region of
+  // it, then you change one key of it.
+  const sel = { lo: LOW, hi: HIGH };
+  let feather = 3;
+
+  const scopeName = () => {
+    if (sel.lo <= LOW && sel.hi >= HIGH) return 'all 88 keys';
+    if (sel.lo === sel.hi) return `${noteName(sel.lo)} alone`;
+    return `${noteName(sel.lo)}–${noteName(sel.hi)} (${sel.hi - sel.lo + 1} keys)`;
+  };
+
+  // ---- the scope strip ----------------------------------------------------
+  const bar = document.createElement('div');
+  bar.className = 'sel-bar';
+  bar.innerHTML = `
+    <div class="sel-head">
+      <span>editing <b class="sel-what"></b></span>
+      <span class="sel-actions">
+        <button data-all>all keys</button>
+        <button data-oct>this octave</button>
+        <button data-one>selected key</button>
+      </span>
+    </div>
+    <canvas class="sel-map" height="${34 * devicePixelRatio}"></canvas>
+    <div class="sel-foot">
+      <label title="How far a range edit fades out past its edges. Zero is a hard edge; a few keys is what stops a region sounding like it starts somewhere.">edge fade</label>
+      <input type="range" class="sel-feather" min="0" max="14" step="1" value="3">
+      <output class="sel-featherV"></output>
+    </div>
+    <div class="pe-hint">drag across the strip to pick a range · click one key for just that key</div>`;
+  root.appendChild(bar);
+  const map = bar.querySelector('.sel-map');
+  const mapX = map.getContext('2d');
+
+  function drawMap() {
+    const w = map.clientWidth * devicePixelRatio;
+    if (map.width !== w) map.width = w;
+    const h = map.height, bw = w / KEYS;
+    mapX.fillStyle = '#17150f'; mapX.fillRect(0, 0, w, h);
+    for (let i = 0; i < KEYS; i++) {
+      const m = LOW + i;
+      const inSel = m >= sel.lo && m <= sel.hi;
+      const f = feather;
+      let edge = 0;
+      if (!inSel && f > 0 && sel.lo !== sel.hi) {
+        if (m >= sel.lo - f && m < sel.lo) edge = 0.5 - 0.5 * Math.cos(Math.PI * (m - (sel.lo - f)) / f);
+        else if (m > sel.hi && m <= sel.hi + f) edge = 0.5 - 0.5 * Math.cos(Math.PI * ((sel.hi + f) - m) / f);
+      }
+      mapX.fillStyle = inSel ? '#d9a441' : edge ? `rgba(217,164,65,${edge * 0.55})` : (BLACK.has(m % 12) ? '#100e0a' : '#241f18');
+      mapX.fillRect(i * bw, 0, Math.max(1, bw - 0.5), h - 11 * devicePixelRatio);
+    }
+    mapX.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+    mapX.textAlign = 'center';
+    for (let m = 24; m <= HIGH; m += 12) {
+      mapX.fillStyle = '#6d6458';
+      mapX.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 1);
+    }
+    const cur = selected();
+    if (cur >= LOW && cur <= HIGH) {
+      mapX.strokeStyle = '#ece5da';
+      mapX.strokeRect((cur - LOW) * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 11 * devicePixelRatio - 1);
+    }
+    bar.querySelector('.sel-what').textContent = scopeName();
+  }
+
+  const keyAt = (e) => {
+    const r = map.getBoundingClientRect();
+    return Math.max(LOW, Math.min(HIGH, LOW + Math.floor((e.clientX - r.left) / r.width * KEYS)));
+  };
+  let anchor = null;
+  map.onpointerdown = (e) => { anchor = keyAt(e); sel.lo = sel.hi = anchor; map.setPointerCapture(e.pointerId); refresh(); };
+  map.onpointermove = (e) => {
+    if (anchor == null) return;
+    const k = keyAt(e);
+    sel.lo = Math.min(anchor, k); sel.hi = Math.max(anchor, k);
+    refresh();
+  };
+  map.onpointerup = map.onpointercancel = () => { anchor = null; };
+  bar.querySelector('[data-all]').onclick = () => { sel.lo = LOW; sel.hi = HIGH; refresh(); };
+  bar.querySelector('[data-oct]').onclick = () => {
+    const o = octaveOf(selected());
+    sel.lo = Math.max(LOW, o === 0 ? LOW : 12 * (o + 1));
+    sel.hi = Math.min(HIGH, 12 * (o + 2) - 1);
+    refresh();
+  };
+  bar.querySelector('[data-one]').onclick = () => { sel.lo = sel.hi = selected(); refresh(); };
+  const fSlider = bar.querySelector('.sel-feather');
+  fSlider.oninput = () => {
+    feather = +fSlider.value;
+    bar.querySelector('.sel-featherV').textContent = feather ? `${feather} keys` : 'hard edge';
+    for (const p of PARAMS) curves.setFeather(p.key, sel, feather);
+    refresh(); notify();
+  };
+  bar.querySelector('.sel-featherV').textContent = '3 keys';
+
+  // ---- one row per parameter ---------------------------------------------
   const groups = new Map();
   for (const p of PARAMS) { if (!groups.has(p.group)) groups.set(p.group, []); groups.get(p.group).push(p); }
-
   for (const [name, list] of groups) {
     const h = document.createElement('h3');
     h.className = 'pe-group'; h.textContent = name;
@@ -127,8 +344,8 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
 
   function fmt(p, v) {
     const a = Math.abs(v);
-    const s = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
-    return `${s}${p.unit ? ' ' + p.unit : ''}`;
+    const s2 = a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : v.toFixed(2);
+    return `${s2}${p.unit ? ' ' + p.unit : ''}`;
   }
 
   function makeRow(p) {
@@ -142,13 +359,11 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
         <select class="pe-zoom" title="precision — zooms the slider and the chart">
           ${ZOOMS.map((z, i) => `<option value="${i}">±${(p.span * z).toPrecision(2)}</option>`).join('')}
         </select>
-        <button class="pe-reset" title="back to the shipped value">reset</button>
+        <button class="pe-smooth" title="round off the per-key layer, so a fix does not stand alone as a step">smooth</button>
+        <button class="pe-reset" title="back to the shipped value, every tier">reset</button>
       </div>
-      <div class="pe-canvas-wrap">
-        <canvas class="pe-keys" height="${72 * devicePixelRatio}"></canvas>
-        <canvas class="pe-oct" height="${26 * devicePixelRatio}"></canvas>
-        <div class="pe-hint">upper: drag to draw per-key · lower: nine octave bands · shift-drag either to flatten</div>
-      </div>`;
+      <div class="pe-canvas-wrap"><canvas class="pe-keys" height="${76 * devicePixelRatio}"></canvas>
+        <div class="pe-hint pe-step"></div></div>`;
     root.appendChild(wrap);
 
     const slider = wrap.querySelector('.pe-slider');
@@ -156,101 +371,87 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
     const zoom = wrap.querySelector('.pe-zoom');
     const canvas = wrap.querySelector('.pe-keys');
     const ctx = canvas.getContext('2d');
-    const octC = wrap.querySelector('.pe-oct');
-    const octX = octC.getContext('2d');
     let zi = 0;
-
     const span = () => p.span * ZOOMS[zi];
+
     const draw = () => {
       const w = canvas.clientWidth * devicePixelRatio;
       if (canvas.width !== w) canvas.width = w;
       const h = canvas.height, mid = h / 2, bw = w / KEYS;
-      ctx.clearRect(0, 0, w, h);
       ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
       for (let i = 0; i < KEYS; i++) {
-        if (!BLACK.has((LOW + i) % 12)) continue;
-        ctx.fillStyle = '#100e0a'; ctx.fillRect(i * bw, 0, bw, h);
+        const m = LOW + i;
+        if (m >= sel.lo && m <= sel.hi) { ctx.fillStyle = '#211c13'; ctx.fillRect(i * bw, 0, bw, h); }
+        else if (BLACK.has(m % 12)) { ctx.fillStyle = '#131109'; ctx.fillRect(i * bw, 0, bw, h); }
       }
       ctx.strokeStyle = '#4a4134'; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+
       const per = curves.k[p.key];
       for (let i = 0; i < KEYS; i++) {
         const v = per ? per[i] : 0;
+        if (!v) continue;
         const y = mid - (v / span()) * (h / 2 - 2);
-        ctx.fillStyle = v === 0 ? '#3a3328' : (v > 0 ? '#d9a441' : '#6fa8dc');
-        const top = Math.min(y, mid), hh = Math.max(1, Math.abs(y - mid));
-        ctx.fillRect(i * bw + 0.5, top, Math.max(1, bw - 1), hh);
+        ctx.fillStyle = v > 0 ? '#8a6a2a' : '#3f627e';
+        ctx.fillRect(i * bw + 0.5, Math.min(y, mid), Math.max(1, bw - 1), Math.max(1, Math.abs(y - mid)));
       }
-      const sel = selected() - LOW;
-      if (sel >= 0 && sel < KEYS) {
+
+      // The TOTAL -- global plus ranges plus per key -- because a cliff is a
+      // property of the sum and nothing else on screen would show it.
+      const total = curves.curve(p.key);
+      ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 1.6 * devicePixelRatio;
+      ctx.beginPath();
+      for (let i = 0; i < KEYS; i++) {
+        const off = total[i] - p.def;
+        const y = Math.max(1, Math.min(h - 1, mid - (off / span()) * (h / 2 - 2)));
+        const x = i * bw + bw / 2;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+
+      const cur = selected();
+      if (cur >= LOW && cur <= HIGH) {
         ctx.strokeStyle = '#ece5da'; ctx.lineWidth = 1;
-        ctx.strokeRect(sel * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 1);
+        ctx.strokeRect((cur - LOW) * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 1);
       }
-      const at = curves.at(p.key, selected());
-      out.textContent = `${noteName(selected())} ${fmt(p, at)}`;
-      drawOct();
+
+      slider.value = Math.max(-1, Math.min(1, curves.scopeValue(p.key, sel) / span()));
+      out.textContent = `${noteName(cur)} ${fmt(p, curves.at(p.key, cur))}`;
+      const { step, midi } = curves.worstStep(p.key);
+      wrap.querySelector('.pe-step').textContent = step > 1e-4
+        ? `biggest jump between neighbours: ${fmt(p, step)} at ${noteName(midi)}`
+        : 'flat across the keyboard';
     };
 
-    const drawOct = () => {
-      const w = octC.clientWidth * devicePixelRatio;
-      if (octC.width !== w) octC.width = w;
-      const h = octC.height, mid = h / 2, bw = w / OCTAVES;
-      octX.fillStyle = '#17150f'; octX.fillRect(0, 0, w, h);
-      octX.strokeStyle = '#4a4134';
-      octX.beginPath(); octX.moveTo(0, mid); octX.lineTo(w, mid); octX.stroke();
-      const sel = octaveOf(selected());
-      for (let i = 0; i < OCTAVES; i++) {
-        const v = curves.o[p.key][i];
-        const y = mid - (v / span()) * (h / 2 - 2);
-        octX.fillStyle = v === 0 ? '#332d23' : (v > 0 ? '#d9a441' : '#6fa8dc');
-        octX.fillRect(i * bw + 1, Math.min(y, mid), bw - 2, Math.max(1.5, Math.abs(y - mid)));
-        octX.fillStyle = i === sel ? '#ece5da' : '#6d6458';
-        octX.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
-        octX.textAlign = 'center';
-        octX.fillText(OCT_LABELS[i], i * bw + bw / 2, h - 2);
-      }
-    };
-
-    slider.oninput = () => { curves.setGlobal(p.key, +slider.value * span()); draw(); notify(); };
+    slider.oninput = () => { curves.setScope(p.key, sel, +slider.value * span(), feather); draw(); notify(); };
     zoom.onchange = () => {
       zi = +zoom.value;
       // The stored value is absolute, so re-derive the slider position rather
       // than rescaling what it means -- otherwise a curve drawn at one
       // precision silently changes when you pick another.
-      slider.value = Math.max(-1, Math.min(1, curves.g[p.key] / span()));
       draw();
     };
-    wrap.querySelector('.pe-reset').onclick = () => {
-      curves.reset(p.key); slider.value = 0; draw(); notify();
-    };
+    wrap.querySelector('.pe-smooth').onclick = () => { curves.smooth(p.key, 2); draw(); notify(); };
+    wrap.querySelector('.pe-reset').onclick = () => { curves.reset(p.key); draw(); notify(); };
 
+    // Drawing straight onto the chart still edits the per-key layer, which is
+    // the fastest way to say "these four notes, not a region".
     let drawing = false;
     const paint = (e) => {
       const r = canvas.getBoundingClientRect();
       const i = Math.max(0, Math.min(KEYS - 1, Math.floor((e.clientX - r.left) / r.width * KEYS)));
-      const rel = 1 - (e.clientY - r.top) / r.height * 2;      // +1 top, -1 bottom
-      const v = e.shiftKey ? (curves.k[p.key]?.[i] ?? 0) * 0.6 : rel * span();
-      curves.setKey(p.key, LOW + i, v);
+      const rel = 1 - (e.clientY - r.top) / r.height * 2;
+      curves.setKey(p.key, LOW + i, e.shiftKey ? (curves.k[p.key]?.[i] ?? 0) * 0.6 : rel * span() - (curves.at(p.key, LOW + i) - p.def - (curves.k[p.key]?.[i] ?? 0)));
       draw(); notify();
     };
     canvas.onpointerdown = (e) => { drawing = true; canvas.setPointerCapture(e.pointerId); paint(e); };
     canvas.onpointermove = (e) => { if (drawing) paint(e); };
     canvas.onpointerup = canvas.onpointercancel = () => { drawing = false; };
 
-    let octDrag = false;
-    const paintOct = (e) => {
-      const r = octC.getBoundingClientRect();
-      const i = Math.max(0, Math.min(OCTAVES - 1, Math.floor((e.clientX - r.left) / r.width * OCTAVES)));
-      const rel = 1 - (e.clientY - r.top) / r.height * 2;
-      curves.setOctave(p.key, i, e.shiftKey ? curves.o[p.key][i] * 0.6 : rel * span());
-      draw(); notify();
-    };
-    octC.onpointerdown = (e) => { octDrag = true; octC.setPointerCapture(e.pointerId); paintOct(e); };
-    octC.onpointermove = (e) => { if (octDrag) paintOct(e); };
-    octC.onpointerup = octC.onpointercancel = () => { octDrag = false; };
-
     draw();
-    return { p, draw, slider, refresh: () => { slider.value = Math.max(-1, Math.min(1, curves.g[p.key] / span())); draw(); } };
+    return { draw };
   }
 
-  return { refresh: () => rows.forEach((r) => r.refresh()) };
+  function refresh() { drawMap(); for (const r of rows) r.draw(); }
+  drawMap();
+  return { refresh };
 }
