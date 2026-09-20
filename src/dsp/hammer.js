@@ -215,6 +215,10 @@ export function makeKnock(fs, pulse, opts = {}) {
   const decayS = opts.decayS ?? 0.02;
   const fc = opts.fc ?? 800;
   const hpFc = opts.hpFc ?? 45;
+  const thumpHz = opts.thumpHz ?? 110;
+  const thumpQ = opts.thumpQ ?? 1.6;
+  const thumpMix = opts.thumpMix ?? 0;
+  const poles = Math.max(1, Math.min(3, Math.round(opts.poles ?? 3)));
   if (gain <= 0 && noiseAmt <= 0) return null;
 
   const tail = Math.ceil(decayS * 4 * fs);
@@ -233,10 +237,27 @@ export function makeKnock(fs, pulse, opts = {}) {
   }
 
   if (noiseAmt > 0 && peak > 0) {
+    // THREE poles, not one. A single pole rolls off at 6 dB an octave, which
+    // leaves a clearly audible hiss two decades above the corner -- and the
+    // radiation EQ then lifts 2-8 kHz by another 7 dB on the way out, so the
+    // one part of the knock that should be nowhere near the top of the
+    // spectrum arrives brightened. A heavy plate does not do that with a tap.
     const aLp = 1 - Math.exp((-2 * Math.PI * fc) / fs);
     const dec = Math.exp(-1 / Math.max(decayS * fs, 1));
+    // Cascading costs amplitude as well as top, so put it back -- otherwise
+    // "darker" and "quieter" arrive together and cannot be judged apart.
+    const lpMakeup = Math.pow(2 - aLp, poles * 0.5);
+
+    // The oomph: one low resonance, which is what a big plate answers a tap
+    // with. Constant-peak-gain two-pole bandpass at thumpHz.
+    const w0 = (2 * Math.PI * Math.min(thumpHz, 0.45 * fs)) / fs;
+    const r = Math.exp(-w0 / (2 * thumpQ));
+    const b1 = 2 * r * Math.cos(w0), b2 = -r * r;
+    const bpGain = (1 - r) * Math.sqrt(1 - b1 + -b2 + 1e-12) || (1 - r);
+    let z1 = 0, z2 = 0;
+
     let rng = (opts.seed ?? 1) >>> 0 || 1;
-    let lp = 0, env = 0;
+    let l1 = 0, l2 = 0, l3 = 0, env = 0;
     for (let i = 0; i < n; i++) {
       // The burst is driven by the force, so it starts when contact does and
       // does not outlive a quiet blow.
@@ -244,8 +265,13 @@ export function makeKnock(fs, pulse, opts = {}) {
       env = Math.max(env * dec, drive);
       rng ^= rng << 13; rng ^= rng >>> 17; rng ^= rng << 5; rng >>>= 0;
       const w = rng / 2147483648 - 1;
-      lp += aLp * (w - lp);
-      out[i] += noiseAmt * peak * env * lp;
+      l1 += aLp * (w - l1);
+      if (poles > 1) l2 += aLp * (l1 - l2); else l2 = l1;
+      if (poles > 2) l3 += aLp * (l2 - l3); else l3 = l2;
+      const src = env * l3 * lpMakeup;
+      const bp = bpGain * src + b1 * z1 + b2 * z2;
+      z2 = z1; z1 = bp;
+      out[i] += noiseAmt * peak * (src + thumpMix * bp);
     }
   }
   return out;
