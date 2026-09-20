@@ -46,6 +46,21 @@ td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .strings button{flex:1;padding:4px;font-size:11px}
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
+/* ---- parameter editor ---- */
+.pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pe-group:first-child{margin-top:0}
+.pe-row{margin:2px 0}
+.pe-head{display:flex;align-items:center;gap:8px}
+.pe-head label{flex:0 0 150px;color:var(--dim);font-size:11px;cursor:help}
+.pe-slider{flex:1;min-width:90px;accent-color:var(--accent)}
+.pe-out{flex:0 0 220px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.pe-zoom{padding:2px;font-size:10px;max-width:92px}
+.pe-head button{padding:2px 8px;font-size:10px}
+.pe-canvas-wrap{margin:6px 0 10px 150px}
+.pe-canvas-wrap canvas{background:#1b1815;border:1px solid var(--line);border-radius:4px;width:792px;max-width:100%;height:96px;touch-action:none;cursor:crosshair;display:block}
+.pe-hint{color:var(--dim);font-size:10px;margin-top:3px}
+#peBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+#peBar .stat{margin-left:auto}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
 #overlay div{text-align:center;max-width:460px}
 #overlay p{color:var(--dim);margin:14px 0}
@@ -106,6 +121,24 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         about 22&nbsp;dB bass-heavy and treble-shy — the single largest error in the instrument.
         Because this sits downstream of every coupling path, making it linear costs nothing:
         sympathetic resonance is unaffected.</div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Parameter editor — slider is a global offset, chart is per key</h2>
+      <div id="peBar">
+        <button id="peSave">save</button>
+        <button id="peLoad">load</button>
+        <button id="peExport">export</button>
+        <button id="peImport">import</button>
+        <button id="peResetAll">reset all</button>
+        <span class="stat">edited <b id="peCount">0</b></span>
+      </div>
+      <div id="peRoot"></div>
+      <div class="hint">Centre is the fitted curve, always — every number here is a DEPARTURE from
+        what the fitting tools measured, never a replacement for it, so there is a defined way back
+        from any edit. Precision zooms the slider and the chart together; the stored offset is
+        absolute, so drawing finely on one note cannot rescale what was drawn coarsely before.
+        Offsets are in octaves of the value for rates, levels and durations — the ear hears those
+        as ratios, and a linear knob on a decay time is not symmetric about its centre.</div>
     </div>
     <div class="panel" style="margin-top:14px">
       <h2>Coupling</h2>

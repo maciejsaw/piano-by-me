@@ -201,7 +201,7 @@ export const DEFAULT_SCALE = {
   lowestDamped: 29,
 };
 
-const lerpTable = (table, midi) => {
+export const lerpTable = (table, midi) => {
   if (midi <= table[0][0]) return table[0][1];
   const last = table[table.length - 1];
   if (midi >= last[0]) return last[1];

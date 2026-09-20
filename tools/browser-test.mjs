@@ -76,7 +76,14 @@ console.log('  peak strings ringing           :', result.maxActive);
 console.log('  values finite                  :', result.finite);
 console.log('  console errors                 :', errors.length ? errors.join(' | ') : 'none');
 
-const ok = result.strings === 240 && result.struck > 0.02 && result.finite
+// A smoke test, not a level check: does a struck note actually make sound in
+// a real browser, on the audio thread, with the worklet's own imports. The
+// threshold was 0.02, written when the strike arrived whole; the soundboard
+// swell now brings the note up from half level over 20 ms and the board
+// carries all of it, so the peak of a single note sits near 0.009. Checked
+// against the commit before that work landed -- 0.0061 there, so this test had
+// been failing on a stale number rather than on a regression.
+const ok = result.strings === 240 && result.struck > 0.004 && result.finite
   && errors.length === 0 && result.sympathetic > result.silence * 4 && result.maxActive > 0;
 console.log(ok ? '\n  BROWSER CHECK PASSED\n' : '\n  BROWSER CHECK FAILED\n');
 await browser.close();
