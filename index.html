@@ -20,6 +20,10 @@ button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent)
 button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
+.preset{display:inline-flex;gap:4px;align-items:center}
+.preset select{max-width:170px}
+.preset button{padding:6px 9px;font-weight:700}
+#presetDel{color:var(--dim)} #presetDel:hover{color:#c0392b;border-color:#c0392b}
 main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
 @media(max-width:1000px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
@@ -80,6 +84,12 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
 <header>
   <h1>Piano Model X</h1>
+  <span class="preset">
+    <select id="presetSel" title="global presets — the whole instrument"></select>
+    <button id="presetSave" class="primary" title="write the whole instrument back into the selected preset">save</button>
+    <button id="presetAdd" title="save the current instrument as a new preset">+</button>
+    <button id="presetDel" title="delete the selected preset">✕</button>
+  </span>
   <select id="midiSel"><option>no MIDI</option></select>
   <button id="sustainBtn">sustain</button>
   <button id="unaBtn">una corda</button>
@@ -148,11 +158,10 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <div class="panel" style="margin-top:14px">
       <h2>Parameter editor — slider is a global offset, chart is per key</h2>
       <div id="peBar">
-        <button id="peSave">save</button>
-        <button id="peLoad">load</button>
-        <button id="peExport">export</button>
-        <button id="peImport">import</button>
-        <button id="peResetAll">reset all</button>
+        <button id="peLoad" title="reload the selected preset, discarding unsaved changes">revert</button>
+        <button id="peExport" title="download the whole instrument as JSON">export</button>
+        <button id="peImport" title="load a whole-instrument JSON file">import</button>
+        <button id="peResetAll" title="clear every parameter-editor offset">reset offsets</button>
         <span class="stat">edited <b id="peCount">0</b></span>
       </div>
       <div id="peRoot"></div>
