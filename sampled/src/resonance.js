@@ -108,13 +108,19 @@ export class Resonance {
    * @param strip  (midi) => the per-key channel strip to play into, so a
    *               sympathetic voice inherits that key's pan and width
    */
-  constructor(ctx, lib, curves, strip, envelopes = null) {
+  constructor(ctx, lib, curves, strip, envelopes = null, sbSend = null) {
     this.ctx = ctx; this.lib = lib; this.curves = curves; this.strip = strip; this.env = envelopes;
+    this.sbSend = sbSend;       // the soundboard reverb: rings on after dampers land
     this.lo = lib.m.keys.lo; this.hi = lib.m.keys.hi;
     this.n = this.hi - this.lo + 1;
     this.E = new Float64Array(this.n);
     this.tau = new Float64Array(this.n);
     this.voices = new Map();
+    // Strings whose resonating recording has played all the way through. They
+    // are NOT re-opened while they still have energy leaking away -- that would
+    // replay the sample's onset as a fresh strike. A new hammer landing on the
+    // string (excite) clears the mark and is allowed to open a fresh voice.
+    this.spent = new Set();
     this.undamped = new Set();
     // Calibrated, not chosen. At 0.15 the halo over a pedalled passage sits
     // about 16 dB under the notes driving it, which is a bloom you can hear
@@ -135,6 +141,23 @@ export class Resonance {
     this.tone = 5200;           // the bridge is not a wire: the halo is not bright
     this.enabled = true;
     this.compensate = true;     // divide the recording's own decay back out
+    // The end of the recording, in seconds, spent fading out. Without it a
+    // voice ends when its buffer runs out -- a click, and on a short sample a
+    // halo that stops dead. This last stretch fades exponentially to nothing,
+    // landing on the buffer's end, so what is left is a decay tail that
+    // dissolves into the room instead of a cut. On a sample shorter than this
+    // it is capped to most of the sample, so a short recording just decays.
+    this.tailRelease = 0.6;
+    // When the pedal lifts, a whole frame of dampers lands. It happens in two
+    // stages rather than one fade: the level DROPS quickly to `pedalOffDrop` of
+    // where it was -- the dampers touching the strings -- and then falls the
+    // rest of the way slowly over `pedalOffFall`, the string ringing on under a
+    // resting damper while the soundboard (the long reverb) carries the body.
+    // Each damper is also given a small random delay, so the frame lands as a
+    // scatter rather than as one click.
+    this.pedalOffJitter = 0.06;   // seconds of random stagger across the frame
+    this.pedalOffDrop = 0.4;      // level the quick duck drops to (fraction)
+    this.pedalOffFall = 2.0;      // seconds for the slow release after the drop
     this.build();
   }
 
@@ -176,6 +199,9 @@ export class Resonance {
       // strings free to. What it does add is the body of the whole undamped
       // frame moving together, which is a real and audible extra few dB.
       this.E[ri] += w * e * this.curves.at('resonance', r) * (1 + 0.35 * pedal);
+      // A fresh strike drives the string again, so a voice that had run its
+      // recording out is allowed to speak once more.
+      this.spent.delete(r);
     }
   }
 
@@ -186,14 +212,20 @@ export class Resonance {
     for (let i = 0; i < this.n; i++) {
       if (this.E[i] <= 0) continue;
       this.E[i] *= Math.exp(-dt / this.tau[i]);
-      if (this.E[i] < this.threshold * 0.4) { this.E[i] = 0; this.stop(this.lo + i); continue; }
+      if (this.E[i] < this.threshold * 0.4) { this.E[i] = 0; this.spent.delete(this.lo + i); this.stop(this.lo + i); continue; }
       if (this.E[i] > this.threshold && this.undamped.has(this.lo + i)) want.push(i);
     }
     want.sort((a, b) => this.E[b] - this.E[a]);
     const keep = new Set(want.slice(0, this.maxVoices).map((i) => this.lo + i));
     for (const midi of this.voices.keys()) if (!keep.has(midi)) this.stop(midi);
     for (const midi of keep) {
-      const v = this.voices.get(midi) ?? this.start(midi);
+      let v = this.voices.get(midi);
+      if (!v) {
+        // Its recording already ran out. Leave it ringing silently until a
+        // fresh strike (excite) drives it again -- do not replay the sample.
+        if (this.spent.has(midi)) continue;
+        v = this.start(midi);
+      }
       if (!v) continue;
       // times v.unit, the gain that restores this recording's true level.
       // Leaving that out -- which this did -- plays a peak-normalised
@@ -248,7 +280,9 @@ export class Resonance {
     // Start past the knock. What is wanted is the string ringing, not the
     // sound of a hammer that never happened.
     const offset = Math.min(0.03, got.buf.duration * 0.1);
-    const dur = Math.max(0.5, got.buf.duration - offset);
+    // The TRUE remaining length of the recording, so the release tail lands
+    // exactly on the buffer's end rather than after it (which would be a click).
+    const dur = Math.max(0.05, got.buf.duration - offset);
 
     const src = ctx.createBufferSource();
     src.buffer = got.buf;
@@ -263,17 +297,38 @@ export class Resonance {
     const lvl = ctx.createGain();
     lvl.gain.value = 0;
 
+    // The release tail. `lvl` is driven by the accumulator (tick); `rel` is
+    // untouched by it and only fades the last `tailRelease` seconds of the
+    // recording out to silence, so the buffer never simply stops. On a sample
+    // shorter than tailRelease the fade covers most of it and the voice is
+    // just a short decay.
+    const rel = ctx.createGain();
+    rel.gain.value = 1;
+    const relT = Math.min(this.tailRelease, dur * 0.8);
+    if (relT > 0.02) {
+      const fadeAt = now + dur - relT;
+      rel.gain.setValueAtTime(1, fadeAt);
+      // A time constant of relT/4 is ~98% faded by the buffer's end.
+      rel.gain.setTargetAtTime(1e-4, fadeAt, relT / 4);
+    }
 
-    src.connect(comp).connect(lp).connect(lvl).connect(this.strip(midi));
+    src.connect(comp).connect(lp).connect(lvl).connect(rel);
+    rel.connect(this.strip(midi));
+    // Feed the soundboard in parallel, so the body goes on ringing after the
+    // string itself has been damped.
+    if (this.sbSend) rel.connect(this.sbSend);
     src.start(now, offset);
-    const v = { src, comp, lp, lvl, target: 0, unit: got.entry.gain, until: now + dur };
+    const v = { src, comp, lp, lvl, rel, target: 0, unit: got.entry.gain, until: now + dur };
     src.onended = () => {
-      if (this.voices.get(midi) === v) {
-        this.voices.delete(midi);
-        // Still being driven? Start another. By here the level is set entirely
-        // by the accumulator, so the seam is a crossfade of one control period.
-        if (this.E[midi - this.lo] > this.threshold && this.undamped.has(midi)) this.start(midi);
-      }
+      // The recording runs out. Do NOT start another: re-triggering the sample
+      // from the top plays its (undecayed) onset again, which is heard as the
+      // halo audibly re-striking rather than dying away. Sympathetic resonance
+      // only ever fades -- so the voice is simply let go here, and its natural
+      // decay (the compensation is capped at +6 dB, so it cannot flatten the
+      // recording's tail all the way) is the fade. If the accumulator is still
+      // ringing when the recording ends, it rings on silently and the next
+      // strike into this string will open a fresh voice for it.
+      if (this.voices.get(midi) === v) { this.voices.delete(midi); this.spent.add(midi); }
     };
     this.voices.set(midi, v);
     return v;
@@ -284,22 +339,38 @@ export class Resonance {
     if (!v) return;
     this.voices.delete(midi);
     const now = this.ctx.currentTime;
-    // A damper landing is quick but not instant, and slower in the bass. Same
-    // shape as a struck note's damper fall, because it is the same damper.
-    const fall = Math.max(0.01, damped
-      ? 0.045 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60)
-      : 0.25);
     const from = Math.max(1e-5, v.target);
+    const shape = this.env?.noteRelease.shape;
     v.src.onended = null;
     v.lvl.gain.cancelScheduledValues(now);
     v.lvl.gain.setValueAtTime(from, now);
-    const shape = this.env?.noteRelease.shape;
-    if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, 0), now, fall);
-    else v.lvl.gain.linearRampToValueAtTime(0, now + fall);
-    try { v.src.stop(now + fall + 0.03); } catch { /* already stopped */ }
+
+    if (damped) {
+      // Two stages, scattered slightly in time so the frame does not land as one
+      // click. First a quick duck to a fraction of the level -- the damper
+      // touching -- then a slow fall the rest of the way, the string ringing on
+      // under the damper while the soundboard reverb carries the body.
+      const jitter = Math.random() * this.pedalOffJitter;
+      const t0 = now + jitter;
+      const duck = Math.max(0.02, 0.09 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60));
+      const drop = Math.max(1e-5, from * Math.min(1, Math.max(0, this.pedalOffDrop)));
+      const fall = Math.max(0.05, this.pedalOffFall);
+      v.lvl.gain.setValueAtTime(from, t0);
+      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, drop), t0, duck);
+      else v.lvl.gain.linearRampToValueAtTime(drop, t0 + duck);
+      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck, fall);
+      else v.lvl.gain.linearRampToValueAtTime(0, t0 + duck + fall);
+      try { v.src.stop(t0 + duck + fall + 0.03); } catch { /* already stopped */ }
+    } else {
+      // An undamped-region leak below threshold: just a short fade.
+      const fall = 0.25;
+      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, 0), now, fall);
+      else v.lvl.gain.linearRampToValueAtTime(0, now + fall);
+      try { v.src.stop(now + fall + 0.03); } catch { /* already stopped */ }
+    }
   }
 
-  allOff() { for (const midi of [...this.voices.keys()]) this.stop(midi, true); this.E.fill(0); }
+  allOff() { for (const midi of [...this.voices.keys()]) this.stop(midi, true); this.E.fill(0); this.spent.clear(); }
 
   /** Move the tone control on voices that are already sounding, not just new ones. */
   setTone(hz) {

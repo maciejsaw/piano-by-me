@@ -29,6 +29,12 @@ export class Envelopes {
     this.relAttack = { ms: 4, shape: SHAPES.fast() };
     this.relRelease = { ms: 240, shape: SHAPES.natural() };
 
+    // The pedal-action sample's own attack. The pedal thud is a mechanical
+    // event with a real rise to it, and shaping that rise -- softening the
+    // knock, or sharpening it -- is separate from everything else, so it gets
+    // its own curve. Its long reverberant tail is the engine's, not a shape.
+    this.pedalAttack = { ms: 6, shape: SHAPES.fast() };
+
     // Release level against how long the key was held. Not an envelope -- a
     // function of a number that is not time-since-note-off.
     this.hold = { seconds: 8, floorDb: -26, shape: SHAPES.natural(), keyNoiseFollow: 0 };
@@ -78,15 +84,22 @@ export class Envelopes {
       noteRelease: { shape: this.noteRelease.shape.toJSON() },
       relAttack: { ms: this.relAttack.ms, shape: this.relAttack.shape.toJSON() },
       relRelease: { ms: this.relRelease.ms, shape: this.relRelease.shape.toJSON() },
+      pedalAttack: { ms: this.pedalAttack.ms, shape: this.pedalAttack.shape.toJSON() },
       hold: { seconds: this.hold.seconds, floorDb: this.hold.floorDb, keyNoiseFollow: this.hold.keyNoiseFollow, shape: this.hold.shape.toJSON() },
     };
   }
   fromJSON(o) {
     if (!o) return;
     const d = new Envelopes();
-    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'hold']) {
+    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'pedalAttack', 'hold']) {
       if (!o[k]) continue;
-      Object.assign(this[k], { ...o[k], shape: Bezier.from(o[k].shape, d[k].shape) });
+      // Keep the SAME shape instance -- the Bezier editors hold a reference to
+      // it, so an import that replaced it would leave them editing a ghost.
+      // Update its control points in place and copy the scalar fields.
+      const { shape: sh, ...rest } = o[k];
+      Object.assign(this[k], rest);
+      const pts = Array.isArray(sh) && sh.length === 4 ? sh : d[k].shape.toJSON();
+      this[k].shape.set(...pts);
     }
   }
 }
