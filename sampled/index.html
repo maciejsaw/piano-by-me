@@ -22,8 +22,8 @@ button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 code{background:var(--panel2);padding:1px 5px;border-radius:3px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
-main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:14px;align-items:start}
-@media(max-width:1100px){main{grid-template-columns:1fr}}
+main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:14px;align-items:start}
+@media(max-width:1180px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
 .panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 #kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
@@ -48,6 +48,12 @@ td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--d
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
 #velCanvas{width:100%;height:120px;border:1px solid var(--line);border-radius:4px;display:block}
+#eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
+.eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
+.eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
+.eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
+.eqband output{flex:0 0 84px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#velTable td:last-child{text-align:right}
 .envgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:700px){.envgrid{grid-template-columns:1fr}}
 .env.wide{grid-column:1/-1}
@@ -64,13 +70,15 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-group:first-child{margin-top:0}
 .pe-row{margin:2px 0}
 .pe-head{display:flex;align-items:center;gap:6px}
-.pe-head label{flex:0 0 116px;color:var(--dim);font-size:11px;cursor:help}
-.pe-slider{flex:1;min-width:60px;accent-color:var(--accent)}
-.pe-out{flex:0 0 118px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
-.pe-zoom{padding:1px;font-size:10px;max-width:74px}
-.pe-head button{padding:1px 6px;font-size:10px}
-.pe-canvas-wrap{margin:4px 0 10px 116px}
-.pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;height:72px;touch-action:none;cursor:crosshair;display:block}
+.pe-head label{flex:0 0 92px;color:var(--dim);font-size:11px;cursor:help}
+.pe-slider{flex:1;min-width:54px;accent-color:var(--accent)}
+.pe-out{flex:0 0 104px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pe-zoom{padding:1px;font-size:10px;flex:0 0 62px}
+.pe-head button{padding:1px 5px;font-size:10px;flex:0 0 auto}
+.pe-canvas-wrap{margin:4px 0 10px 92px}
+.pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
+.pe-canvas-wrap canvas.pe-keys{height:72px}
+.pe-canvas-wrap canvas.pe-oct{height:26px;margin-top:3px}
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
@@ -126,7 +134,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <h2>Velocity response — <span id="noteName">C4</span></h2>
       <canvas id="velCanvas" height="240"></canvas>
       <div class="hint" id="velHint"></div>
-      <table id="noteTable"></table>
+      <table id="velTable"></table>
+      <table id="noteTable" style="margin-top:8px"></table>
       <div class="hint">Level comes from the curve; timbre comes from which of the sixteen recordings the
         velocity reaches for. They are separate on purpose — changing the curve never changes the tone,
         and changing the layer bias never changes the level. Both are per key: draw them on the right.</div>
@@ -142,6 +151,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         key's recorded stereo picture rather than a pan — so the treble does not arrive mono and hard right.
         The recordings are all from one microphone position, so this is putting back something the
         soundboard had and the microphones could not.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Output EQ — after everything, including the room</h2>
+      <canvas id="eqCanvas" height="220"></canvas>
+      <div id="eqBands"></div>
+      <div class="row"><label>EQ</label><button id="eqBtn" class="on" style="flex:1">enabled</button><output></output></div>
+      <div class="hint">Shelves at the ends, two bells in the middle: body around 300 Hz where a piano
+        gets boxy, presence around 3 kHz where the hammer lives. The curve is drawn from the filters'
+        own response, so what is on screen is what is running. It sits before the limiter, so a boost
+        cannot sneak past it, and after the room, so it is the last word on tone — use the per-key
+        <b>Level trim</b> for a single note that is wrong, not this.</div>
     </div>
 
     <div class="panel">

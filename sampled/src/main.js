@@ -6,6 +6,7 @@ import { buildKeyboard } from './keyboard.js';
 import { levelDb, pickLayer } from './velocity.js';
 import { Envelopes } from './envelopes.js';
 import { createBezierEditor, SHAPES } from './bezier.js';
+import { BANDS } from './eq.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'piano-sampled-curves';
@@ -176,6 +177,7 @@ function buildUI() {
   bezierRow('ra', envelopes.relAttack);
   bezierRow('rr', envelopes.relRelease);
   bezierRow('ho', envelopes.hold, { ghost: () => envelopes.ghostFor(lib.note(selNote)) });
+  buildEq();
 
   const bind = (id, fn, fmt) => {
     const el = $(id), out = $(id + 'V');
@@ -234,18 +236,91 @@ function buildUI() {
   $('resetAll').onclick = () => {
     for (const p of PARAMS) curves.reset(p.key);
     envelopes.fromJSON(new Envelopes().toJSON());
+    engine.eq.fromJSON(null);
+    for (const [i, b] of BANDS.entries()) {
+      engine.eq.set(i, 'freq', b.freq); engine.eq.set(i, 'gain', b.gain); engine.eq.set(i, 'q', b.q);
+    }
     localStorage.removeItem(STORE);
-    editor.refresh(); engine.refreshStrips(); renderNote(); redrawEnvs();
+    editor.refresh(); engine.refreshStrips(); renderNote(); redrawEnvs(); buildEq();
   };
   renderNote();
 }
 
-const save = () => localStorage.setItem(STORE, JSON.stringify({ curves: curves.toJSON(), envelopes: envelopes.toJSON() }));
+const save = () => localStorage.setItem(STORE, JSON.stringify({
+  curves: curves.toJSON(), envelopes: envelopes.toJSON(), eq: engine?.eq.toJSON(),
+}));
+// ------------------------------------------------------------------- EQ ----
+const EQ_FREQS = (() => { const f = new Float32Array(160); for (let i = 0; i < 160; i++) f[i] = 20 * Math.pow(1000, i / 159); return f; })();
+
+function drawEq() {
+  const c = $('eqCanvas'), g = c.getContext('2d');
+  const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
+  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  const yOf = (db) => h / 2 - (db / 18) * (h / 2 - 4);
+  g.strokeStyle = '#2b261d';
+  for (const db of [-12, -6, 6, 12]) { g.beginPath(); g.moveTo(0, yOf(db)); g.lineTo(w, yOf(db)); g.stroke(); }
+  g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+  for (const f of [100, 1000, 10000]) {
+    const x = Math.log(f / 20) / Math.log(1000) * w;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+    g.fillStyle = '#6d6458'; g.textAlign = 'left';
+    g.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 3, h - 3);
+  }
+  g.strokeStyle = '#4a4134'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
+  const resp = engine.eq.response(EQ_FREQS);
+  g.strokeStyle = engine.eq.enabled ? '#d9a441' : '#4a4134';
+  g.lineWidth = 2 * devicePixelRatio;
+  g.beginPath();
+  for (let i = 0; i < EQ_FREQS.length; i++) {
+    const x = i / (EQ_FREQS.length - 1) * w;
+    const y = Math.max(1, Math.min(h - 1, yOf(resp[i])));
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+
+function buildEq() {
+  const root = $('eqBands');
+  root.innerHTML = '';
+  BANDS.forEach((b, i) => {
+    const row = document.createElement('div');
+    const qCtl = b.hasQ ? `<input type="range" class="q" min="0.3" max="4" step="0.05" value="${b.q}" title="Q">` : '';
+    row.innerHTML = `<div class="eqband"><label title="${b.type}">${b.label}</label>
+      <input type="range" class="f" min="${Math.log(b.fMin)}" max="${Math.log(b.fMax)}" step="0.001" value="${Math.log(b.freq)}" title="frequency">
+      <input type="range" class="g" min="-15" max="15" step="0.1" value="${b.gain}" title="gain">
+      ${qCtl}<output></output></div>`;
+    root.appendChild(row);
+    const f = row.querySelector('.f'), gg = row.querySelector('.g'), q = row.querySelector('.q');
+    const show = () => {
+      const hz = Math.exp(+f.value);
+      row.querySelector('output').textContent =
+        `${hz < 1000 ? hz.toFixed(0) : (hz / 1000).toFixed(2) + 'k'} ${(+gg.value >= 0 ? '+' : '')}${(+gg.value).toFixed(1)}`;
+    };
+    const apply = () => {
+      engine.eq.set(i, 'freq', Math.exp(+f.value));
+      engine.eq.set(i, 'gain', +gg.value);
+      if (q) engine.eq.set(i, 'q', +q.value);
+      show(); drawEq(); save();
+    };
+    f.oninput = gg.oninput = apply;
+    if (q) q.oninput = apply;
+    show();
+  });
+  $('eqBtn').onclick = () => {
+    engine.eq.setEnabled(!engine.eq.enabled);
+    $('eqBtn').classList.toggle('on', engine.eq.enabled);
+    $('eqBtn').textContent = engine.eq.enabled ? 'enabled' : 'bypassed';
+    drawEq();
+  };
+  drawEq();
+}
+
 function restore() {
   try {
     const o = JSON.parse(localStorage.getItem(STORE));
     curves.fromJSON(o?.curves);
     envelopes.fromJSON(o?.envelopes);
+    engine.eq.fromJSON(o?.eq);
   } catch { /* first run, or a shape this version no longer has */ }
 }
 
@@ -308,6 +383,16 @@ function renderNote() {
     v === 1 ? g.moveTo(0, y) : g.lineTo((v - 1) / 127 * w, y);
   }
   g.stroke();
+  const rows = [1, 16, 32, 48, 64, 80, 96, 112, 127].map((v) => {
+    const l = pickLayer(v, lib.m.hivel, lib.layers, bias);
+    const target = levelDb(v, dyn, gam) + curves.at('trim', selNote);
+    const already = rel[l] ?? 0;
+    return `<tr><td>vel ${String(v).padStart(3)}</td><td>layer ${String(l).padStart(2)}</td>
+      <td>${target.toFixed(1)} dB</td><td>${(target - already >= 0 ? '+' : '')}${(target - already).toFixed(1)} on it</td></tr>`;
+  }).join('');
+  $('velTable').innerHTML = `<tr><td colspan="4" style="color:var(--dim)">what each velocity does on ${noteName(selNote)}:
+    which recording, the level asked for, and the trim applied to that recording to get there</td></tr>${rows}`;
+
   $('velHint').textContent = `${noteName(selNote)} — ${dyn.toFixed(0)} dB range, curve ${gam.toFixed(2)}${bias ? `, layer bias ${bias > 0 ? '+' : ''}${bias}` : ''}. Bands are which of the ${lib.layers.length} recordings each velocity plays.`;
 }
 

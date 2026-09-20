@@ -2,29 +2,41 @@
 //
 // Everything a player would want to differ from note to note is a curve across
 // the keyboard rather than a single number: velocity response, level, stereo
-// position, tuning, how much a key joins in sympathetically. Each parameter
-// has one slider that moves the whole compass and one canvas you can draw a
-// per-key departure on. Both add, and both are stored as offsets from the
-// default -- so zero is always "as shipped" and however far an edit wanders
-// there is a defined way back.
+// position, tuning, how much a key joins in sympathetically.
+//
+// Three tiers per parameter, and they add:
+//
+//   slider   one offset for the whole compass
+//   octave   nine bands, A0 and C1..C8. This is the tier people actually
+//            think in -- "the top octave is too bright", "lift the tenor" --
+//            and drawing eighty-eight keys by hand to say it is absurd.
+//   canvas   a per-key departure on top, for the one note that is wrong
+//
+// All three are offsets from the shipped default, so zero is always "as
+// shipped" and however far an edit wanders there is a defined way back.
 //
 // This is the same arrangement as the physically modelled variant's parameter
 // editor, for the same reason: on an 88-key instrument, a control that is not
 // per-key is a control that is wrong for most of the keyboard.
 
 export const LOW = 21, HIGH = 108, KEYS = HIGH - LOW + 1;
+// A0 is its own stub octave, then C1..C8: nine bands, which is how a piano is
+// actually talked about ("the top octave is too bright", "lift the tenor").
+export const OCTAVES = 9;
+export const octaveOf = (midi) => Math.max(0, Math.min(OCTAVES - 1, Math.floor(midi / 12) - 1));
+export const OCT_LABELS = ['A0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8'];
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 export const noteName = (m) => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 const BLACK = new Set([1, 3, 6, 8, 10]);
 
 export const PARAMS = [
-  { key: 'dynamic', label: 'Dynamic range', group: 'Velocity response', def: -42, span: 18, unit: 'dB at vel 1',
+  { key: 'dynamic', label: 'Dynamic range', group: 'Velocity response', def: -42, span: 18, unit: 'dB @v1',
     hint: 'How far below fortissimo a velocity of 1 lands. A real grand runs 35-45 dB; the recordings themselves only span 18, so the rest is gain and this is where it is set.' },
   { key: 'gamma', label: 'Curve', group: 'Velocity response', def: 1, span: 0.9, unit: '',
     hint: 'Below 1 the keyboard gets loud early (light action, easier to play); above 1 it holds back until you push. Applied per key, so you can flatten a hot note without touching the rest.' },
   { key: 'trim', label: 'Level trim', group: 'Velocity response', def: 0, span: 9, unit: 'dB',
     hint: 'Per-key gain. The honest use is evening out the seams where one recording hands over to the next.' },
-  { key: 'layerBias', label: 'Layer bias', group: 'Velocity response', def: 0, span: 5, unit: 'layers',
+  { key: 'layerBias', label: 'Layer bias', group: 'Velocity response', def: 0, span: 5, unit: 'lyr',
     hint: 'Which of the sixteen recorded layers a given velocity reaches for, without changing how loud it comes out. Positive is a harder, brighter recording at the same level.' },
 
   { key: 'pan', label: 'Position', group: 'Stereo', def: 0, span: 1, unit: '',
@@ -50,9 +62,15 @@ const BY_KEY = new Map(PARAMS.map((p) => [p.key, p]));
 export class Curves {
   constructor() {
     this.g = {};                 // one offset for the whole keyboard
+    this.o = {};                 // nine octave bands
     this.k = {};                 // per-key offsets, allocated only when drawn on
     this.def = {};
-    for (const p of PARAMS) { this.g[p.key] = 0; this.k[p.key] = null; this.def[p.key] = p.def; }
+    for (const p of PARAMS) {
+      this.g[p.key] = 0;
+      this.o[p.key] = new Float32Array(OCTAVES);
+      this.k[p.key] = null;
+      this.def[p.key] = p.def;
+    }
   }
   /**
    * The value in force at `midi`: default + global offset + per-key offset.
@@ -63,24 +81,27 @@ export class Curves {
    */
   at(key, midi) {
     const per = this.k[key];
-    return this.def[key] + this.g[key] + (per ? per[midi - LOW] : 0);
+    return this.def[key] + this.g[key] + this.o[key][octaveOf(midi)] + (per ? per[midi - LOW] : 0);
   }
   setGlobal(key, v) { this.g[key] = v; }
+  setOctave(key, oct, v) { this.o[key][oct] = v; }
   setKey(key, midi, v) {
     let a = this.k[key];
     if (!a) a = this.k[key] = new Float32Array(KEYS);
     a[midi - LOW] = v;
   }
-  reset(key) { this.g[key] = 0; this.k[key] = null; }
+  reset(key) { this.g[key] = 0; this.o[key].fill(0); this.k[key] = null; }
   toJSON() {
-    const o = { g: { ...this.g }, k: {} };
-    for (const [key, a] of Object.entries(this.k)) if (a) o.k[key] = Array.from(a, (v) => +v.toFixed(3));
-    return o;
+    const out = { g: { ...this.g }, o: {}, k: {} };
+    for (const [key, a] of Object.entries(this.o)) if (a.some((v) => v !== 0)) out.o[key] = Array.from(a, (v) => +v.toFixed(3));
+    for (const [key, a] of Object.entries(this.k)) if (a) out.k[key] = Array.from(a, (v) => +v.toFixed(3));
+    return out;
   }
   fromJSON(o) {
     if (!o) return;
     for (const p of PARAMS) {
       this.g[p.key] = o.g?.[p.key] ?? 0;
+      this.o[p.key] = o.o?.[p.key] ? Float32Array.from(o.o[p.key]) : new Float32Array(OCTAVES);
       this.k[p.key] = o.k?.[p.key] ? Float32Array.from(o.k[p.key]) : null;
     }
   }
@@ -123,15 +144,20 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
         </select>
         <button class="pe-reset" title="back to the shipped value">reset</button>
       </div>
-      <div class="pe-canvas-wrap"><canvas height="${72 * devicePixelRatio}"></canvas>
-        <div class="pe-hint">drag to draw per-key · shift-drag to flatten toward the line</div></div>`;
+      <div class="pe-canvas-wrap">
+        <canvas class="pe-keys" height="${72 * devicePixelRatio}"></canvas>
+        <canvas class="pe-oct" height="${26 * devicePixelRatio}"></canvas>
+        <div class="pe-hint">upper: drag to draw per-key · lower: nine octave bands · shift-drag either to flatten</div>
+      </div>`;
     root.appendChild(wrap);
 
     const slider = wrap.querySelector('.pe-slider');
     const out = wrap.querySelector('.pe-out');
     const zoom = wrap.querySelector('.pe-zoom');
-    const canvas = wrap.querySelector('canvas');
+    const canvas = wrap.querySelector('.pe-keys');
     const ctx = canvas.getContext('2d');
+    const octC = wrap.querySelector('.pe-oct');
+    const octX = octC.getContext('2d');
     let zi = 0;
 
     const span = () => p.span * ZOOMS[zi];
@@ -161,6 +187,27 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
       }
       const at = curves.at(p.key, selected());
       out.textContent = `${noteName(selected())} ${fmt(p, at)}`;
+      drawOct();
+    };
+
+    const drawOct = () => {
+      const w = octC.clientWidth * devicePixelRatio;
+      if (octC.width !== w) octC.width = w;
+      const h = octC.height, mid = h / 2, bw = w / OCTAVES;
+      octX.fillStyle = '#17150f'; octX.fillRect(0, 0, w, h);
+      octX.strokeStyle = '#4a4134';
+      octX.beginPath(); octX.moveTo(0, mid); octX.lineTo(w, mid); octX.stroke();
+      const sel = octaveOf(selected());
+      for (let i = 0; i < OCTAVES; i++) {
+        const v = curves.o[p.key][i];
+        const y = mid - (v / span()) * (h / 2 - 2);
+        octX.fillStyle = v === 0 ? '#332d23' : (v > 0 ? '#d9a441' : '#6fa8dc');
+        octX.fillRect(i * bw + 1, Math.min(y, mid), bw - 2, Math.max(1.5, Math.abs(y - mid)));
+        octX.fillStyle = i === sel ? '#ece5da' : '#6d6458';
+        octX.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+        octX.textAlign = 'center';
+        octX.fillText(OCT_LABELS[i], i * bw + bw / 2, h - 2);
+      }
     };
 
     slider.oninput = () => { curves.setGlobal(p.key, +slider.value * span()); draw(); notify(); };
@@ -188,6 +235,18 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
     canvas.onpointerdown = (e) => { drawing = true; canvas.setPointerCapture(e.pointerId); paint(e); };
     canvas.onpointermove = (e) => { if (drawing) paint(e); };
     canvas.onpointerup = canvas.onpointercancel = () => { drawing = false; };
+
+    let octDrag = false;
+    const paintOct = (e) => {
+      const r = octC.getBoundingClientRect();
+      const i = Math.max(0, Math.min(OCTAVES - 1, Math.floor((e.clientX - r.left) / r.width * OCTAVES)));
+      const rel = 1 - (e.clientY - r.top) / r.height * 2;
+      curves.setOctave(p.key, i, e.shiftKey ? curves.o[p.key][i] * 0.6 : rel * span());
+      draw(); notify();
+    };
+    octC.onpointerdown = (e) => { octDrag = true; octC.setPointerCapture(e.pointerId); paintOct(e); };
+    octC.onpointermove = (e) => { if (octDrag) paintOct(e); };
+    octC.onpointerup = octC.onpointercancel = () => { octDrag = false; };
 
     draw();
     return { p, draw, slider, refresh: () => { slider.value = Math.max(-1, Math.min(1, curves.g[p.key] / span())); draw(); } };

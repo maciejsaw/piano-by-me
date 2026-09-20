@@ -263,6 +263,56 @@ const r = await page.evaluate(async () => {
   out.haloDb = 20 * Math.log10(Math.max(loudestVoice, 1e-12) / Math.max(out.struckGain, 1e-12));
   await settle();
 
+  // --- per-octave scaling ---------------------------------------------------
+  // The middle tier between one slider for the whole compass and drawing
+  // eighty-eight keys by hand. It has to move its own octave and leave the
+  // neighbours alone, which is the only thing that can really go wrong.
+  const { octaveOf } = await import('/sampled/src/curves.js');
+  const { curves } = window.piano;
+  curves.setOctave('trim', octaveOf(60), -40);
+  engine.noteOn(60, 100); out.octTarget = await peakOver(400); engine.noteOff(60); await settle();
+  engine.noteOn(72, 100); out.octNeighbour = await peakOver(400); engine.noteOff(72); await settle();
+  curves.setOctave('trim', octaveOf(60), 0);
+  await wait(10);
+  engine.noteOn(60, 100); out.octRestored = await peakOver(400); engine.noteOff(60); await settle();
+
+  // --- the output EQ --------------------------------------------------------
+  // Measured on the output node, because the EQ sits after the master bus --
+  // an analyser on the master would show a flat response however wrong the
+  // wiring was.
+  const eqAn = new AnalyserNode(ctx, { fftSize: 8192 });
+  engine.outputNode().connect(eqAn);
+  const spec = new Float32Array(eqAn.frequencyBinCount);
+  const bandDb = (hz) => {
+    eqAn.getFloatFrequencyData(spec);
+    const k = Math.round(hz * eqAn.fftSize / ctx.sampleRate);
+    let m = -200;
+    for (let i = k - 2; i <= k + 2; i++) m = Math.max(m, spec[i]);
+    return m;
+  };
+  const holdAndMeasure = async (hz) => {
+    engine.noteOn(36, 105);
+    let m = -200;
+    for (let t = 0; t < 500; t += 25) { m = Math.max(m, bandDb(hz)); await wait(25); }
+    engine.noteOff(36); await settle();
+    return m;
+  };
+  engine.eq.setEnabled(true);
+  for (const i of [0, 1, 2, 3]) engine.eq.set(i, 'gain', 0);
+  // The shelf corner is moved well above the probe frequency first. At the
+  // shipped 90 Hz corner a probe at 100 Hz sits halfway down the transition
+  // and reads half the gain -- correct behaviour for a shelf, and a test that
+  // asserted +12 dB there would have been asserting the filter is not a shelf.
+  engine.eq.set(0, 'freq', 400);
+  out.eqFlat = await holdAndMeasure(100);
+  engine.eq.set(0, 'gain', 12);
+  out.eqBoost = await holdAndMeasure(100);
+  engine.eq.setEnabled(false);
+  out.eqBypass = await holdAndMeasure(100);
+  engine.eq.setEnabled(true);
+  engine.eq.set(0, 'gain', 0);
+  engine.eq.set(0, 'freq', 90);
+
   out.loaded = lib.loaded;
   out.aux = lib.auxResident(21, 108);
   out.auxTotal = lib.auxOrder(21, 108).length;
@@ -303,6 +353,14 @@ console.log('  a release sample is audible    :', f(r.releaseAudible));
 console.log('  one sympathetic string         :', r.haloDb.toFixed(1), 'dB under one struck string',
   `(${r.ringingVoices} ringing; the modelled variant measures -27 dB)`);
 console.log('');
+console.log('');
+console.log('  C4 with its octave trimmed 40dB:', f(r.octTarget));
+console.log('  C5, a different octave         :', f(r.octNeighbour));
+console.log('  C4 once the octave is restored :', f(r.octRestored));
+console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
+console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
+console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
+console.log('');
 console.log('  console errors                 :', errors.length ? errors.join(' | ') : 'none');
 
 const checks = [
@@ -330,6 +388,11 @@ const checks = [
   ['release samples are audible', r.releaseAudible > 1e-4],
   ['a sympathetic string stays well under a struck one', r.haloDb < -18],
   ['...but is still audible', r.haloDb > -35],
+  ['an octave band moves its own octave', r.octTarget < r.octRestored * 0.2],
+  ['...and leaves the neighbours alone', r.octNeighbour > r.octRestored * 0.4],
+  ['...and is undone by setting it back', r.octRestored > r.octTarget * 5],
+  ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
+  ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],
 ];
 console.log('');
