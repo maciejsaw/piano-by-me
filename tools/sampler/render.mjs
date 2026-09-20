@@ -29,6 +29,18 @@ const from = +arg('--from', 'auto');
 const seconds = +arg('--seconds', 30);
 const tail = +arg('--tail', 4);
 const out = arg('--out', join('renders', basename(midiPath).replace(/\.midi?$/i, '') + '-sampled.wav'));
+// For telling apart what the instrument does from what the effects on top of
+// it do. `--bare` is the sampler and nothing else.
+const opts = {
+  resonance: !argv.includes('--no-resonance') && !argv.includes('--bare'),
+  room: !argv.includes('--no-room') && !argv.includes('--bare'),
+  noise: !argv.includes('--no-noise') && !argv.includes('--bare'),
+  resAmount: +arg('--res-amount', 'NaN'),
+  resVoices: +arg('--res-voices', 'NaN'),
+  resComp: !argv.includes('--no-res-comp'),
+  voices: +arg('--voices', 'NaN'),
+  wet: +arg('--wet', 'NaN'),
+};
 const PORT = process.env.PORT || '8151';
 
 // ---------------------------------------------------------------- the score --
@@ -40,7 +52,8 @@ const notes = events.filter((e) => e.type === 'noteOn');
 console.log(`\n  ${basename(midiPath)}`);
 console.log(`  ${(midi.duration / 60).toFixed(1)} min, ${midi.events.filter((e) => e.type === 'noteOn').length} notes`);
 console.log(`  rendering ${start.toFixed(2)}s .. ${(start + seconds).toFixed(2)}s + ${tail}s tail`);
-console.log(`  ${notes.length} notes, ${events.filter((e) => e.type === 'cc' && e.cc === 64).length} pedal moves\n`);
+console.log(`  ${notes.length} notes, ${events.filter((e) => e.type === 'cc' && e.cc === 64).length} pedal moves`);
+console.log(`  resonance ${opts.resonance ? 'on' : 'OFF'}   room ${opts.room ? 'on' : 'OFF'}   mechanical noise ${opts.noise ? 'on' : 'OFF'}\n`);
 
 // ------------------------------------------------------------------ browser --
 const CHROME = [process.env.CHROMIUM, '/opt/pw-browsers/chromium'].find((p) => p && existsSync(p));
@@ -61,9 +74,18 @@ await page.waitForFunction(() => window.piano.lib.keysReady() >= 88
   null, { timeout: 180000 });
 process.stdout.write(' done\n');
 
-const result = await page.evaluate(async ({ events, seconds, tail }) => {
+const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
   const { ctx, engine, lib, curves } = window.piano;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  engine.res.enabled = opts.resonance;
+  if (!opts.room) engine.wet.gain.value = 0;
+  if (Number.isFinite(opts.wet)) engine.wet.gain.value = opts.wet;
+  if (!opts.noise) { engine.releaseNoise = 0; engine.damperNoise = 0; engine.pedalNoise = 0; }
+  if (Number.isFinite(opts.resAmount)) engine.res.amount = opts.resAmount;
+  if (Number.isFinite(opts.resVoices)) engine.res.maxVoices = opts.resVoices;
+  if (Number.isFinite(opts.voices)) engine.maxVoices = opts.voices;
+  engine.res.compensate = opts.resComp;
 
   // Stop streaming, then fetch exactly the layers this score asks for. With
   // the warm pass still running it could evict one of them mid-performance,
@@ -110,6 +132,12 @@ const result = await page.evaluate(async ({ events, seconds, tail }) => {
   // an accumulator, not a schedule -- so the halo would start early by
   // whatever this is. At 60 ms that is well inside its own 45 ms attack.
   const LOOKAHEAD = 0.06;
+  let peakVoices = 0, peakRes = 0;
+  const watch = setInterval(() => {
+    const st = engine.stats();
+    peakVoices = Math.max(peakVoices, st.voices);
+    peakRes = Math.max(peakRes, st.resonating);
+  }, 50);
   rec.port.postMessage('start');
   const t0 = ctx.currentTime + 0.25;
   let i = 0, late = 0, worstLate = 0;
@@ -132,6 +160,7 @@ const result = await page.evaluate(async ({ events, seconds, tail }) => {
       if (now > seconds + tail) { clearInterval(timer); resolve(); }
     }, 10);
   });
+  clearInterval(watch);
   rec.port.postMessage('stop');
   while (!done) await wait(50);
 
@@ -147,8 +176,8 @@ const result = await page.evaluate(async ({ events, seconds, tail }) => {
     return btoa(s);
   };
   return { L: b64(L), R: b64(R), frames: n, rate: ctx.sampleRate, missing, late, worstLate,
-    voicesPeak: engine.stats().voices };
-}, { events, seconds, tail });
+    voicesPeak: peakVoices, resPeak: peakRes };
+}, { events, seconds, tail, opts });
 
 await browser.close();
 server.kill();
@@ -179,6 +208,7 @@ console.log(`  peak       ${(20 * Math.log10(peak)).toFixed(2)} dBFS`);
 console.log(`  timing     ${result.late} of ${events.length} events missed their slot${result.late ? `, worst ${(result.worstLate * 1000).toFixed(1)} ms` : ' — sample accurate'}`);
 console.log(`  layers     ${result.missing ? `${result.missing} NOT resident` : 'all resident'}`);
 console.log(`  dropouts   ${gaps ? `${gaps} gaps of 10 ms or more` : 'none'}  (lead-in ${(head / result.rate * 1000).toFixed(0)} ms)`);
+console.log(`  voices     ${result.voicesPeak} struck at once, ${result.resPeak} ringing sympathetically`);
 
 writeWav24(out, [L, R], result.rate);
 console.log(`\n  -> ${out}\n`);

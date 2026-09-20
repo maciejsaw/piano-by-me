@@ -97,7 +97,11 @@ export function couplingMatrix(hz, { partials = 16, selectivity = 8, lo = 21, hi
   return { W, n, lo };
 }
 
-const LIMIT_DB = 12;     // how far the decay compensation is allowed to go
+// How far the decay compensation is allowed to go. Past this it is amplifying
+// the room's noise floor rather than the string -- and every decibel of it
+// also brings the moment the voice has to be restarted closer, which is the
+// other half of what made this sound granular.
+const LIMIT_DB = 6;
 
 export class Resonance {
   /**
@@ -112,12 +116,25 @@ export class Resonance {
     this.tau = new Float64Array(this.n);
     this.voices = new Map();
     this.undamped = new Set();
-    this.amount = 0.5;          // master send
+    // Calibrated, not chosen. At 0.15 the halo over a pedalled passage sits
+    // about 16 dB under the notes driving it, which is a bloom you can hear
+    // without it becoming the music; the physically modelled variant in this
+    // repo measures its own pedal halo at -27 dB below a single strike peak.
+    // It was 0.5 with the recording's level left out entirely, which put the
+    // halo 15 dB ABOVE the piano -- two dozen peak-normalised pianissimo
+    // samples restarting under everything, which is what a grain cloud is.
+    this.amount = 0.15;         // master send
     this.drive = 2.2;           // velocity exponent: how much harder hitting builds
-    this.maxVoices = 24;
+    // How far the accumulator is allowed to open one voice, BEFORE the
+    // recording's own level is put back. Without a ceiling a long pedalled
+    // passage keeps adding to E and a single sympathetic string ends up
+    // louder than the note that drove it.
+    this.ceiling = 1.2;         // a safety limit, not a working level
+    this.maxVoices = 16;
     this.threshold = 0.0012;
     this.tone = 5200;           // the bridge is not a wire: the halo is not bright
     this.enabled = true;
+    this.compensate = true;     // divide the recording's own decay back out
     this.build();
   }
 
@@ -178,7 +195,12 @@ export class Resonance {
     for (const midi of keep) {
       const v = this.voices.get(midi) ?? this.start(midi);
       if (!v) continue;
-      const g = Math.min(this.amount * Math.sqrt(this.E[midi - this.lo]), 4);
+      // times v.unit, the gain that restores this recording's true level.
+      // Leaving that out -- which this did -- plays a peak-normalised
+      // pianissimo sample as though it were fortissimo, about 20 dB too loud,
+      // on every one of these voices at once. The result was a grain cloud
+      // 13 dB above the piano it was supposed to be a halo around.
+      const g = Math.min(this.amount * Math.sqrt(this.E[midi - this.lo]), this.ceiling) * v.unit;
       v.lvl.gain.setTargetAtTime(g, this.ctx.currentTime, 0.045);
       v.target = g;                         // remembered, so a damper fall starts from it
     }
@@ -196,7 +218,7 @@ export class Resonance {
     const d = this.lib.note(midi)?.decay;
     const N = 128;
     const out = new Float32Array(N);
-    if (!d) { out.fill(1); return out; }
+    if (!d || !this.compensate) { out.fill(1); return out; }
     const dbAt = (t) => {
       const { t: ts, db } = d;
       if (t <= ts[0]) return db[0];
@@ -244,7 +266,7 @@ export class Resonance {
 
     src.connect(comp).connect(lp).connect(lvl).connect(this.strip(midi));
     src.start(now, offset);
-    const v = { src, comp, lp, lvl, target: 0, until: now + dur };
+    const v = { src, comp, lp, lvl, target: 0, unit: got.entry.gain, until: now + dur };
     src.onended = () => {
       if (this.voices.get(midi) === v) {
         this.voices.delete(midi);
