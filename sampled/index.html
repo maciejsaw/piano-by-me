@@ -77,8 +77,17 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-head button{padding:1px 5px;font-size:10px;flex:0 0 auto}
 .pe-canvas-wrap{margin:4px 0 10px 92px}
 .pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
-.pe-canvas-wrap canvas.pe-keys{height:72px}
-.pe-canvas-wrap canvas.pe-oct{height:26px;margin-top:3px}
+.pe-canvas-wrap canvas.pe-keys{height:76px}
+.sel-bar{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:12px}
+.sel-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);flex-wrap:wrap}
+.sel-head b{color:var(--accent);font-weight:600}
+.sel-actions{margin-left:auto;display:flex;gap:4px}
+.sel-actions button{padding:2px 7px;font-size:10px}
+.sel-map{width:100%;height:34px;display:block;margin:6px 0 4px;border:1px solid var(--line);border-radius:4px;touch-action:none;cursor:ew-resize}
+.sel-foot{display:flex;align-items:center;gap:8px}
+.sel-foot label{flex:0 0 70px;color:var(--dim);font-size:11px;cursor:help}
+.sel-foot input[type=range]{flex:1;accent-color:var(--accent)}
+.sel-foot output{flex:0 0 66px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums}
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
@@ -258,10 +267,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
   <div>
     <div class="panel">
-      <h2>Per-key parameters — slider moves the compass, canvas draws single notes</h2>
+      <h2>Parameters — one slider each, on whatever you have selected</h2>
       <div style="display:flex;gap:8px;margin-bottom:10px"><button id="resetAll">reset everything</button></div>
       <div id="editor"></div>
-      <div class="hint">Edits are stored in this browser and reload with the page.</div>
+      <div class="hint">Every slider moves whatever the strip above has selected: the whole instrument,
+        a range you dragged, or one key. The three add — a range edit is a departure from the global
+        value, a key edit a departure from that — so zero always means "as shipped". A range is
+        <b>feathered</b> at its edges, so raising the top octave and a half does not make one key
+        suddenly different; set the edge fade to zero when you do want a hard edge. The gold line on
+        each chart is the <b>total</b>, which is where you will see a cliff if you have made one, and
+        the caption underneath names the biggest jump between neighbouring keys.
+        <b>smooth</b> rounds off the per-key layer only, so a deliberate single-key fix survives it
+        unless you ask. Edits are stored in this browser and reload with the page.</div>
     </div>
   </div>
 </main>

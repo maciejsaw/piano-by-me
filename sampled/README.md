@@ -268,18 +268,55 @@ timbre; changing the layer bias never changes the level.
 
 Eleven per-key curves in all — dynamic range, curve shape, level trim, layer
 bias, stereo position, width, tuning, resonance send, damper fall speed, and
-the two release-sample levels — and each has **three tiers that add**:
+the two release-sample levels.
 
-| tier | control | for |
+**One slider each, and you choose what it moves.** That is the whole design,
+and it comes from the actual workflow: you play, you notice something, and the
+fix is the same slider whether the something is the whole instrument, the top
+octave and a half, or one key.
+
+| scope | how | for |
 |---|---|---|
-| global | one slider | the whole compass at once |
-| octave | nine bands, A0 and C1..C8 | "the top octave is too bright", "lift the tenor" — the tier people actually think in |
-| per key | a drawable canvas | the one note that is wrong |
+| all 88 keys | the default | changing the instrument |
+| a range | drag across the strip | "the top needs a different velocity response" |
+| one key | click one key, or draw on the chart | "that note is just wrong" |
 
-All three are offsets from the shipped default, so zero is always "as shipped"
-and however far an edit wanders there is a defined way back. Precision is a
-zoom on all three, not a separate parameter, so a curve drawn at one setting
-cannot silently rescale when you pick another.
+The three tiers **add**. They do not average, and that is worth being explicit
+about because averaging is the obvious alternative and it is wrong: under
+averaging, setting a per-key value does not give you that value, it gives you
+a third of it, and the number under your finger stops meaning anything.
+Summing keeps every tier a departure from what is underneath it, so zero
+always means "as shipped" and however far an edit wanders there is a defined
+way back.
+
+**Feathering is what stops a range edit ending in a cliff**, which is the real
+problem behind "I do not want one key to suddenly be different". A range is a
+rectangle with a raised-cosine ramp of a few keys on each side. Raising the
+top 36 keys by 12 dB:
+
+| edge fade | biggest jump between neighbouring keys |
+|---|---|
+| hard edge | 12.00 dB |
+| 3 keys | 6.00 |
+| 6 keys | 3.00 |
+| 10 keys | 1.85 |
+| 14 keys | 1.34 |
+
+Set it to zero when a hard edge is what you want — a real piano has one at the
+bass break.
+
+Two things make a cliff visible rather than something you discover later. The
+gold line on every chart is the **total** — global plus ranges plus per key,
+not the layer being edited — because a cliff is a property of the sum and
+nothing else on screen would show it. And the caption under each chart names
+the biggest jump between neighbouring keys and which key it is at, so a
+deliberate single-key fix reads as `4.32 dB at D3` and an accidental one reads
+the same way.
+
+**smooth** rounds off the per-key layer, and only that layer. It is opt-in
+because automatic smoothing would take away the other half of what is wanted
+here: one key really can just be wrong, and fixing it has to stay possible
+without the fix bleeding into its neighbours.
 
 Alongside the curve there is a **table** of what each velocity actually does on
 the selected key: which of the sixteen recordings it reaches for, the level the
