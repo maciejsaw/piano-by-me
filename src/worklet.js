@@ -29,6 +29,7 @@ class PianoProcessor extends AudioWorkletProcessor {
       case 'unaCorda':    p.setUnaCorda(m.on); break;
       case 'gain':        this.gain = m.value; break;
       case 'panic':       p.panic(); break;
+      case 'offsets':     p.setOffsets(m.state); break;
       case 'body': {
         // Rebuilding the cavity reallocates resonators, so do it only when a
         // dimension actually changed; mixes and gains are free to set live.

@@ -30,6 +30,12 @@ const softclip = Math.tanh;
 
 const ZONES = 16;             // soundboard regions across the compass
 
+// The parameters that are baked into a string's loop filters, and so need a
+// recompile when they move. Everything else is read at the strike or sits
+// downstream of the bridge.
+const STRING_KEYS = ['t60Low', 't60High', 't60Damped', 'strikePos', 'coupling',
+  'detune', 'lengthSpread', 'gaugeSpread', 'strikeSpread'];
+
 export class Piano {
   constructor(fs, opts = {}) {
     this.fs = fs;
@@ -337,7 +343,16 @@ export class Piano {
    * note; values baked into the loop filters take effect immediately.
    */
   setOffsets(edits) {
+    const prev = this.edits;
     this.edits = edits instanceof Offsets ? edits : new Offsets(edits);
+    // Recompiling 230 loop filters is the expensive part, and most parameters
+    // do not need it: a hammer or knock value is read at the strike and a body
+    // value is downstream of every string. So look at WHICH parameters moved
+    // and only pay for the ones baked into a delay loop. Without this an
+    // editor drag recompiles the whole instrument sixty times a second on the
+    // audio thread.
+    const touched = STRING_KEYS.some((k) => prev.at(k, 21) !== this.edits.at(k, 21)
+      || prev.keys.has(k) || this.edits.keys.has(k));
     const model = buildScale(this.scaleDef, this.edits);
     for (let i = 0; i < model.notes.length; i++) {
       const src = model.notes[i], dst = this.notes[i];
@@ -345,11 +360,13 @@ export class Piano {
         if (k === 'voices' || k === 'zone' || k === 'held' || k === 'strings') continue;
         dst[k] = src[k];
       }
-      for (let v = 0; v < dst.voices.length; v++) {
-        const st = src.strings[v];
-        if (st) this.recompileString(dst.voices[v], { ...st, phys: st.phys ?? src.phys });
+      if (touched) {
+        for (let v = 0; v < dst.voices.length; v++) {
+          const st = src.strings[v];
+          if (st) this.recompileString(dst.voices[v], { ...st, phys: st.phys ?? src.phys });
+        }
+        this.setLockTargets(dst);
       }
-      this.setLockTargets(dst);
     }
     this.model = model;
 

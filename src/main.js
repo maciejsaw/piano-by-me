@@ -7,6 +7,8 @@
 import { buildScale, DEFAULT_SCALE } from './dsp/scale.js';
 import { compileString } from './dsp/design.js';
 import { derive, noteName } from './dsp/physics.js';
+import { Offsets } from './dsp/offsets.js';
+import { createEditor } from './param-editor.js';
 
 const $ = (id) => document.getElementById(id);
 const LOW = 21, HIGH = 108;
@@ -15,6 +17,8 @@ let ctx = null, node = null, model = null, quality = 16;
 let unisonCoupling = 0.55, bridgeCoupling = 0.30;
 let selNote = 60, selString = 1;
 const down = new Set(), silent = new Set();
+// Declared here because the keyboard is built before the editor exists.
+let editor = null;
 
 // Flat string index, matching the order Piano builds them in.
 const baseIndex = new Map();
@@ -41,6 +45,7 @@ async function start() {
   };
   node.connect(ctx.destination);
   post({ type: 'gain', value: +$('gain').value });
+  if (!edits.empty) post({ type: 'offsets', state: edits.toJSON() });
   $('overlay').style.display = 'none';
 }
 const post = (m) => node && node.port.postMessage(m);
@@ -169,6 +174,7 @@ function selectNote(midi) {
   paintKey(prev); paintKey(midi);
   selString = Math.min(selString, model.notes[midi - LOW].count - 1);
   renderInspector();
+  editor && editor.refreshSelection();
 }
 
 function renderInspector() {
@@ -304,3 +310,69 @@ bindString('cpl', 'coupling', (v) => v.toFixed(2) + '×');
 $('gainV').textContent = (+$('gain').value).toFixed(2);
 $('ucV').textContent = unisonCoupling.toFixed(2);
 $('bcV').textContent = bridgeCoupling.toFixed(2);
+
+
+// -------------------------------------------------------- parameter editor -
+// The offsets live on the main thread and are posted to the audio thread as
+// plain JSON. Nothing here designs a filter: Piano.setOffsets does that, on
+// the audio side, and skips the expensive half when no parameter that is baked
+// into a loop filter has moved.
+const STORE = 'pianoModelX.offsets';
+const edits = new Offsets();
+
+const pushOffsets = (state) => {
+  post({ type: 'offsets', state });
+  const n = Object.keys(state.global).length + Object.keys(state.keys).length;
+  $('peCount').textContent = n;
+};
+
+editor = createEditor($('peRoot'), {
+  offsets: edits,
+  onChange: pushOffsets,
+  selectedNote: () => selNote,
+});
+
+$('peSave').onclick = () => {
+  localStorage.setItem(STORE, JSON.stringify(edits.toJSON()));
+  $('peSave').textContent = 'saved';
+  setTimeout(() => ($('peSave').textContent = 'save'), 900);
+};
+$('peLoad').onclick = () => {
+  const raw = localStorage.getItem(STORE);
+  if (!raw) return;
+  edits.load(JSON.parse(raw));
+  editor.sync(); pushOffsets(edits.toJSON());
+};
+$('peResetAll').onclick = () => {
+  edits.load({});
+  editor.sync(); pushOffsets(edits.toJSON());
+};
+$('peExport').onclick = () => {
+  const blob = new Blob([JSON.stringify(edits.toJSON(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'piano-offsets.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$('peImport').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/json';
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    try {
+      edits.load(JSON.parse(await f.text()));
+      editor.sync(); pushOffsets(edits.toJSON());
+    } catch (err) { console.error('offsets import failed', err); }
+  };
+  inp.click();
+};
+
+// A saved set is applied as soon as audio starts, so a session picks up where
+// the last one stopped rather than starting from the shipped curves.
+const savedOffsets = localStorage.getItem(STORE);
+if (savedOffsets) {
+  try { edits.load(JSON.parse(savedOffsets)); editor.sync(); } catch { /* ignore a bad store */ }
+}
