@@ -425,6 +425,12 @@ npm run sampled:verify     # decode the built library and measure it
 npm run sampled:test       # does it play, in a real browser?
 ```
 
+And to hear it play something:
+
+```bash
+npm run sampled:render -- performance.mid --seconds 30 --out renders/out.wav
+```
+
 **Neither of them tests physics, and that is the point.** A sampled instrument
 cannot get a partial wrong — the recording already contains it. What a build
 can get wrong is the filter it applies, a missing file, a level that clips,
@@ -487,6 +493,32 @@ because it passed.
   skipped and keys can go quiet while loading.
 - **Opus in Ogg** needs Safari 15 or later; `--format webm` is there if that
   matters.
+
+## Rendering a performance
+
+`tools/sampler/render.mjs` plays a MIDI file through the instrument and records
+the result. It drives the real player in a real browser rather than
+reimplementing it offline, which is the only way to be sure that what comes out
+is what a listener would hear — the same voice allocation, the same convolver,
+the same resonance engine on the same control tick. That means recording in
+real time, and it means the capture is checked for dropouts rather than assumed.
+
+It also forced a change worth having. Every method of the engine that makes a
+sound now takes an optional `when`: live playing leaves it out and gets
+`currentTime`, but a sequencer passes the time the note is *supposed* to
+happen. A browser timer is good to about four milliseconds and clamps under
+load — half the events in the first render arrived late, the worst by 10.6 ms —
+whereas the audio clock is good to a sample. With a 60 ms lookahead scheduler
+handing the engine exact times, it is 0 of 738.
+
+`renders/chopin-raindrop-sampled.wav` is thirty seconds of Chopin's Prelude
+Op. 28 No. 15 rendered this way. The MIDI is a real competition performance
+from [MAESTRO v3](https://magenta.tensorflow.org/datasets/maestro) (CC BY-NC-SA
+4.0) — captured from a Disklavier's own key and pedal motion, not sequenced —
+so the pedalling in it is the pianist's: 224 CC 64 moves across 111 distinct
+positions in those thirty seconds, which is exactly the continuous half-pedal
+this engine reads. Because of the MIDI's licence that render is CC BY-NC-SA;
+the instrument and its library are CC-BY.
 
 ## Credit
 

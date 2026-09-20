@@ -12,7 +12,8 @@
     "sampled:build": "node tools/sampler/build.mjs",
     "sampled:selftest": "node tools/sampler/selftest.mjs",
     "sampled:verify": "node tools/sampler/verify.mjs",
-    "sampled:test": "node tools/sampler/browser-test.mjs"
+    "sampled:test": "node tools/sampler/browser-test.mjs",
+    "sampled:render": "node tools/sampler/render.mjs"
   },
   "repository": {
     "type": "git",

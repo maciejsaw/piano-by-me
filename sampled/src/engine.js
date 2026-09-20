@@ -157,9 +157,16 @@ export class Engine {
   setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); }
 
   // ------------------------------------------------------------------ notes --
-  noteOn(midi, vel) {
+  //
+  // Every method that makes a sound takes an optional `when`. Live playing
+  // leaves it out and gets ctx.currentTime, which is "as soon as possible";
+  // a sequencer passes the time the note is supposed to happen and gets it
+  // exactly, because a timer in a browser is good to about four milliseconds
+  // and the audio clock is good to a sample. Half the events in a rendered
+  // performance were arriving late before this existed.
+  noteOn(midi, vel, when) {
     if (midi < this.lo || midi > this.hi) return;
-    const ctx = this.ctx, now = ctx.currentTime;
+    const ctx = this.ctx, now = when ?? ctx.currentTime;
 
     // Una corda: the hammer misses a string, so it is quieter AND softer. In a
     // sampler the "softer" has to come from reaching for a gentler recording,
@@ -177,7 +184,7 @@ export class Engine {
       return null;
     }
 
-    this.kill(midi, 0.008);
+    this.kill(midi, 0.008, now);
     const src = ctx.createBufferSource();
     src.buffer = p.buf;
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
@@ -216,13 +223,14 @@ export class Engine {
     return v;
   }
 
-  noteOff(midi, relVel = 64) {
+  noteOff(midi, relVel = 64, when) {
     if (!this.down.delete(midi)) return;
+    const now = when ?? this.ctx.currentTime;
     const damped = midi <= this.topDamped && !this.sostenuto.has(midi) && !this.silent.has(midi);
     // Read the voice BEFORE killing it: kill() empties the map, and asking
     // afterwards silently handed every damper sound a velocity of 64.
     const first = this.voices.get(midi)?.[0];
-    const heldFor = this.ctx.currentTime - (first?.started ?? this.ctx.currentTime);
+    const heldFor = now - (first?.started ?? now);
     const struckAt = first?.vel ?? 64;
 
     // With the pedal past the point where the dampers leave the strings, a key
@@ -235,10 +243,10 @@ export class Engine {
       // string shortens it without stopping it.
       const base = this.damperTime(midi);
       const t = base * Math.pow(9 / base, this.pedal / UNDAMP);
-      this.kill(midi, t);
-      this.damperSound(midi, struckAt, heldFor);
+      this.kill(midi, t, now);
+      this.damperSound(midi, struckAt, heldFor, 1, now);
     }
-    this.keyNoise(midi, relVel, heldFor);
+    this.keyNoise(midi, relVel, heldFor, now);
     this.updateUndamped();
     this.refreshHeld();
   }
@@ -275,10 +283,10 @@ export class Engine {
   }
 
   /** Damper fall: the shape is the Bezier, the duration is the caller's. */
-  kill(midi, fall) {
+  kill(midi, fall, when) {
     const list = this.voices.get(midi);
     if (!list) return;
-    const now = this.ctx.currentTime;
+    const now = when ?? this.ctx.currentTime;
     const shape = this.env.noteRelease.shape;
     for (const v of list) {
       const from = Math.max(1e-5, this.envValueAt(v, now));
@@ -324,9 +332,9 @@ export class Engine {
    * of a decaying chord. Four milliseconds of shaped rise costs nothing and
    * removes it.
    */
-  oneShot(buf, gain, rate = 1) {
+  oneShot(buf, gain, rate = 1, when) {
     if (!buf || gain <= 1e-4) return;
-    const ctx = this.ctx, now = ctx.currentTime;
+    const ctx = this.ctx, now = when ?? ctx.currentTime;
     const total = buf.duration / rate;
     const s = ctx.createBufferSource();
     s.buffer = buf;
@@ -367,14 +375,14 @@ export class Engine {
    * this is felt, not rung. `keyNoiseFollow` is there for anyone who wants it
    * to anyway.
    */
-  keyNoise(midi, relVel, heldFor) {
+  keyNoise(midi, relVel, heldFor, when) {
     if (this.releaseNoise <= 0) return;
     const d = this.lib.note(midi)?.release;
     const buf = this.lib.aux(d, `r${midi}`, 2);
     if (!buf) return;
     const perKey = Math.pow(10, this.curves.at('releaseLevel', midi) / 20);
     const hold = this.env.holdLevel(heldFor, this.env.hold.keyNoiseFollow);
-    this.oneShot(buf, d.gain * this.db('release') * this.releaseNoise * perKey * hold * (0.25 + 0.75 * relVel / 127));
+    this.oneShot(buf, d.gain * this.db('release') * this.releaseNoise * perKey * hold * (0.25 + 0.75 * relVel / 127), 1, when);
   }
 
   /**
@@ -386,7 +394,7 @@ export class Engine {
    * rt_decay describes. Both are honoured here, with the hold-time law an
    * editable curve rather than the SFZ's flat dB per second.
    */
-  damperSound(midi, vel, heldFor, scale = 1) {
+  damperSound(midi, vel, heldFor, scale = 1, when) {
     if (this.damperNoise <= 0) return;
     const d = this.lib.note(midi)?.damper;
     if (!d) return;
@@ -396,21 +404,22 @@ export class Engine {
       const desc = d[variant];
       if (!desc) return;
       const buf = this.lib.aux(desc, `h${midi}${variant}`, 2);
-      if (buf) this.oneShot(buf, desc.gain * this.db(key) * this.damperNoise * perKey * hold * scale * (0.3 + 0.7 * vel / 127));
+      if (buf) this.oneShot(buf, desc.gain * this.db(key) * this.damperNoise * perKey * hold * scale * (0.3 + 0.7 * vel / 127), 1, when);
     };
     pick(vel >= 45 ? 'L' : 'S', vel >= 45 ? 'damperL' : 'damperS');
     pick('V', 'damperV');
   }
 
   // ------------------------------------------------------------------ pedals -
-  setPedal(v) {
+  setPedal(v, when) {
     const was = this.pedal;
+    const now = when ?? this.ctx.currentTime;
     this.pedal = Math.max(0, Math.min(1, v));
     if (this.pedalNoise > 0 && (was < UNDAMP) !== (this.pedal < UNDAMP)) {
       const set = this.pedal >= UNDAMP ? this.lib.m.pedal.down : this.lib.m.pedal.up;
       const d = set[Math.random() < 0.5 ? 0 : 1] ?? set[0];
       const buf = this.lib.aux(d, `p${d?.file}`, 3);
-      if (buf) this.oneShot(buf, d.gain * this.db(this.pedal >= UNDAMP ? 'pedalDown' : 'pedalUp') * this.pedalNoise);
+      if (buf) this.oneShot(buf, d.gain * this.db(this.pedal >= UNDAMP ? 'pedalDown' : 'pedalUp') * this.pedalNoise, 1, now);
     }
     // Coming off the pedal drops every damper that no key is holding. A whole
     // frame of dampers landing at once is an audible event on a real piano, so
@@ -423,11 +432,11 @@ export class Engine {
         const v = this.voices.get(m)?.[0];
         if (!v) continue;
         landed.push({ m, v });
-        this.kill(m, this.damperTime(m) * 1.2);
+        this.kill(m, this.damperTime(m) * 1.2, now);
       }
       landed.sort((a, b) => b.v.started - a.v.started);
       for (const { m, v } of landed.slice(0, 6)) {
-        this.damperSound(m, v.vel, this.ctx.currentTime - v.started, 0.5);
+        this.damperSound(m, v.vel, now - v.started, 0.5, now);
       }
     }
     this.updateUndamped();

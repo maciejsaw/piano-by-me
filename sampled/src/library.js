@@ -150,6 +150,16 @@ export class Library {
   /** A short auxiliary sample -- key release, damper resonance, pedal. */
   aux(desc, k, priority = 1) { return desc ? this.want(desc.file, k, priority) : null; }
 
+  /**
+   * Stop filling memory.
+   *
+   * For offline rendering: a warm pass running underneath a performance can
+   * evict a sample the performance is about to need, which is fine while
+   * playing (the nearest resident layer covers it) and not fine when the point
+   * is to hear exactly the layers the score asks for.
+   */
+  stopWarm() { this.stopped = true; this.queue.length = 0; }
+
   /** How many keys are guaranteed to speak: one pinned layer each. */
   keysReady() {
     let n = 0;
@@ -255,6 +265,7 @@ export class Library {
       : new Set();
     let i = 0;
     const step = () => {
+      if (this.stopped) { this.warming = false; return; }
       while (i < order.length && this.queue.length < 40) {
         if (this.bytes > cap) { this.warming = false; return; }
         const j = order[i++];
