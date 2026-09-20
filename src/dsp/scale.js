@@ -8,6 +8,7 @@
 // wrap is made heavier instead -- exactly what piano makers do in the bass.
 
 import { MATERIALS, noteHz, noteName, derive, linearDensity } from './physics.js';
+import { NO_OFFSETS } from './offsets.js';
 
 export const DEFAULT_SCALE = {
   name: 'Model X — medium grand',
@@ -248,7 +249,7 @@ function wrapForDensity(muWanted, coreMm) {
 }
 
 /** Build the full instrument spec: 88 notes, each with 1-3 string specs. */
-export function buildScale(scale = DEFAULT_SCALE) {
+export function buildScale(scale = DEFAULT_SCALE, edits = NO_OFFSETS) {
   // A fitted scale is written by the fitting pipeline and carries only the
   // curves that run measured. Any voicing curve added since it was written is
   // missing, so fall back to the defaults key by key rather than requiring
@@ -258,6 +259,10 @@ export function buildScale(scale = DEFAULT_SCALE) {
   }
   const notes = [];
   for (let midi = 21; midi <= 108; midi++) {
+    // Every voicing lookup goes through here, so an editor offset reaches all
+    // of them without each one having to know it exists. Zero is exactly the
+    // shipped curve -- see offsets.js.
+    const V = (name) => edits.apply(name, midi, lerpTable(scale.voicing[name], midi));
     const bp = interpBreakpoints(scale.breakpoints, midi);
     const stretch = scale.tuningCents && scale.tuningCents.length
       ? lerpTable(scale.tuningCents, midi) : 0;
@@ -285,7 +290,7 @@ export function buildScale(scale = DEFAULT_SCALE) {
     spec.lengthM = L;
 
     const phys = { ...derive(spec, f0) };
-    const detune = lerpTable(scale.voicing.detune, midi);
+    const detune = V('detune');
     const count = bp.strings;
 
     // Unison spread: centre string at nominal, outers either side.
@@ -310,15 +315,15 @@ export function buildScale(scale = DEFAULT_SCALE) {
     // spaced notches, which is exactly what a flanger is. Differing B adds an
     // n^3 term, so the partials diverge irregularly and the beating scatters
     // instead of sweeping.
-    const lenSpread = lerpTable(scale.voicing.lengthSpread, midi);
-    const lvlSpread = lerpTable(scale.voicing.levelSpread, midi);
-    const gaugeSpread = lerpTable(scale.voicing.gaugeSpread, midi);
-    const strikeSpread = lerpTable(scale.voicing.strikeSpread, midi);
+    const lenSpread = V('lengthSpread');
+    const lvlSpread = V('levelSpread');
+    const gaugeSpread = V('gaugeSpread');
+    const strikeSpread = V('strikeSpread');
     // Clamped to a fraction of the period: an offset approaching a whole
     // period is not a misaligned string any more, it is a second strike.
-    const offsetUs = Math.min(lerpTable(scale.voicing.strikeOffsetUs, midi), 0.2 * 1e6 / f0) / 2.2;
-    const massSpread = lerpTable(scale.voicing.hammerMassSpread, midi);
-    const forceSpread = lerpTable(scale.voicing.hammerForceSpread, midi);
+    const offsetUs = Math.min(V('strikeOffsetUs'), 0.2 * 1e6 / f0) / 2.2;
+    const massSpread = V('hammerMassSpread');
+    const forceSpread = V('hammerForceSpread');
     const strings = offsets.map((cents, i) => ({
       index: i,
       shape: shape[i],
@@ -339,18 +344,18 @@ export function buildScale(scale = DEFAULT_SCALE) {
       // Equal drive makes the three contributions cancel almost completely at a
       // beat null, which deepens the swing far past anything a piano does.
       drive: 1 + lvlSpread * shape[i],
-      t60Low: lerpTable(scale.voicing.t60Low, midi) * (1 + 0.03 * shape[i]),
-      t60High: lerpTable(scale.voicing.t60High, midi) * (1 + 0.05 * shape[i]),
-      t60Damped: lerpTable(scale.voicing.t60Damped, midi),
+      t60Low: V('t60Low') * (1 + 0.03 * shape[i]),
+      t60High: V('t60High') * (1 + 0.05 * shape[i]),
+      t60Damped: V('t60Damped'),
       // Prompt decay: how fast the common (bridge-driving) mode dies.
-      t60Prompt: lerpTable(scale.voicing.t60Prompt, midi),
+      t60Prompt: V('t60Prompt'),
       // The three strings of a unison are not parallel and do not sit at one
       // height, so one hammer face meets each at a slightly different fraction
       // of its speaking length. Strike position sets where the comb notch
       // falls, so each string gets its own notch and their partial amplitudes
       // stop rising and falling together.
-      strikePosition: lerpTable(scale.voicing.strikePos, midi) * (1 + strikeSpread * sShape[i]),
-      coupling: lerpTable(scale.voicing.coupling, midi),
+      strikePosition: V('strikePos') * (1 + strikeSpread * sShape[i]),
+      coupling: V('coupling'),
       // Hammer never hits three strings at the same instant.
       contactOffsetUs: offsetUs * [0, 1, 2.2][i] ?? 0,
       hammerMassScale: 1 + massSpread * gShape[i],
@@ -387,27 +392,27 @@ export function buildScale(scale = DEFAULT_SCALE) {
       midi, name: noteName(midi), f0,
       spec, phys,
       count, strings,
-      hardness: (ov && ov.hardness != null) ? ov.hardness : lerpTable(scale.voicing.hardness, midi),
-      hammerMass: lerpTable(scale.voicing.hammerMass, midi)
-                  * Math.pow(10, -0.35 * lerpTable(scale.voicing.hardness, midi)),
-      feltK: 1.8e9 * Math.pow(10, 2 * lerpTable(scale.voicing.hardness, midi)),
-      feltP: lerpTable(scale.voicing.feltP, midi),
-      feltEps: lerpTable(scale.voicing.feltEps, midi),
-      transientDepth: lerpTable(scale.voicing.transientDepth, midi),
-      transientRiseS: lerpTable(scale.voicing.transientRiseS, midi),
-      transientTauS: lerpTable(scale.voicing.transientTauS, midi),
-      transientSkew: lerpTable(scale.voicing.transientSkew, midi),
-      hammerWidthM: lerpTable(scale.voicing.hammerWidthMm, midi) * 1e-3,
-      knockGain: lerpTable(scale.voicing.knockGain, midi),
-      knockNoise: lerpTable(scale.voicing.knockNoise, midi),
-      knockDecayS: lerpTable(scale.voicing.knockDecayS, midi),
-      knockFc: lerpTable(scale.voicing.knockFc, midi),
-      knockThumpHz: lerpTable(scale.voicing.knockThumpHz, midi),
-      knockThumpQ: lerpTable(scale.voicing.knockThumpQ, midi),
-      knockThumpMix: lerpTable(scale.voicing.knockThumpMix, midi),
+      hardness: (ov && ov.hardness != null) ? ov.hardness : V('hardness'),
+      hammerMass: V('hammerMass')
+                  * Math.pow(10, -0.35 * V('hardness')),
+      feltK: 1.8e9 * Math.pow(10, 2 * V('hardness')),
+      feltP: V('feltP'),
+      feltEps: V('feltEps'),
+      transientDepth: V('transientDepth'),
+      transientRiseS: V('transientRiseS'),
+      transientTauS: V('transientTauS'),
+      transientSkew: V('transientSkew'),
+      hammerWidthM: V('hammerWidthMm') * 1e-3,
+      knockGain: V('knockGain'),
+      knockNoise: V('knockNoise'),
+      knockDecayS: V('knockDecayS'),
+      knockFc: V('knockFc'),
+      knockThumpHz: V('knockThumpHz'),
+      knockThumpQ: V('knockThumpQ'),
+      knockThumpMix: V('knockThumpMix'),
       // String wave impedance: what the hammer actually pushes against.
       Z: Math.sqrt(phys.T * phys.mu),
-      gain: lerpTable(scale.voicing.gain, midi),
+      gain: V('gain'),
       hasDamper: midi >= scale.lowestDamped,
     });
   }
