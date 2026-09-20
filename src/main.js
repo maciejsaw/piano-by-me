@@ -46,6 +46,9 @@ async function start() {
   node.connect(ctx.destination);
   post({ type: 'gain', value: +$('gain').value });
   if (!edits.empty) post({ type: 'offsets', state: edits.toJSON() });
+  // A preset loaded before audio started only touched the JS model; now that
+  // the worklet exists, ship every note so it matches what the inspector shows.
+  if (pendingModelPush) { pendingModelPush = false; for (const n of model.notes) pushNote(n.midi); }
   $('overlay').style.display = 'none';
 }
 const post = (m) => node && node.port.postMessage(m);
@@ -317,7 +320,6 @@ $('bcV').textContent = bridgeCoupling.toFixed(2);
 // plain JSON. Nothing here designs a filter: Piano.setOffsets does that, on
 // the audio side, and skips the expensive half when no parameter that is baked
 // into a loop filter has moved.
-const STORE = 'pianoModelX.offsets';
 const edits = new Offsets();
 
 const pushOffsets = (state) => {
@@ -332,50 +334,12 @@ editor = createEditor($('peRoot'), {
   selectedNote: () => selNote,
 });
 
-$('peSave').onclick = () => {
-  localStorage.setItem(STORE, JSON.stringify(edits.toJSON()));
-  $('peSave').textContent = 'saved';
-  setTimeout(() => ($('peSave').textContent = 'save'), 900);
-};
-$('peLoad').onclick = () => {
-  const raw = localStorage.getItem(STORE);
-  if (!raw) return;
-  edits.load(JSON.parse(raw));
-  editor.sync(); pushOffsets(edits.toJSON());
-};
 $('peResetAll').onclick = () => {
   edits.load({});
   editor.sync(); pushOffsets(edits.toJSON());
 };
-$('peExport').onclick = () => {
-  const blob = new Blob([JSON.stringify(edits.toJSON(), null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'piano-offsets.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-};
-$('peImport').onclick = () => {
-  const inp = document.createElement('input');
-  inp.type = 'file';
-  inp.accept = 'application/json';
-  inp.onchange = async () => {
-    const f = inp.files[0];
-    if (!f) return;
-    try {
-      edits.load(JSON.parse(await f.text()));
-      editor.sync(); pushOffsets(edits.toJSON());
-    } catch (err) { console.error('offsets import failed', err); }
-  };
-  inp.click();
-};
-
-// A saved set is applied as soon as audio starts, so a session picks up where
-// the last one stopped rather than starting from the shipped curves.
-const savedOffsets = localStorage.getItem(STORE);
-if (savedOffsets) {
-  try { edits.load(JSON.parse(savedOffsets)); editor.sync(); } catch { /* ignore a bad store */ }
-}
+// save / revert / export / import all act on the WHOLE instrument (presets),
+// not on the offsets alone -- see the preset section at the end of the file.
 
 
 // -------------------------------------------------------------------- room -
@@ -414,3 +378,238 @@ $('roomBtn').onclick = (e) => {
   e.target.textContent = on ? 'enabled' : 'bypassed';
   post({ type: 'room', enabled: on });
 };
+
+
+// --------------------------------------------------------------- presets --
+// A preset is a snapshot of the WHOLE instrument: every top-level control,
+// the three toggles, and the parameter-editor offsets. The list lives in
+// localStorage so it survives a reload, and export/import move one preset's
+// state as a JSON file. Everything that used to be offsets-only now works on
+// this full snapshot -- "not just for strings".
+//
+// Applying a preset just writes each control's value and fires its own input
+// and change events, so the existing handlers do all the posting to the audio
+// thread; nothing here needs to know what a given knob does.
+
+// Every simple slider, so capture and apply never drift out of sync.
+const SLIDER_IDS = [
+  'gain', 'uc', 'bc',
+  'cw', 'cl', 'cd', 'cmix', 'cq', 'lid',
+  'rMix', 'rEr', 'rTail', 'rRt', 'rW', 'rD', 'rH', 'rAbs', 'rPre', 'rDamp', 'rPos',
+];
+
+// The string inspector edits the model in place -- geometry per note and the
+// tuning per string. A preset stores all of it so "save" really does keep the
+// whole instrument, not only the header sliders and the offset layer.
+const captureModel = () => model.notes.map((n) => ({
+  lengthM: n.spec.lengthM,
+  coreDiameterMm: n.spec.coreDiameterMm,
+  wrapOuterDiameterMm: n.spec.wrapOuterDiameterMm,
+  strings: n.strings.map((s) => ({
+    detuneCents: s.detuneCents, t60Low: s.t60Low, t60High: s.t60High,
+    strikePosition: s.strikePosition, coupling: s.coupling,
+  })),
+}));
+
+// The instrument as shipped, captured once before any preset is applied. A
+// preset that carries no model of its own restores this, so a note edited
+// under one preset never bleeds into another.
+const SHIPPED_MODEL = captureModel();
+
+let pendingModelPush = false;
+function applyModel(specs) {
+  if (!Array.isArray(specs)) specs = SHIPPED_MODEL;
+  specs.forEach((d, i) => {
+    const n = model.notes[i];
+    if (!n) return;
+    n.spec.lengthM = d.lengthM;
+    n.spec.coreDiameterMm = d.coreDiameterMm;
+    n.spec.wrapOuterDiameterMm = d.wrapOuterDiameterMm;
+    n.spec.wound = d.wrapOuterDiameterMm > d.coreDiameterMm;
+    (d.strings || []).forEach((s, j) => { if (n.strings[j]) Object.assign(n.strings[j], s); });
+  });
+  // Only the audio thread cares, and only once it exists; before start the
+  // worklet still holds the shipped strings, so defer the recompile to start().
+  if (node) for (const n of model.notes) pushNote(n.midi);
+  else pendingModelPush = true;
+  renderInspector();
+}
+
+function captureState() {
+  const controls = {};
+  for (const id of SLIDER_IDS) controls[id] = +$(id).value;
+  return {
+    controls,
+    toggles: {
+      body: $('bodyBtn').classList.contains('on'),
+      room: $('roomBtn').classList.contains('on'),
+      una: $('unaBtn').classList.contains('on'),
+    },
+    model: captureModel(),
+    offsets: edits.toJSON(),
+  };
+}
+
+// Each toggle button already flips its own class, updates its label and posts
+// when clicked, so to reach a wanted state we just fire that handler when the
+// current state differs -- never touch the class ourselves or it double-flips.
+function setToggle(id, want) {
+  const el = $(id);
+  if (el.classList.contains('on') === want) return;
+  el.onclick({ target: el });
+}
+
+function applyState(state) {
+  if (!state) return;
+  const c = state.controls || {};
+  for (const id of SLIDER_IDS) {
+    if (!(id in c)) continue;
+    const el = $(id);
+    el.value = c[id];
+    el.dispatchEvent(new Event('input'));
+    el.dispatchEvent(new Event('change'));
+  }
+  const t = state.toggles || {};
+  setToggle('bodyBtn', t.body !== false);
+  setToggle('roomBtn', t.room !== false);
+  setToggle('unaBtn', !!t.una);
+  applyModel(state.model);
+  edits.load(state.offsets || {});
+  editor.sync();
+  pushOffsets(edits.toJSON());
+}
+
+// --- the store ---
+const PRESET_STORE = 'pianoModelX.presets';
+
+// Shipped presets. "Default" is the instrument exactly as the HTML ships it;
+// "Funky" leans on everything that makes it sing -- more coupling, a brighter
+// and bigger room, and a set of offsets pushing detune, decay and knock.
+const FUNKY = {
+  controls: {
+    gain: 1.1, uc: 0.8, bc: 0.6,
+    cw: 1.45, cl: 2.0, cd: 0.26, cmix: 0.35, cq: 26, lid: 0.5,
+    rMix: 0.42, rEr: 1.2, rTail: 1.4, rRt: 2.4, rW: 9.0, rD: 12.0, rH: 4.2,
+    rAbs: 0.2, rPre: 20, rDamp: 6000, rPos: 0.72,
+  },
+  toggles: { body: true, room: true, una: false },
+  offsets: {
+    global: {
+      detune: 0.6, t60Low: 0.4, coupling: 0.5,
+      knockGain: 0.8, transientDepth: 0.7, hardness: 0.3,
+    },
+    keys: {},
+  },
+};
+
+function defaultPresets() {
+  // Capture the live UI as "Default" -- it is booted from the HTML defaults,
+  // so this is the shipped instrument with no edits.
+  return { active: 'Default', list: [
+    { name: 'Default', state: captureState() },
+    { name: 'Funky', state: FUNKY },
+  ] };
+}
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(PRESET_STORE);
+    if (raw) {
+      const s = JSON.parse(raw);
+      if (s && Array.isArray(s.list) && s.list.length) return s;
+    }
+  } catch { /* fall through to seed */ }
+  const seed = defaultPresets();
+  saveStore(seed);
+  return seed;
+}
+function saveStore(s) { localStorage.setItem(PRESET_STORE, JSON.stringify(s)); }
+
+let store = loadStore();
+
+function renderPresetList() {
+  $('presetSel').innerHTML = store.list
+    .map((p) => `<option${p.name === store.active ? ' selected' : ''}>${p.name}</option>`)
+    .join('');
+}
+const activePreset = () => store.list.find((p) => p.name === store.active);
+
+function selectPreset(name) {
+  const p = store.list.find((q) => q.name === name);
+  if (!p) return;
+  store.active = name;
+  saveStore(store);
+  renderPresetList();
+  applyState(p.state);
+}
+
+renderPresetList();
+
+$('presetSel').onchange = (e) => selectPreset(e.target.value);
+
+$('presetSave').onclick = () => {
+  const p = activePreset();
+  if (!p) return;
+  p.state = captureState();
+  saveStore(store);
+  $('presetSave').textContent = 'saved';
+  setTimeout(() => ($('presetSave').textContent = 'save'), 900);
+};
+
+$('presetAdd').onclick = () => {
+  const name = (prompt('Name for the new preset?', '') || '').trim();
+  if (!name) return;
+  const existing = store.list.find((p) => p.name === name);
+  if (existing) {
+    if (!confirm(`Overwrite the preset "${name}"?`)) return;
+    existing.state = captureState();
+  } else {
+    store.list.push({ name, state: captureState() });
+  }
+  store.active = name;
+  saveStore(store);
+  renderPresetList();
+};
+
+$('presetDel').onclick = () => {
+  if (store.list.length <= 1) { alert('Keep at least one preset.'); return; }
+  const p = activePreset();
+  if (!p || !confirm(`Delete the preset "${p.name}"?`)) return;
+  store.list = store.list.filter((q) => q !== p);
+  store.active = store.list[0].name;
+  saveStore(store);
+  renderPresetList();
+  applyState(activePreset().state);
+};
+
+// The parameter-editor bar buttons, now whole-instrument:
+$('peLoad').onclick = () => { const p = activePreset(); if (p) applyState(p.state); };
+$('peExport').onclick = () => {
+  const p = activePreset();
+  const blob = new Blob([JSON.stringify(p ? p.state : captureState(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `piano-${(p ? p.name : 'preset').replace(/\s+/g, '-').toLowerCase()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+$('peImport').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/json';
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    try {
+      const state = JSON.parse(await f.text());
+      // Accept an old offsets-only file too, so nothing exported before breaks.
+      applyState(state.controls ? state : { offsets: state });
+    } catch (err) { console.error('preset import failed', err); }
+  };
+  inp.click();
+};
+
+// Boot into the active preset so a session resumes where it left off. (Only
+// the offsets and controls are applied to the DOM now; audio picks them up on
+// start via the existing gain/offsets posts.)
+if (activePreset()) applyState(activePreset().state);

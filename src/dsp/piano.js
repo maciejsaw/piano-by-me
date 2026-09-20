@@ -333,9 +333,18 @@ export class Piano {
 
   setSustain(on) {
     this.sustain = on;
+    // Only strings that are actually sounding are touched. Lifting the damper
+    // off every idle string would drag all ~240 of them into `active` and tick
+    // the whole instrument every sample -- more than the worklet can render in
+    // realtime, which underruns the buffer and cuts the sound. An idle open
+    // string is silent anyway (broad sympathetic resonance is the silentHold
+    // demo's job), so we leave it resting.
     for (const note of this.notes) {
       if (!note.hasDamper) continue;
-      for (const s of note.voices) s.setDamper(on ? false : !note.held);
+      for (const s of note.voices) {
+        if (on) { if (s.active) s.setDamper(false); }   // let ringing strings ring on
+        else s.setDamper(!note.held);                    // re-damp the released keys
+      }
     }
     this.refreshActive();
   }
