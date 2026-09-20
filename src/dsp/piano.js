@@ -59,6 +59,11 @@ export class Piano {
     // directly. 0 is the old behaviour, where a strike could only ever be
     // heard as tone. See makeKnock.
     this.knockScale = opts.knockScale ?? 1;
+    // Tone of the knock, for the fitting tools: how far up the noise reaches
+    // and how much of the board's low resonance is under it.
+    this.knockFcScale = opts.knockFcScale ?? 1;
+    this.knockThumpScale = opts.knockThumpScale ?? 1;
+    this.knockPoles = opts.knockPoles ?? 3;
     // Hammer knobs, for fitting the attack against the samples.
     this.feltEps = opts.feltEps ?? null;        // null = per-note from the scale
     this.feltTauUs = opts.feltTauUs ?? 2;
@@ -395,7 +400,11 @@ export class Piano {
       gain: note.knockGain * this.knockScale,
       noise: note.knockNoise * this.knockScale,
       decayS: note.knockDecayS,
-      fc: note.knockFc,
+      fc: note.knockFc * (this.knockFcScale ?? 1),
+      thumpHz: note.knockThumpHz,
+      thumpQ: note.knockThumpQ,
+      thumpMix: note.knockThumpMix * (this.knockThumpScale ?? 1),
+      poles: this.knockPoles,
       // A different draw per string, or the three noise bursts would be the
       // same burst three times over and read as one loud click.
       seed: (note.midi * 2654435761 + index * 40503 + 1) >>> 0,
