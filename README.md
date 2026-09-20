@@ -7,10 +7,19 @@ rather than being bolted on as effects.
 
 Runs in the browser. Play it with a MIDI keyboard.
 
+**There are two instruments in this repository.** This one is modelled. The
+other, in [`sampled/`](sampled/README.md), is a Yamaha C5 recorded — a
+sample-based player built on the same measurements, with one dedicated sample
+per key per velocity layer rather than one recording stretched across three
+keys. Its rendered library is committed, so it plays without a build. They share the body fit, the room, and the scale data; see
+[the variant's README](sampled/README.md) for why a sampled piano needs a
+build step, and what it buys.
+
 ## Run it
 
 ```bash
-npm start           # -> http://localhost:8080
+npm start           # -> http://localhost:8080          the modelled piano
+                    # -> http://localhost:8080/sampled/  the sampled one
 ```
 
 Open the page, click **Start audio**, and play. Web MIDI picks up an attached
@@ -145,7 +154,11 @@ the samples:
 The measured stretch curve is a textbook Railsback: −23 cents at A0 rising to
 +20 cents in the treble.
 
-`fitted/` holds the scale and body fitted from that library.
+`fitted/` holds the scale and body fitted from that library. Those same two
+files are what lets the [sampled variant](sampled/README.md) repitch a
+recording without dragging the instrument's body along with the pitch — from a
+single note you cannot separate the body's spectrum from the string's, and this
+is where the separation already exists.
 
 **Caveats, which matter.** The extracted body conflates soundboard radiation,
 case, lid, microphones and room — it is "everything downstream of the bridge"
@@ -212,6 +225,9 @@ src/dsp/piano.js       the instrument and its junctions
 src/worklet.js         audio thread host (thin)
 src/main.js            MIDI, UI, and the parameter compiler
 tools/                 verify, bench, render, analyse, serve, browser-test
+
+sampled/               the sample-based variant: its own player and README
+tools/sampler/         and its offline build -- fetch, repitch, trim, encode
 ```
 
 The DSP is plain ES modules with no Web Audio dependency, so the same code runs
