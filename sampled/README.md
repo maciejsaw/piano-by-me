@@ -305,13 +305,26 @@ top 36 keys by 12 dB:
 Set it to zero when a hard edge is what you want — a real piano has one at the
 bass break.
 
+**The charts are previews, not editors.** One column: the scope strip at the
+top, sticky, so there is exactly one place where the question "which keys?"
+is answered; the parameters below it; and beside each one a read-only picture
+of what the edit did. The chart used to be editable as well, which meant two
+ways of saying the same thing and no way to tell by looking which had been
+used. Clicking a chart selects that key — it moves the selection, it never
+changes a value.
+
 Two things make a cliff visible rather than something you discover later. The
 gold line on every chart is the **total** — global plus ranges plus per key,
 not the layer being edited — because a cliff is a property of the sum and
 nothing else on screen would show it. And the caption under each chart names
 the biggest jump between neighbouring keys and which key it is at, so a
-deliberate single-key fix reads as `4.32 dB at D3` and an accidental one reads
+deliberate single-key fix reads as `4.05 dB at D3` and an accidental one reads
 the same way.
+
+Each parameter also shows two numbers rather than one: what the current scope
+is offset by, and what the selected key therefore ends up at. They answer
+different questions and conflating them is how you lose track of which tier
+you are on.
 
 **smooth** rounds off the per-key layer, and only that layer. It is opt-in
 because automatic smoothing would take away the other half of what is wanted
@@ -379,6 +392,15 @@ per voice: where a key sits in the image is a property of where its strings sit
 on the soundboard, and outlives any particular note. It also means a sympathetic
 voice lands in the same place as a struck one — which is not an optimisation but
 a requirement, since they are the same strings.
+
+### What is scoped and what is not
+
+The eleven above are per-key. Everything else is one value for the instrument,
+because it is a property of the instrument and not of a key: master level,
+stereo spread and perspective, the five room controls, the five resonance
+controls, the five envelopes, the four EQ bands, and the mechanical noise
+levels. The envelope times and the resonance amount could reasonably become
+scoped; nothing else on that list could.
 
 ### Output EQ
 
