@@ -110,7 +110,7 @@ const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
   const chunks = [];
   let done = false;
   rec.port.onmessage = (e) => { if (e.data.done) done = true; else chunks.push(e.data); };
-  (engine.limiterOn ? engine.limiter : engine.master).connect(rec);
+  engine.outputNode().connect(rec);
   rec.connect(ctx.destination);
 
   // --- play it ------------------------------------------------------------

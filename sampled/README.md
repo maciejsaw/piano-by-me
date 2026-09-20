@@ -266,11 +266,26 @@ So the two are separated. **Layer** comes from velocity through a per-key bias.
 already has (measured, in the manifest). Changing the curve never changes the
 timbre; changing the layer bias never changes the level.
 
-Nine per-key curves in all — dynamic range, curve shape, level trim, layer bias,
-stereo position, width, tuning, resonance send, damper fall speed — plus two for
-the release samples. Each has one slider that moves the whole compass and one
-canvas you draw single notes on. Both add, and both are offsets, so zero is
-always "as shipped" and however far an edit wanders there is a defined way back.
+Eleven per-key curves in all — dynamic range, curve shape, level trim, layer
+bias, stereo position, width, tuning, resonance send, damper fall speed, and
+the two release-sample levels — and each has **three tiers that add**:
+
+| tier | control | for |
+|---|---|---|
+| global | one slider | the whole compass at once |
+| octave | nine bands, A0 and C1..C8 | "the top octave is too bright", "lift the tenor" — the tier people actually think in |
+| per key | a drawable canvas | the one note that is wrong |
+
+All three are offsets from the shipped default, so zero is always "as shipped"
+and however far an edit wanders there is a defined way back. Precision is a
+zoom on all three, not a separate parameter, so a curve drawn at one setting
+cannot silently rescale when you pick another.
+
+Alongside the curve there is a **table** of what each velocity actually does on
+the selected key: which of the sixteen recordings it reaches for, the level the
+curve asked for, and the trim applied to that recording to get there. That
+third column is the one worth watching — it is how far a recording is being
+pushed from where it was made.
 
 ### Envelopes are Bézier curves, not time constants
 
@@ -327,6 +342,18 @@ per voice: where a key sits in the image is a property of where its strings sit
 on the soundboard, and outlives any particular note. It also means a sympathetic
 voice lands in the same place as a struck one — which is not an optimisation but
 a requirement, since they are the same strings.
+
+### Output EQ
+
+Four bands on the master — shelves at the ends, bells at 300 Hz where a piano
+gets boxy and 3 kHz where the hammer lives. It sits **after** the room, so it
+is the last word on tone, and **before** the limiter, so a boost cannot sneak
+past it. The curve on screen is drawn from the filters' own
+`getFrequencyResponse`, not from a formula, so what is displayed is what is
+running, and the bypass is a real bypass rather than a flat curve.
+
+For a single note that is wrong, the per-key **Level trim** is the right
+control; this one is for the instrument.
 
 ### The room
 

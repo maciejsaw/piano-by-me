@@ -19,6 +19,7 @@ import { plan } from './velocity.js';
 import { Resonance } from './resonance.js';
 import { renderIR, DEFAULTS as ROOM_DEFAULTS } from './room.js';
 import { Envelopes } from './envelopes.js';
+import { Eq } from './eq.js';
 
 const MAX_VOICES = 64;
 
@@ -47,7 +48,12 @@ export class Engine {
     this.limiter.ratio.value = 20;
     this.limiter.attack.value = 0.002;
     this.limiter.release.value = 0.12;
-    this.master.connect(this.limiter).connect(ctx.destination);
+    // master -> EQ -> limiter -> out. The EQ is before the limiter so that a
+    // boost cannot sneak past it, and after everything else so it is the last
+    // word on tone rather than a way of fixing one note.
+    this.eq = new Eq(ctx);
+    this.master.connect(this.eq.in);
+    this.eq.out.connect(this.limiter).connect(ctx.destination);
     this.limiterOn = true;
 
     this.dry = ctx.createGain(); this.dry.connect(this.master);
@@ -151,9 +157,12 @@ export class Engine {
     // Disconnect the ONE edge being replaced. A bare disconnect() takes every
     // outgoing connection with it, including anything a meter or a recorder
     // has tapped off the master -- which is a silent failure, and was one.
-    if (on) { this.master.disconnect(this.ctx.destination); this.master.connect(this.limiter); }
-    else { this.master.disconnect(this.limiter); this.master.connect(this.ctx.destination); }
+    if (on) { this.eq.out.disconnect(this.ctx.destination); this.eq.out.connect(this.limiter); }
+    else { this.eq.out.disconnect(this.limiter); this.eq.out.connect(this.ctx.destination); }
   }
+
+  /** The last node before the destination -- what a recorder should tap. */
+  outputNode() { return this.limiterOn ? this.limiter : this.eq.out; }
   setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); }
 
   // ------------------------------------------------------------------ notes --
