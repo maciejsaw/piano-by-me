@@ -3,6 +3,7 @@
 // ready-made coefficients, so turning a knob costs the audio thread nothing.
 
 import { Piano } from './dsp/piano.js';
+import { Room } from './dsp/room.js';
 
 class PianoProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -30,6 +31,17 @@ class PianoProcessor extends AudioWorkletProcessor {
       case 'gain':        this.gain = m.value; break;
       case 'panic':       p.panic(); break;
       case 'offsets':     p.setOffsets(m.state); break;
+      case 'room': {
+        // Levels and the bypass are free to set live; anything that changes a
+        // delay length has to be rebuilt, so only do that when asked.
+        const r = p.room;
+        if (m.enabled !== undefined) r.enabled = m.enabled;
+        if (m.mix !== undefined) r.mix = m.mix;
+        if (m.erLevel !== undefined) r.erLevel = m.erLevel;
+        if (m.tailLevel !== undefined) r.tailLevel = m.tailLevel;
+        if (m.rebuild) p.room = new Room(sampleRate, m.opts || {});
+        break;
+      }
       case 'body': {
         // Rebuilding the cavity reallocates resonators, so do it only when a
         // dimension actually changed; mixes and gains are free to set live.
@@ -69,9 +81,16 @@ class PianoProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const ch = out[0];
     const t0 = currentTime;
-    this.piano.render(ch, ch.length);
-    if (this.gain !== 1) for (let i = 0; i < ch.length; i++) ch[i] *= this.gain;
-    for (let c = 1; c < out.length; c++) out[c].set(ch);
+    if (out.length > 1) {
+      this.piano.renderStereo(ch, out[1], ch.length);
+      if (this.gain !== 1) {
+        for (let i = 0; i < ch.length; i++) { ch[i] *= this.gain; out[1][i] *= this.gain; }
+      }
+      for (let c = 2; c < out.length; c++) out[c].set(ch);
+    } else {
+      this.piano.render(ch, ch.length);
+      if (this.gain !== 1) for (let i = 0; i < ch.length; i++) ch[i] *= this.gain;
+    }
 
     // Report load and active-string count a few times a second.
     this.frames += ch.length;

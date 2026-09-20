@@ -376,3 +376,41 @@ const savedOffsets = localStorage.getItem(STORE);
 if (savedOffsets) {
   try { edits.load(JSON.parse(savedOffsets)); editor.sync(); } catch { /* ignore a bad store */ }
 }
+
+
+// -------------------------------------------------------------------- room -
+// Levels and the bypass are live; anything that changes a delay length or an
+// image-source distance rebuilds, so those go on `change` rather than `input`.
+const roomOpts = () => ({
+  width: +$('rW').value, depth: +$('rD').value, height: +$('rH').value,
+  absorption: +$('rAbs').value, rt60: +$('rRt').value,
+  predelayMs: +$('rPre').value, tailDampHz: +$('rDamp').value,
+  mix: +$('rMix').value, erLevel: +$('rEr').value, tailLevel: +$('rTail').value,
+  listener: { x: +$('rW').value * 0.5, y: +$('rD').value * +$('rPos').value, z: 1.2 },
+  source: { x: +$('rW').value * 0.42, y: +$('rD').value * 0.30, z: 1.0 },
+});
+const roomLive = [['rMix', 'mix', 2], ['rEr', 'erLevel', 2], ['rTail', 'tailLevel', 2]];
+for (const [id, key, dp] of roomLive) {
+  const el = $(id);
+  el.addEventListener('input', () => {
+    $(id + 'V').textContent = (+el.value).toFixed(dp);
+    post({ type: 'room', [key]: +el.value });
+  });
+  $(id + 'V').textContent = (+el.value).toFixed(dp);
+}
+const roomRebuild = [['rRt', (v) => v.toFixed(2) + ' s'], ['rW', (v) => v.toFixed(1) + ' m'],
+  ['rD', (v) => v.toFixed(1) + ' m'], ['rH', (v) => v.toFixed(1) + ' m'],
+  ['rAbs', (v) => v.toFixed(2)], ['rPre', (v) => v.toFixed(1) + ' ms'],
+  ['rDamp', (v) => (v / 1000).toFixed(1) + ' kHz'], ['rPos', (v) => (v * 100).toFixed(0) + '% back']];
+for (const [id, fmt] of roomRebuild) {
+  const el = $(id);
+  el.addEventListener('input', () => ($(id + 'V').textContent = fmt(+el.value)));
+  el.addEventListener('change', () => post({ type: 'room', rebuild: true, opts: roomOpts() }));
+  $(id + 'V').textContent = fmt(+el.value);
+}
+$('roomBtn').onclick = (e) => {
+  const on = !e.target.classList.contains('on');
+  e.target.classList.toggle('on', on);
+  e.target.textContent = on ? 'enabled' : 'bypassed';
+  post({ type: 'room', enabled: on });
+};

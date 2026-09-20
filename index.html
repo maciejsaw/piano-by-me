@@ -123,6 +123,29 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         sympathetic resonance is unaffected.</div>
     </div>
     <div class="panel" style="margin-top:14px">
+      <h2>Room — stereo, early reflections and tail kept separate</h2>
+      <div class="row"><label>room</label><button id="roomBtn" class="on" style="flex:1">enabled</button><output></output></div>
+      <div class="row"><label>amount</label><input type="range" id="rMix" min="0" max="0.8" step="0.005" value="0.26"><output id="rMixV"></output></div>
+      <div class="row"><label>early reflections</label><input type="range" id="rEr" min="0" max="2" step="0.01" value="1"><output id="rErV"></output></div>
+      <div class="row"><label>tail</label><input type="range" id="rTail" min="0" max="2" step="0.01" value="1"><output id="rTailV"></output></div>
+      <div class="row"><label>RT60</label><input type="range" id="rRt" min="0.3" max="4" step="0.01" value="1.25"><output id="rRtV"></output></div>
+      <div class="row"><label>room width</label><input type="range" id="rW" min="2.5" max="20" step="0.1" value="6.5"><output id="rWV"></output></div>
+      <div class="row"><label>room depth</label><input type="range" id="rD" min="2.5" max="30" step="0.1" value="8.5"><output id="rDV"></output></div>
+      <div class="row"><label>room height</label><input type="range" id="rH" min="2.2" max="12" step="0.1" value="3.6"><output id="rHV"></output></div>
+      <div class="row"><label>absorption</label><input type="range" id="rAbs" min="0.02" max="0.8" step="0.005" value="0.28"><output id="rAbsV"></output></div>
+      <div class="row"><label>predelay</label><input type="range" id="rPre" min="0" max="80" step="0.5" value="14"><output id="rPreV"></output></div>
+      <div class="row"><label>tail damping</label><input type="range" id="rDamp" min="600" max="12000" step="50" value="3200"><output id="rDampV"></output></div>
+      <div class="row"><label>listener back</label><input type="range" id="rPos" min="0.15" max="0.95" step="0.01" value="0.72"><output id="rPosV"></output></div>
+      <div class="hint">Two parts, because the ear uses them for different things. The early reflections
+        are real paths off real surfaces — the source mirrored in each wall, arrival time from the
+        distance, level from the inverse of it, absorption from how many surfaces the path touched —
+        and they are what tell you the size of the room and where you are standing in it. The tail is
+        a feedback delay network, because by then the reflections are too dense to be worth counting.
+        Left and right differ because the two ears are at different distances from every image, not
+        because anything was widened. The room is NOT in the mono path the fitting tools use: a room
+        in front of a measurement fits the instrument to the room.</div>
+    </div>
+    <div class="panel" style="margin-top:14px">
       <h2>Parameter editor — slider is a global offset, chart is per key</h2>
       <div id="peBar">
         <button id="peSave">save</button>

@@ -23,6 +23,7 @@ import { WaveguideString } from './string.js';
 import { makeHammerPulse, makeKnock } from './hammer.js';
 import { Soundboard } from './soundboard.js';
 import { Body } from './body.js';
+import { Room } from './room.js';
 
 // Output limiter. Ceiling is exactly 1.0 so the signal can never clip the
 // device, and it is applied once per output sample rather than per string.
@@ -93,9 +94,19 @@ export class Piano {
     // Mean of the three weights, divided out so the spread cannot shift level.
     this.bridgeNorm = (Math.pow(1 + this.bridgeSpread, -1) + 1 + (1 + this.bridgeSpread)) / 3;
     this.zoneSpread = opts.zoneSpread ?? 2.2;      // how far along the bridge motion travels
-    this.masterGain = opts.gain ?? 0.092;
+    // Lowered from 0.092 when the fitted correction went in: it boosts some
+    // bands by up to 12 dB, and an EQ that boosts has to be paid for in
+    // headroom somewhere. The master level is the honest place to pay, rather
+    // than flattening a curve that was measured. Set by the loud-cluster
+    // stability check, which is the thing that actually runs out of room.
+    this.masterGain = opts.gain ?? 0.070;
     // Everything downstream of the bridge: radiation, case, cavity, lid.
     this.body = new Body(fs, opts.body ?? {});
+    // And downstream of THAT, the room. It is stereo, and it is deliberately
+    // not in the mono path: every fitting tool here renders mono and compares
+    // against a close-mic'd sample, so putting a room in front of that would
+    // fit the instrument to the room. renderStereo is the one that uses it.
+    this.room = new Room(fs, opts.room ?? {});
     this.sustain = false;
     this.unaCorda = false;
     this.scaleDef = opts.scale ?? DEFAULT_SCALE;
@@ -528,12 +539,34 @@ export class Piano {
     this.refreshActive();
   }
 
+  /**
+   * Stereo: the same render, through the room.
+   *
+   * L and R differ because the two ears are at different distances from every
+   * image source, not because anything was widened.
+   */
+  renderStereo(outL, outR, n) {
+    if (!this.mono || this.mono.length < n) this.mono = new Float32Array(n);
+    const mono = this.mono;
+    this.render(mono, n);
+    if (!this.room.enabled) {
+      for (let i = 0; i < n; i++) { outL[i] = mono[i]; outR[i] = mono[i]; }
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      const lr = this.room.process(mono[i]);
+      outL[i] = softclip(lr[0]);
+      outR[i] = softclip(lr[1]);
+    }
+  }
+
   panic() {
     for (const s of this.strings) { s.reset(); s.active = false; s.setDamper(s.note.hasDamper); s.damperClosed = s.note.hasDamper ? 1 : 0; }
     this.zones.forEach((z) => z.reset());
     this.body.reset();
     this.noteJunction.fill(0); this.zoneVel.fill(0); this.zoneDrive.fill(0);
     this.zoneKnock.forEach((b) => b.fill(0));
+    this.room.reset();
     this.knockPos = 0; this.knockUntil = 0;
     this.notes.forEach((n) => (n.held = false));
     this.refreshActive();

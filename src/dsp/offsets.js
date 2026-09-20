@@ -78,7 +78,7 @@ export const PARAMS = [
   { key: 'boardG', label: 'Board density', group: 'Body', mode: 'add', span: 0.3, scope: 'global', base: 0.665 },
   { key: 'cavityMix', label: 'Case cavity', group: 'Body', mode: 'mul', span: 2, scope: 'global', base: 0.18 },
   { key: 'lidGain', label: 'Lid reflection', group: 'Body', mode: 'mul', span: 2, scope: 'global', base: 0.28 },
-  { key: 'masterGain', label: 'Master level', group: 'Body', mode: 'mul', span: 1.5, scope: 'global', base: 0.092 },
+  { key: 'masterGain', label: 'Master level', group: 'Body', mode: 'mul', span: 1.5, scope: 'global', base: 0.070 },
 ];
 
 export const PARAM_BY_KEY = new Map(PARAMS.map((p) => [p.key, p]));
