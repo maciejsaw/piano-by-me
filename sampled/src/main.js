@@ -44,10 +44,15 @@ async function start() {
   lib.startWarm(LOW, HIGH);
   // Handles for the console and for tools/sampler/browser-test.mjs. Everything
   // the UI can do is a method on one of these.
-  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSostenuto, setUna, toggleSilent };
+  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSostenuto, setUna, toggleSilent, pickLayer, levelDb, ui: true };
   $('overlay').style.display = 'none';
-  setInterval(() => { engine.tick(0.04); paintResonance(); }, 40);
-  setInterval(updateLoad, 400);
+  // The resonance tick has to keep running; the painting does not. Offline
+  // rendering turns the UI off, because repainting 88 keys every 40 ms is
+  // enough main-thread work to jitter a note scheduler by ten milliseconds.
+  const ticker = setInterval(() => { engine.tick(0.04); if (window.piano.ui) paintResonance(); }, 40);
+  const loader = setInterval(() => { if (window.piano.ui) updateLoad(); }, 400);
+  window.piano.ui = true;
+  window.piano.timers = { ticker, loader };
   initMidi();
 }
 
