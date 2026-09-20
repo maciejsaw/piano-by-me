@@ -51,8 +51,10 @@ td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--d
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
 #velCanvas{width:100%;height:120px;border:1px solid var(--line);border-radius:4px;display:block}
+#velCurveCanvas,#velLayerCanvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px;cursor:crosshair;touch-action:none}
 #eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
 #resMap{width:100%;height:75px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
+#layerMap{width:100%;height:180px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
 .eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
 .eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
 .eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
@@ -99,6 +101,12 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
 .sel-bar{position:sticky;top:52px;z-index:5;box-shadow:0 6px 10px -6px #000}
 .sel-actions button[data-reset]{border-color:#5a4433}
+#menuWrap{position:relative;margin-left:auto}
+#menuBtn{font-size:18px;line-height:1;padding:4px 10px}
+#menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
+#menu.open{display:flex;flex-direction:column;gap:4px}
+#menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px}
+#menu button:hover{background:var(--panel2);border:none}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
 #overlay p{color:var(--dim);margin:14px 0}
@@ -133,6 +141,15 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
   <span class="stat">loaded <b id="statLoad">–</b></span>
   <div id="loadWrap"><div id="loadBar"></div></div>
   <span class="stat">resident <b id="statMem">–</b></span>
+  <div id="menuWrap">
+    <button id="menuBtn" title="More" aria-label="More">⋯</button>
+    <div id="menu">
+      <button id="exportBtn">Export settings…</button>
+      <button id="importBtn">Import settings…</button>
+      <button id="resetAllBtn">Reset everything</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
 </header>
 
 <main>
@@ -151,6 +168,23 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
     <div class="panel" style="order:3">
       <h2>Velocity response — <span id="noteName">C4</span></h2>
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Velocity → layer</h3>
+      <canvas id="velLayerCanvas" height="300"></canvas>
+      <div class="hint" style="margin-bottom:14px">Map which of the 16 recorded layers each velocity plays:
+        <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove. This replaces the single
+        layer-bias knob — because the whole range is drawable, every layer stays reachable. The blue dot is the
+        last note you struck, on the layer it landed on. Where the line is <b>flat</b>, a wide band of velocities
+        all play the same layer (and stay near its native level); where it is <b>steep</b>, the layer changes
+        quickly. Per-key <b>Layer bias</b> still nudges this for one key.</div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Volume</h3>
+      <div class="row"><label>custom volume curve</label><button id="velCurveBtn" style="flex:1">off — native layer levels</button><output></output></div>
+      <canvas id="velCurveCanvas" height="300"></canvas>
+      <div class="hint" style="margin-bottom:12px">By default (<b>off</b>) each layer plays at its own <b>recorded
+        level</b>, with the level ramped smoothly between neighbouring layers so crossing a boundary changes the
+        timbre but not the loudness — no abrupt jumps. Turn this <b>on</b> to override that with a hand-drawn
+        velocity→level curve: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove,
+        pull the far-left point to <b>silent</b> for a true pianissimo. Per-key <b>Level trim</b> always applies.</div>
       <canvas id="velCanvas" height="240"></canvas>
       <div class="hint" id="velHint"></div>
       <table id="velTable"></table>
@@ -160,16 +194,28 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         and changing the layer bias never changes the level. Both are per key: draw them on the right.</div>
     </div>
 
+    <div class="panel" style="order:3">
+      <h2>Sample map — every key × velocity layer, lit as it plays</h2>
+      <canvas id="layerMap" height="360"></canvas>
+      <div class="hint">The grid is the whole library: <b>88 keys</b> across, the <b>16 velocity layers</b>
+        up (softest at the bottom, loudest at the top). A cell is <b>brighter</b> when that exact
+        recording is resident in memory and dim when it has not been streamed in yet. When you play,
+        the cell for the note and the layer its velocity reached for <b>lights gold</b> — so you can see
+        which of the sixteen recordings is actually sounding — and fades once the key comes up.</div>
+    </div>
+
     <div class="panel" style="order:6">
       <h2>Output &amp; stereo</h2>
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2" step="0.01" value="0.45"><output id="gainV"></output></div>
-      <div class="row"><label>stereo spread</label><input type="range" id="spread" min="0" max="1" step="0.01" value="0.55"><output id="spreadV"></output></div>
+      <div class="row"><label>stereo spread</label><input type="range" id="spread" min="-1" max="1" step="0.01" value="0"><output id="spreadV"></output></div>
       <div class="row"><label>stereo width</label><input type="range" id="width" min="0" max="2" step="0.01" value="1"><output id="widthV"></output></div>
       <div class="row"><label>perspective</label><button id="persBtn" style="flex:1">player's view</button><output></output></div>
-      <div class="hint">Every key gets its own place across the image, bass to treble, as a rotation of that
-        key's recorded stereo picture rather than a pan — so the treble does not arrive mono and hard right.
-        The recordings are all from one microphone position, so this is putting back something the
-        soundboard had and the microphones could not.</div>
+      <div class="hint">The Salamander recordings are reversed — a key on the right of the keyboard sits on the
+        left of the stereo image — so left and right are <b>swapped first</b>, for every key and its release,
+        damper and sympathetic-resonance sounds alike. After that, <b>spread</b> at 0 leaves each key at its
+        own corrected position; move it right to push the treble further right and the bass further left, or
+        left to mirror the whole keyboard. <b>Width</b> rotates each key's own stereo image rather than panning
+        it, so a spread key does not collapse to one side.</div>
     </div>
 
     <div class="panel" style="order:7">
@@ -192,9 +238,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>absorption</label><input type="range" id="absorb" min="0.05" max="0.6" step="0.01" value="0.26"><output id="absorbV"></output></div>
       <div class="row"><label>where you stand</label><input type="range" id="dist" min="0.35" max="0.95" step="0.01" value="0.72"><output id="distV"></output></div>
       <div class="hint">Not a captured impulse response — an image-source model of a shoebox for the early
-        reflections and an eight-line feedback delay network for the tail, the same room the modelled variant
-        uses, rendered to an impulse and convolved. Which is why the controls are geometry: an IR library
-        cannot move you across the room.</div>
+        reflections (real path lengths off real surfaces, stereo from the geometry) and a dense,
+        frequency-damped noise field for the diffuse tail, rendered to an impulse and convolved. The tail is
+        noise rather than a feedback delay network on purpose: a handful of short delay lines rings like a
+        spring, and noise has no period to ring at. The controls are geometry, because an IR library cannot
+        move you across the room.</div>
     </div>
 
     <div class="panel" style="order:5">
@@ -213,11 +261,21 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
       <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="48" step="1" value="16"><output id="resMaxV"></output></div>
+      <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
+      <div class="row"><label>soundboard level</label><input type="range" id="sbAmt" min="0" max="2" step="0.01" value="0.5"><output id="sbAmtV"></output></div>
+      <div class="row"><label>soundboard tail</label><input type="range" id="sbTail" min="0.5" max="8" step="0.1" value="4.5"><output id="sbTailV"></output></div>
+      <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
+      <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
       <div class="hint">Which strings answer is decided by partial coincidence, with each string's real
         inharmonicity and the bandwidth implied by its measured decay — so a fifth answers strongly and a
         tritone barely. <b>Selectivity</b> widens that bandwidth: at 1× it is physical and almost nothing
         resonates unless it is in tune to a cent, which is why every instrument that does this has to open
-        it up. <b>Build with velocity</b> is the exponent on velocity: 2 is the energy a hammer delivers.</div>
+        it up. <b>Build with velocity</b> is the exponent on velocity: 2 is the energy a hammer delivers.
+        <b>Soundboard</b> feeds all of this into a long, dark reverb, so lifting the pedal does not cut the
+        resonance dead: lifting it <b>ducks</b> the resonance down to <b>pedal-off drop</b> at once — the dampers
+        touching — then lets it fall the rest of the way slowly over <b>pedal-off fall</b>, scattered slightly in
+        time so the frame does not land as one click, while the body goes on ringing for the <b>soundboard
+        tail</b>, the way a whole piano keeps sounding for a few seconds after the dampers land.</div>
     </div>
 
     <div class="panel" style="order:4">
@@ -250,6 +308,13 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
           <div class="row"><label>time</label><input type="range" id="rrMs" min="0" max="1500" step="10" value="240"><output id="rrMsV"></output></div>
           <p>Applied at the tail of the release sample, so it lands rather than stops.</p>
         </div>
+        <div class="env">
+          <h3>Pedal attack<span id="paPreset"></span></h3>
+          <canvas id="paCanvas" height="220"></canvas>
+          <div class="row"><label>time</label><input type="range" id="paMs" min="0" max="200" step="1" value="6"><output id="paMsV"></output></div>
+          <p>The rise of the pedal-action sample — soften the knock or sharpen it. Its long reverberant tail is
+             set under <b>Mechanics → pedal reverb</b>, not here: that length is the room ringing, not a shape.</p>
+        </div>
         <div class="env wide">
           <h3>Release level against how long the key was held<span id="hoPreset"></span></h3>
           <canvas id="hoCanvas" height="220"></canvas>
@@ -274,13 +339,24 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
       <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
       <div class="row"><label>pedal action</label><input type="range" id="pedNoise" min="0" max="2" step="0.01" value="0.8"><output id="pedNoiseV"></output></div>
+      <div class="row"><label>pedal reverb tail</label><input type="range" id="pedTail" min="0.3" max="10" step="0.1" value="5"><output id="pedTailV"></output></div>
+      <div class="row"><label>pedal reverb level</label><input type="range" id="pedWet" min="0" max="2" step="0.01" value="0.6"><output id="pedWetV"></output></div>
+      <div class="row"><label>release start trim</label><input type="range" id="relTrim" min="0" max="200" step="1" value="0"><output id="relTrimV"></output></div>
+      <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
+      <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
       <div class="row"><label>memory budget</label><input type="range" id="budget" min="128" max="1536" step="32" value="640"><output id="budgetV"></output></div>
       <div class="row"><label>output limiter</label><button id="limBtn" class="on" style="flex:1">on</button><output></output></div>
       <div class="hint">The sustain pedal is continuous, not a switch: half-pedalling shortens a note without
         stopping it, and CC 64 is read across its whole range. The damper-fall sound is picked by velocity and
         scaled by how long the key was held — a string ringing for four seconds has less left in it to stop.
         The limiter is a seatbelt, not a sound: it is doing nothing until eighty-eight undamped strings would
-        have run out of headroom.</div>
+        have run out of headroom. <b>Release start trim</b> shaves a fixed few ms off the front of every
+        release and damper sample; <b>round-robin</b> adds a random few ms on top of that per play, so the same
+        key let go twice does not replay the identical file and machine-gun. <b>Release delay</b> holds the
+        note a millisecond past the key-up so its damper falls in step with the release sample, not a hair
+        ahead of it. <b>Pedal reverb</b> gives the pedal-action sample its own several-second tail — the whole
+        undamped frame ringing, far longer than the room — with its rise shaped by the <b>Pedal attack</b>
+        curve in the Envelopes panel.</div>
     </div>
   </div>
 
