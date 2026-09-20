@@ -22,8 +22,8 @@ button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 code{background:var(--panel2);padding:1px 5px;border-radius:3px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
-main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:14px;align-items:start}
-@media(max-width:1180px){main{grid-template-columns:1fr}}
+main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 620px;gap:14px;align-items:start}
+@media(max-width:1340px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
 .panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
 #kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
@@ -68,16 +68,19 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 #loadBar{height:100%;width:0;background:var(--accent);transition:width .3s}
 .pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .pe-group:first-child{margin-top:0}
-.pe-row{margin:2px 0}
+.pe-row{display:grid;grid-template-columns:242px minmax(0,1fr);gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #241f18}
+.pe-ctl{min-width:0}
+.pe-ctl>label{display:block;color:var(--ink);font-size:11px;cursor:help;margin-bottom:3px}
 .pe-head{display:flex;align-items:center;gap:6px}
-.pe-head label{flex:0 0 92px;color:var(--dim);font-size:11px;cursor:help}
-.pe-slider{flex:1;min-width:54px;accent-color:var(--accent)}
-.pe-out{flex:0 0 104px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pe-slider{flex:1;min-width:60px;accent-color:var(--accent)}
 .pe-zoom{padding:1px;font-size:10px;flex:0 0 62px}
-.pe-head button{padding:1px 5px;font-size:10px;flex:0 0 auto}
-.pe-canvas-wrap{margin:4px 0 10px 92px}
+.pe-out{display:flex;justify-content:space-between;gap:6px;font-size:11px;font-variant-numeric:tabular-nums;margin-top:3px}
+.pe-off{color:var(--accent)} .pe-abs{color:var(--dim)}
+.pe-btns{display:flex;gap:4px;margin-top:4px}
+.pe-btns button{padding:1px 7px;font-size:10px}
+.pe-canvas-wrap{min-width:0}
 .pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
-.pe-canvas-wrap canvas.pe-keys{height:76px}
+.pe-canvas-wrap canvas.pe-keys{height:72px;cursor:pointer}
 .sel-bar{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:12px}
 .sel-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);flex-wrap:wrap}
 .sel-head b{color:var(--accent);font-weight:600}
@@ -89,6 +92,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .sel-foot input[type=range]{flex:1;accent-color:var(--accent)}
 .sel-foot output{flex:0 0 66px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums}
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
+.sel-bar{position:sticky;top:52px;z-index:5;box-shadow:0 6px 10px -6px #000}
+.sel-actions button[data-reset]{border-color:#5a4433}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
 #overlay p{color:var(--dim);margin:14px 0}
@@ -267,16 +272,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
   <div>
     <div class="panel">
-      <h2>Parameters — one slider each, on whatever you have selected</h2>
-      <div style="display:flex;gap:8px;margin-bottom:10px"><button id="resetAll">reset everything</button></div>
+      <h2>Parameters — pick the keys once, then edit; the chart is a preview</h2>
       <div id="editor"></div>
-      <div class="hint">Every slider moves whatever the strip above has selected: the whole instrument,
-        a range you dragged, or one key. The three add — a range edit is a departure from the global
-        value, a key edit a departure from that — so zero always means "as shipped". A range is
-        <b>feathered</b> at its edges, so raising the top octave and a half does not make one key
-        suddenly different; set the edge fade to zero when you do want a hard edge. The gold line on
-        each chart is the <b>total</b>, which is where you will see a cliff if you have made one, and
-        the caption underneath names the biggest jump between neighbouring keys.
+      <div class="hint">Every slider moves whatever the strip at the top has selected — the whole
+        instrument, a range you dragged, or one key — so there is one place where the question
+        "which keys?" is answered. The three tiers add: a range edit is a departure from the global
+        value, a key edit a departure from that, and zero always means "as shipped".
+        A range is <b>feathered</b> at its edges, so raising the top octave and a half does not make
+        one key suddenly different; set the edge fade to zero when you do want a hard edge, the way
+        a real piano has one at the bass break.
+        The charts on the right are <b>previews, not editors</b> — the gold line is the
+        <b>total</b> across all three tiers, which is where a cliff shows up, and the caption names
+        the biggest jump between neighbouring keys. Clicking one selects that key to edit.
         <b>smooth</b> rounds off the per-key layer only, so a deliberate single-key fix survives it
         unless you ask. Edits are stored in this browser and reload with the page.</div>
     </div>

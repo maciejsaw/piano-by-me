@@ -258,6 +258,7 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
         <button data-all>all keys</button>
         <button data-oct>this octave</button>
         <button data-one>selected key</button>
+        <button data-reset title="every parameter, every tier, back to as shipped">reset all</button>
       </span>
     </div>
     <canvas class="sel-map" height="${34 * devicePixelRatio}"></canvas>
@@ -323,6 +324,7 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
     refresh();
   };
   bar.querySelector('[data-one]').onclick = () => { sel.lo = sel.hi = selected(); refresh(); };
+  bar.querySelector('[data-reset]').onclick = () => { for (const p of PARAMS) curves.reset(p.key); refresh(); notify(); };
   const fSlider = bar.querySelector('.sel-feather');
   fSlider.oninput = () => {
     feather = +fSlider.value;
@@ -351,19 +353,30 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
   function makeRow(p) {
     const wrap = document.createElement('div');
     wrap.className = 'pe-row';
+    // Controls on the left, a read-only preview of the finished curve on the
+    // right. The chart used to be editable too, which meant two ways to say
+    // the same thing and no way to tell from looking at it which one had been
+    // used. Everything is said through the scope now; the chart only answers
+    // "and what does that do?"
     wrap.innerHTML = `
-      <div class="pe-head">
+      <div class="pe-ctl">
         <label title="${p.hint.replace(/"/g, '&quot;')}">${p.label}</label>
-        <input type="range" class="pe-slider" min="-1" max="1" step="0.002" value="0">
+        <div class="pe-head">
+          <input type="range" class="pe-slider" min="-1" max="1" step="0.002" value="0">
+          <select class="pe-zoom" title="precision — zooms the slider and the chart">
+            ${ZOOMS.map((z, i) => `<option value="${i}">±${(p.span * z).toPrecision(2)}</option>`).join('')}
+          </select>
+        </div>
         <output class="pe-out"></output>
-        <select class="pe-zoom" title="precision — zooms the slider and the chart">
-          ${ZOOMS.map((z, i) => `<option value="${i}">±${(p.span * z).toPrecision(2)}</option>`).join('')}
-        </select>
-        <button class="pe-smooth" title="round off the per-key layer, so a fix does not stand alone as a step">smooth</button>
-        <button class="pe-reset" title="back to the shipped value, every tier">reset</button>
+        <div class="pe-btns">
+          <button class="pe-smooth" title="round off the per-key layer, so a single-key fix does not stand alone as a step">smooth</button>
+          <button class="pe-reset" title="back to the shipped value, every tier">reset</button>
+        </div>
       </div>
-      <div class="pe-canvas-wrap"><canvas class="pe-keys" height="${76 * devicePixelRatio}"></canvas>
-        <div class="pe-hint pe-step"></div></div>`;
+      <div class="pe-canvas-wrap">
+        <canvas class="pe-keys" height="${72 * devicePixelRatio}"></canvas>
+        <div class="pe-hint pe-step"></div>
+      </div>`;
     root.appendChild(wrap);
 
     const slider = wrap.querySelector('.pe-slider');
@@ -415,10 +428,14 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
       }
 
       slider.value = Math.max(-1, Math.min(1, curves.scopeValue(p.key, sel) / span()));
-      out.textContent = `${noteName(cur)} ${fmt(p, curves.at(p.key, cur))}`;
+      // Two numbers, because they answer different questions: what this scope
+      // is offset by, and what the selected key therefore ends up at.
+      const off = curves.scopeValue(p.key, sel);
+      out.innerHTML = `<span class="pe-off">${off > 0 ? '+' : ''}${fmt(p, off)}</span>`
+        + `<span class="pe-abs">${noteName(cur)} → ${fmt(p, curves.at(p.key, cur))}</span>`;
       const { step, midi } = curves.worstStep(p.key);
       wrap.querySelector('.pe-step').textContent = step > 1e-4
-        ? `biggest jump between neighbours: ${fmt(p, step)} at ${noteName(midi)}`
+        ? `biggest jump: ${fmt(p, step)} at ${noteName(midi)}`
         : 'flat across the keyboard';
     };
 
@@ -433,19 +450,15 @@ export function createEditor(root, curves, onChange, selected = () => 60) {
     wrap.querySelector('.pe-smooth').onclick = () => { curves.smooth(p.key, 2); draw(); notify(); };
     wrap.querySelector('.pe-reset').onclick = () => { curves.reset(p.key); draw(); notify(); };
 
-    // Drawing straight onto the chart still edits the per-key layer, which is
-    // the fastest way to say "these four notes, not a region".
-    let drawing = false;
-    const paint = (e) => {
+    // Clicking the preview picks that key as the scope, which is the one
+    // editing gesture it keeps -- it moves the selection, it does not change
+    // a value.
+    canvas.onpointerdown = (e) => {
       const r = canvas.getBoundingClientRect();
       const i = Math.max(0, Math.min(KEYS - 1, Math.floor((e.clientX - r.left) / r.width * KEYS)));
-      const rel = 1 - (e.clientY - r.top) / r.height * 2;
-      curves.setKey(p.key, LOW + i, e.shiftKey ? (curves.k[p.key]?.[i] ?? 0) * 0.6 : rel * span() - (curves.at(p.key, LOW + i) - p.def - (curves.k[p.key]?.[i] ?? 0)));
-      draw(); notify();
+      sel.lo = sel.hi = LOW + i;
+      refresh();
     };
-    canvas.onpointerdown = (e) => { drawing = true; canvas.setPointerCapture(e.pointerId); paint(e); };
-    canvas.onpointermove = (e) => { if (drawing) paint(e); };
-    canvas.onpointerup = canvas.onpointercancel = () => { drawing = false; };
 
     draw();
     return { draw };

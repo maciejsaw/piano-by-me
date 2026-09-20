@@ -233,16 +233,6 @@ function buildUI() {
   $('sostBtn').onclick = () => setSostenuto(!engine.sostenuto.size);
   $('unaBtn').onclick = () => setUna(engine.unaCorda >= 0.5 ? 0 : 1);
   $('panicBtn').onclick = () => { engine.panic(); down.clear(); silent.clear(); for (let m = LOW; m <= HIGH; m++) paint(m); };
-  $('resetAll').onclick = () => {
-    for (const p of PARAMS) curves.reset(p.key);
-    envelopes.fromJSON(new Envelopes().toJSON());
-    engine.eq.fromJSON(null);
-    for (const [i, b] of BANDS.entries()) {
-      engine.eq.set(i, 'freq', b.freq); engine.eq.set(i, 'gain', b.gain); engine.eq.set(i, 'q', b.q);
-    }
-    localStorage.removeItem(STORE);
-    editor.refresh(); engine.refreshStrips(); renderNote(); redrawEnvs(); buildEq();
-  };
   renderNote();
 }
 
