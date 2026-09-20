@@ -507,6 +507,17 @@ The top twenty keys of a grand have no dampers at all, so they are always in the
 undamped set. That is most of where a piano's shimmer comes from and it costs
 nothing to get right.
 
+**The panel draws what the engine is doing**, on a keyboard, live: a gold bar
+per string for the energy sitting in it, bright where that string is loud
+enough to have been given a voice and dim where the energy is there but below
+the threshold or outside the voice limit; a lit background for every string
+whose damper is off, which is what the pedal actually does; and blue for what
+you are holding. Press the pedal and play a low chord and the octaves and
+fifths of it stand up across the keyboard while the tritones stay flat — which
+is the coupling matrix, visible. It also gives `selectivity` some feedback,
+since at 1x almost nothing answers and the effect of widening it is otherwise
+only audible in aggregate.
+
 ### Mechanics
 
 Key-release noise (all 88 recorded separately), damper-release string resonance

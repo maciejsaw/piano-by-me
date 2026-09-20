@@ -77,12 +77,60 @@ const paint = (m) => kb?.paint(m, {
   down: down.has(m), silent: silent.has(m), selected: m === selNote,
   resonating: engine?.res.voices.has(m),
 });
+/**
+ * What the resonance engine is doing, on a keyboard.
+ *
+ * The engine's whole behaviour is a number per string that rises when a
+ * harmonically related key is struck and leaks away at that string's own
+ * measured decay rate, with voices handed to the loudest few. All of that is
+ * invisible otherwise -- you can hear that something happened but not which
+ * strings it happened to, and "selectivity" is a knob with no feedback.
+ */
+function paintResMap() {
+  const c = $('resMap');
+  if (!c || !engine) return;
+  const g = c.getContext('2d');
+  const w = c.width = c.clientWidth * devicePixelRatio;
+  const h = c.height, bw = w / 88, lab = 12 * devicePixelRatio;
+  const plot = h - lab;
+  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+
+  const res = engine.res;
+  const undamped = engine.undamped ?? new Set();
+  for (let m = LOW; m <= HIGH; m++) {
+    const x = (m - LOW) * bw;
+    const black = ![0, 2, 4, 5, 7, 9, 11].includes(m % 12);
+    // A damper off is the pedal's actual job, so it is the background.
+    g.fillStyle = undamped.has(m) ? (black ? '#2a2417' : '#37301e') : (black ? '#100e0a' : '#1c1913');
+    g.fillRect(x, 0, Math.max(1, bw - 0.5), plot);
+  }
+
+  // Energy per string. sqrt, because that is how it reaches the gain.
+  for (let i = 0; i < res.n; i++) {
+    const e = res.E[i];
+    if (e <= 0) continue;
+    const midi = res.lo + i;
+    const bar = Math.min(1, Math.sqrt(e / 1.5)) * (plot - 2);
+    g.fillStyle = res.voices.has(midi) ? '#d9a441' : 'rgba(217,164,65,0.35)';
+    g.fillRect((midi - LOW) * bw + 0.5, plot - bar, Math.max(1, bw - 1), bar);
+  }
+
+  g.fillStyle = 'rgba(111,168,220,0.45)';
+  for (const m of down) g.fillRect((m - LOW) * bw, 0, Math.max(1.5, bw), plot);
+
+  g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+  g.textAlign = 'center';
+  g.fillStyle = '#6d6458';
+  for (let m = 24; m <= HIGH; m += 12) g.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 2);
+}
+
 let lastRes = new Set();
 function paintResonance() {
   const now = new Set(engine.res.voices.keys());
   for (const m of lastRes) if (!now.has(m)) paint(m);
   for (const m of now) if (!lastRes.has(m)) paint(m);
   lastRes = now;
+  paintResMap();
   const s = engine.stats();
   $('statVoices').textContent = s.voices;
   $('statRes').textContent = s.resonating;

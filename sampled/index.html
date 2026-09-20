@@ -52,6 +52,7 @@ td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--d
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
 #velCanvas{width:100%;height:120px;border:1px solid var(--line);border-radius:4px;display:block}
 #eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
+#resMap{width:100%;height:75px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
 .eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
 .eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
 .eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
@@ -198,6 +199,15 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
     <div class="panel" style="order:5">
       <h2>Sympathetic resonance</h2>
+      <canvas id="resMap" height="150"></canvas>
+      <div class="hint" style="margin:0 0 10px">
+        <b>Gold bars</b> are the energy sitting in each string — every strike adds to them and they leak
+        away at that string's own measured decay rate. <b>Bright gold</b> is the ones loud enough to have
+        been given a voice; dim gold is energy that is there but below the threshold or outside the voice
+        limit. The <b>lit background</b> is every string whose damper is off, which is what the pedal
+        actually does. <b>Blue</b> is what you are holding down.
+        Press the pedal and play: the background lights up, then the bars build where the partials agree.
+      </div>
       <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="0.8" step="0.005" value="0.15"><output id="resAmtV"></output></div>
       <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
