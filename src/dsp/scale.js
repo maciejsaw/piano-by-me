@@ -130,7 +130,8 @@ export const DEFAULT_SCALE = {
     // crushing and the action arriving; it is lowpassed, because what a big
     // plate does with a tap is low.
     // SOLVED, not set -- tools/fit/fit-knock.mjs, at 18 dB under each note's
-    // own peak (12 was the first fit; the ear halved it). Hand-scaling this fixed C4 and left A0 forty decibels out,
+    // own peak (12 was the first fit; the ear halved it). Re-solved after the
+    // tone changed, because cutting the top of the noise also cuts its level. Hand-scaling this fixed C4 and left A0 forty decibels out,
     // because how loud a knock sounds against its note is not proportional to
     // the blow: the transient stage takes nearly all of the bass string's
     // first milliseconds away, so the same knock stands right out at A0 and
@@ -140,20 +141,25 @@ export const DEFAULT_SCALE = {
     //
     // knockNoise carries the same fitted scale as knockGain; the ratio
     // between them is the voicing, the common factor is the level.
-    knockGain:  [[21, 0.0413], [27, 0.0613], [33, 0.0249], [39, 0.0355], [45, 0.0224], [51, 0.0259], [57, 0.0183], [63, 0.0198], [69, 0.0157], [75, 0.0159], [81, 0.021], [87, 0.00969], [93, 0.0322], [99, 0.041], [105, 0.00959], [108, 0.00908]],
-    knockNoise: [[21, 0.0525], [27, 0.0848], [33, 0.038], [39, 0.06], [45, 0.0417], [51, 0.0535], [57, 0.0427], [63, 0.0522], [69, 0.0469], [75, 0.0534], [81, 0.079], [87, 0.0396], [93, 0.138], [99, 0.184], [105, 0.0461], [108, 0.0453]],
+    knockGain:  [[21, 0.0392], [27, 0.0278], [33, 0.0216], [39, 0.0209], [45, 0.0272], [51, 0.0236], [57, 0.00917], [63, 0.0125], [69, 0.00941], [75, 0.0124], [81, 0.0139], [87, 0.0153], [93, 0.0356], [99, 0.0655], [105, 0.0383], [108, 0.016]],
+    knockNoise: [[21, 0.0498], [27, 0.0384], [33, 0.033], [39, 0.0353], [45, 0.0506], [51, 0.0488], [57, 0.0214], [63, 0.0329], [69, 0.0281], [75, 0.0415], [81, 0.0524], [87, 0.0626], [93, 0.153], [99, 0.294], [105, 0.184], [108, 0.0797]],
     knockDecayS: [[21, 0.035], [48, 0.024], [72, 0.014], [108, 0.008]],
-    // Corner of the noise lowpass, which is now three poles deep. Lower than
-    // it looks it should be for that reason, and because the radiation EQ
-    // lifts 2-8 kHz on the way out: a knock voiced flat here arrives bright.
-    knockFc:     [[21, 260], [48, 420], [72, 700], [108, 1200]],
+    // Corner of the noise lowpass, which is three poles deep. Far lower than
+    // it looks it should be, for three reasons that stack: three poles reach
+    // a long way down from their corner, the radiation EQ lifts 2-8 kHz on
+    // the way out, and the ear picked the darkest take on offer at every note
+    // when the takes were level-matched so that darker could not win by being
+    // quieter. 156 Hz at the bottom of the keyboard is not a typo.
+    knockFc:     [[21, 156], [48, 252], [72, 420], [108, 720]],
     // The oomph. One low resonance, because that is what a big heavy plate
     // answers a tap with. It belongs to the BOARD, not to the note, so it
     // barely moves across the keyboard -- what little it does is the strike
-    // being nearer the stiffer treble end of the bridge.
+    // being nearer the stiffer treble end of the bridge. The mix is high: at
+    // 3 the resonance is most of what the noise half contributes, which is
+    // the point, since a knock that is broadband is a hiss.
     knockThumpHz:  [[21, 85], [60, 110], [108, 150]],
     knockThumpQ:   [[21, 1.8], [108, 1.4]],
-    knockThumpMix: [[21, 1.5], [108, 1.5]],
+    knockThumpMix: [[21, 3.0], [108, 3.0]],
     // Spread of hammer mass and of delivered force across the unison.
     hammerMassSpread: [[21, 0.02], [108, 0.04]],
     hammerForceSpread: [[21, 0.03], [108, 0.06]],
