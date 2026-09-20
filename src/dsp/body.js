@@ -235,6 +235,9 @@ export class Body {
     // partial mix combs the dry path against the diffused one, so 0.67 was the
     // most coloured value in the range as well as the least plausible.
     this.boardMix = opts.boardMix ?? 1;
+    // Kept so a rebuild can carry them over rather than silently reverting.
+    this.spreadMs = opts.boardSpreadMs ?? 37;
+    this.diffuserG = opts.boardG ?? 0.665;
     this.diffuser = new Diffuser(fs, {
       spreadMs: opts.boardSpreadMs ?? 37,
       stages: opts.boardStages ?? 5,

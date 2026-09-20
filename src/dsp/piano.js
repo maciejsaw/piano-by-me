@@ -17,6 +17,7 @@
 // the previous sample's junction values resolves it for the cost of one sample.
 
 import { buildScale, DEFAULT_SCALE } from './scale.js';
+import { Offsets, NO_OFFSETS } from './offsets.js';
 import { compileString } from './design.js';
 import { WaveguideString } from './string.js';
 import { makeHammerPulse, makeKnock } from './hammer.js';
@@ -91,12 +92,16 @@ export class Piano {
     this.body = new Body(fs, opts.body ?? {});
     this.sustain = false;
     this.unaCorda = false;
-    this.build(opts.scale ?? DEFAULT_SCALE);
+    this.scaleDef = opts.scale ?? DEFAULT_SCALE;
+    // Editor offsets over the voicing curves. Empty means "exactly as fitted".
+    this.edits = opts.edits ?? NO_OFFSETS;
+    this.build(this.scaleDef);
   }
 
   build(scaleDef) {
     const fs = this.fs;
-    this.model = buildScale(scaleDef);
+    this.scaleDef = scaleDef;
+    this.model = buildScale(scaleDef, this.edits);
     const notes = this.model.notes;
 
     this.zones = [];
@@ -320,12 +325,55 @@ export class Piano {
 
   setUnaCorda(on) { this.unaCorda = on; }
 
+  /**
+   * Take a new set of editor offsets without stopping what is ringing.
+   *
+   * A full rebuild would reallocate every delay line and silence the
+   * instrument, which makes an editor useless -- you cannot hear a parameter
+   * you can only change in silence. So the voicing is recomputed, copied over
+   * the live note objects, and the strings are recompiled in place, which is
+   * the same path a coupling edit already takes. Values that are only read at
+   * the strike (hammer, knock, transient, swell) simply apply to the next
+   * note; values baked into the loop filters take effect immediately.
+   */
+  setOffsets(edits) {
+    this.edits = edits instanceof Offsets ? edits : new Offsets(edits);
+    const model = buildScale(this.scaleDef, this.edits);
+    for (let i = 0; i < model.notes.length; i++) {
+      const src = model.notes[i], dst = this.notes[i];
+      for (const k of Object.keys(src)) {
+        if (k === 'voices' || k === 'zone' || k === 'held' || k === 'strings') continue;
+        dst[k] = src[k];
+      }
+      for (let v = 0; v < dst.voices.length; v++) {
+        const st = src.strings[v];
+        if (st) this.recompileString(dst.voices[v], { ...st, phys: st.phys ?? src.phys });
+      }
+      this.setLockTargets(dst);
+    }
+    this.model = model;
+
+    // The global-scope parameters, which have no curve to offset.
+    const g = (key) => this.edits.value(key);
+    this.masterGain = g('masterGain');
+    this.swellS = g('swellS');
+    this.swellFloor = Math.max(0, Math.min(1, g('swellFloor')));
+    this.swellSkew = Math.max(1, g('swellSkew'));
+    const b = this.body;
+    b.boardMix = Math.max(0, Math.min(1, g('boardMix')));
+    b.cavityMix = g('cavityMix');
+    b.lidGain = g('lidGain');
+    const spread = g('boardSpreadMs'), dens = Math.max(0, Math.min(0.9, g('boardG')));
+    if (spread !== b.spreadMs || dens !== b.diffuserG) this.rebuildBody({ boardSpreadMs: spread, boardG: dens });
+  }
+
   /** Rebuild the body after a case dimension changes. */
   rebuildBody(opts = {}) {
     const prev = this.body;
     this.body = new Body(this.fs, {
       curve: prev.curve, enabled: prev.enabled,
-      cavityMix: prev.cavityMix, lidGain: prev.lidGain, ...opts,
+      cavityMix: prev.cavityMix, lidGain: prev.lidGain,
+      boardMix: prev.boardMix, boardSpreadMs: prev.spreadMs, boardG: prev.diffuserG, ...opts,
     });
   }
 
