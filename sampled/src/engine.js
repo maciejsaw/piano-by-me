@@ -68,6 +68,16 @@ export class Engine {
     // have to be and the worst delay is a few milliseconds.
     this.alignStarts = lib.m.alignMs != null;
     this.alignMs = lib.m.alignMs ?? 0;
+    // Scheduling lookahead for live events. ctx.currentTime is the start of the
+    // quantum the audio thread LAST rendered, not the next one, so anything
+    // scheduled "at currentTime" lands up to a render callback late -- and a
+    // gain curve that starts in the past is joined partway through, which is a
+    // step. On the 4 ms release-sample attack, the 1.5 ms alignment fade and a
+    // treble damper that is most of the way down in 20 ms, that step is the
+    // click on key-up. It got worse under load (the warm-up decodes, GC),
+    // because that is when the callbacks run late. A few ms of lookahead puts
+    // every curve in the future, where it is played from its start.
+    this.lookahead = 0.006;
 
     this.dry = ctx.createGain(); this.dry.connect(this.master);
     this.wet = ctx.createGain(); this.wet.gain.value = 0.34; this.wet.connect(this.master);
@@ -162,6 +172,7 @@ export class Engine {
     this.velLayer = VelLayerCurve.fromHivel(lib.m.hivel, lib.layers);
 
     this.res = new Resonance(ctx, lib, curves, (m) => this.strips.get(m).in, this.env, this.sbSend);
+    this.res.lookahead = this.lookahead;
     this.refreshStrips();
     this.updateUndamped();
   }
@@ -295,17 +306,20 @@ export class Engine {
     return { offset, delay: Math.max(0, Math.min(0.25, -want)) };
   }
 
+  /** When a live event with no `when` should happen: just ahead of the audio thread. */
+  time(when) { return when ?? this.ctx.currentTime + this.lookahead; }
+
   // ------------------------------------------------------------------ notes --
   //
   // Every method that makes a sound takes an optional `when`. Live playing
-  // leaves it out and gets ctx.currentTime, which is "as soon as possible";
+  // leaves it out and gets "as soon as possible" -- time(), a few ms ahead;
   // a sequencer passes the time the note is supposed to happen and gets it
   // exactly, because a timer in a browser is good to about four milliseconds
   // and the audio clock is good to a sample. Half the events in a rendered
   // performance were arriving late before this existed.
   noteOn(midi, vel, when) {
     if (midi < this.lo || midi > this.hi) return;
-    const ctx = this.ctx, now = when ?? ctx.currentTime;
+    const ctx = this.ctx, now = this.time(when);
 
     // Una corda: the hammer misses a string, so it is quieter AND softer. In a
     // sampler the "softer" has to come from reaching for a gentler recording,
@@ -387,7 +401,7 @@ export class Engine {
 
   noteOff(midi, relVel = 64, when) {
     if (!this.down.delete(midi)) return;
-    const now = when ?? this.ctx.currentTime;
+    const now = this.time(when);
     const damped = midi <= this.topDamped && !this.sostenuto.has(midi) && !this.silent.has(midi);
     // Read the voice BEFORE killing it: kill() empties the map, and asking
     // afterwards silently handed every damper sound a velocity of 64.
@@ -464,12 +478,17 @@ export class Engine {
   kill(midi, fall, when) {
     const list = this.voices.get(midi);
     if (!list) return;
-    const now = when ?? this.ctx.currentTime;
+    const now = this.time(when);
     const shape = this.env.noteRelease.shape;
     for (const v of list) {
       const from = Math.max(1e-5, this.envValueAt(v, now));
       const dur = Math.max(0.006, fall);
-      v.env.gain.cancelScheduledValues(now);
+      // Hold, not cancel, where the browser can. cancelScheduledValues also
+      // removes a curve that is still RUNNING at `now` and snaps the gain back
+      // to its value before that curve -- 1e-5 for a note in its attack -- for
+      // the lookahead window until the release takes over. That is a dropout.
+      if (v.env.gain.cancelAndHoldAtTime) v.env.gain.cancelAndHoldAtTime(now);
+      else v.env.gain.cancelScheduledValues(now);
       v.env.gain.setValueAtTime(from, now);
       v.env.gain.setValueCurveAtTime(shape.curve(from, 0), now, dur);
       v.rel = { start: now, dur, from, shape };
@@ -512,7 +531,7 @@ export class Engine {
    */
   oneShot(buf, gain, rate = 1, when, offset = 0, dest = this.noise) {
     if (!buf || gain <= 1e-4) return;
-    const ctx = this.ctx, now = when ?? ctx.currentTime;
+    const ctx = this.ctx, now = this.time(when);
     // Trim the start of the sample. A few milliseconds off the front does not
     // change what the thud is, but it lands the waveform on a different sample
     // every time -- which is a fake round robin: the same key released twice in
@@ -601,7 +620,7 @@ export class Engine {
   // ------------------------------------------------------------------ pedals -
   setPedal(v, when) {
     const was = this.pedal;
-    const now = when ?? this.ctx.currentTime;
+    const now = this.time(when);
     this.pedal = Math.max(0, Math.min(1, v));
     // Coming off the pedal drops every damper that no key is holding. A whole
     // frame of dampers landing at once is an audible event on a real piano, so
@@ -665,7 +684,29 @@ export class Engine {
     this.updateUndamped();
   }
 
-  tick(dt) { this.res.tick(dt); }
+  tick(dt) { this.res.tick(dt, this.sounding(), this.pedal); }
+
+  /**
+   * The notes that are still ringing freely, and how far into their own decay
+   * each one is. This is what the resonance engine drives its coupled strings
+   * from, every tick, for as long as the notes last -- a string does not stop
+   * pushing the bridge the moment the hammer leaves it.
+   *
+   * `this.voices` is exactly the right set to read: kill() removes a voice the
+   * instant its damper lands, so a damped note stops driving by itself, and a
+   * note held under the pedal stays here and goes on driving. Voices already
+   * in release are skipped; they are on their way out and are not the string.
+   */
+  sounding() {
+    const now = this.ctx.currentTime, out = [];
+    for (const [midi, list] of this.voices) {
+      for (const v of list) {
+        if (v.rel) continue;
+        out.push({ midi, vel: v.vel, t: now - v.started });
+      }
+    }
+    return out;
+  }
 
   stats() {
     let n = 0;

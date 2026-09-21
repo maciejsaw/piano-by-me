@@ -372,7 +372,13 @@ function buildUI() {
   bind('dist', (v) => engine.setRoom({ distance: v }), (v) => v < 0.5 ? 'over the strings' : v < 0.8 ? 'at the piano' : 'across the room');
   bind('resAmt', (v) => { engine.res.amount = v; }, (v) => `${v.toFixed(3)} (${(20 * Math.log10(v / 0.15)).toFixed(1)} dB of default)`);
   bind('resDrive', (v) => { engine.res.drive = v; }, (v) => v.toFixed(1) + ' (vel^n)');
+  bind('resSustain', (v) => { engine.res.sustain = v; },
+    (v) => v === 0 ? 'strikes only' : `held at ${(v * 100).toFixed(0)}% of a strike`);
+  bind('resRing', (v) => engine.res.setRing(v), (v) => v.toFixed(2) + '× measured');
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
+  bind('resProx', (v) => engine.res.setProximity(v),
+    (v) => v === 0 ? 'no preference'
+      : `${Math.abs(v).toFixed(1)} dB/octave toward ${v > 0 ? 'near' : 'distant'} strings`);
   bind('resTone', (v) => engine.res.setTone(v), (v) => (v / 1000).toFixed(1) + ' kHz');
   bind('resMax', (v) => { engine.res.maxVoices = v; }, (v) => v.toFixed(0) + ' voices');
   bind('resTail', (v) => { engine.res.tailRelease = v; }, (v) => v.toFixed(2) + ' s');

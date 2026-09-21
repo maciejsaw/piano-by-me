@@ -266,9 +266,12 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         quietens them <i>and</i> shortens them — a string given less energy drops under the voice threshold
         sooner — which is the difference between this and turning the whole resonance down.</div>
       <div class="row"><label>resonance</label><span class="btnrow"><button id="resBtn" class="on">on</button><button id="resSoloBtn">solo</button></span><output></output></div>
-      <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="0.8" step="0.005" value="0.15"><output id="resAmtV"></output></div>
+      <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="3.2" step="0.005" value="0.15"><output id="resAmtV"></output></div>
       <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
+      <div class="row"><label>sustained drive</label><input type="range" id="resSustain" min="0" max="3" step="0.05" value="1"><output id="resSustainV"></output></div>
+      <div class="row"><label>ring length</label><input type="range" id="resRing" min="0.2" max="4" step="0.05" value="1"><output id="resRingV"></output></div>
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
+      <div class="row"><label>near/far</label><input type="range" id="resProx" min="-8" max="8" step="0.25" value="0"><output id="resProxV"></output></div>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
       <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="48" step="1" value="16"><output id="resMaxV"></output></div>
       <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
@@ -278,6 +281,28 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>pedal-up bleed</label><input type="range" id="resDamped" min="0" max="0.5" step="0.005" value="0.12"><output id="resDampedV"></output></div>
       <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
       <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
+      <div class="hint"><b>Near/far</b> tilts which strings answer by how far they are from the note played.
+        Partial coincidence on its own has no sense of distance — a C5 drives the C2 three octaves below it
+        about as readily as the C4 under it, because it is matching a partial and a partial does not care
+        where its string is. A real bridge does: its near end moves most, and what answers a note loudest is
+        mostly its neighbours. Positive is dB per octave of separation taken off the far strings; negative
+        does the reverse and blooms the far ones. Each note's total drive is held constant as you sweep it,
+        so it moves the resonance around the keyboard rather than turning it up.
+        <br><br>It does two things, because there are two separate questions. It decides how much energy
+        each string is <i>given</i> — and it also decides which of the ringing strings are actually
+        <i>heard</i>. There are always far more strings ringing than there are voices to play them with
+        (<b>max voices</b>), and they used to be ranked on accumulated energy alone, so a distant string
+        carrying a large deposit from something played several seconds ago would hold a voice while a string
+        right under the hand, freshly driven but quieter, never got one. The ranking is now biased by
+        distance to the nearest note sounding, on the same dB-per-octave scale. It only orders the queue:
+        no string is made quieter or pushed under the threshold by it.</div>
+      <div class="hint"><b>Sustained drive</b> is what keeps a halo alive under a long note: a struck string
+        goes on pushing the bridge for as long as it rings, so it holds every string coupled to it at a level
+        instead of just kicking them once at the attack, and the halo decays with the music rather than on
+        its own schedule. At 0 only the strikes count, which is where this used to be — hold a chord and
+        the resonance disappears out from under it. <b>Ring length</b> scales the
+        aftersound decay measured from the recordings, which is how long a string keeps answering once it
+        has been driven.</div>
       <div class="hint">Which strings answer is decided by partial coincidence, with each string's real
         inharmonicity and the bandwidth implied by its measured decay — so a fifth answers strongly and a
         tritone barely. <b>Selectivity</b> widens that bandwidth: at 1× it is physical and almost nothing
