@@ -27,6 +27,16 @@ export class Library {
     this.pending = new Map();               // key -> Promise
     this.queue = [];                        // keys waiting for a slot
     this.inflight = 0;
+    // Decoding is gated SEPARATELY from fetching. A fetch is network -- cheap to
+    // run many at once -- but decodeAudioData is heavy CPU, and several Opus
+    // decodes firing together starve the audio render thread (which is also
+    // running the convolvers), so a note playing while they land pops. Fetch
+    // stays parallel; decodes are funnelled two at a time. This is why the
+    // clicks clustered at session start (the warm-up decode storm) and on the
+    // first play of any note (which kicks off its own decode).
+    this.decodeConcurrency = 2;
+    this.decoding = 0;
+    this.decodeWaiters = [];
     this.bytes = 0;
     this.clock = 0;
     // One layer of every key, never evicted. See startWarm.
@@ -85,10 +95,22 @@ export class Library {
   setHeld(set) { this.held = set; }
 
   // ----------------------------------------------------------------- fetch --
+  /** Decode, but never more than `decodeConcurrency` at once. FIFO gate. */
+  async decode(bytes) {
+    while (this.decoding >= this.decodeConcurrency) {
+      await new Promise((res) => this.decodeWaiters.push(res));
+    }
+    this.decoding++;
+    try { return await this.ctx.decodeAudioData(bytes); }
+    finally { this.decoding--; this.decodeWaiters.shift()?.(); }
+  }
+
   async fetchOne(file, k) {
     const r = await fetch(`${this.base}/${file}`);
     if (!r.ok) throw new Error(`${r.status} ${file}`);
-    const buf = await this.ctx.decodeAudioData(await r.arrayBuffer());
+    // Fetch (network) in parallel, but hold the compressed bytes at the decode
+    // gate so the CPU-heavy decode does not glitch whatever is sounding.
+    const buf = await this.decode(await r.arrayBuffer());
     this.put(k, buf);
     if (this.floor?.has(k)) this.pinned.add(k);
     this.loaded++;

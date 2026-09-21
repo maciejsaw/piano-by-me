@@ -472,10 +472,12 @@ export class Engine {
       g.gain.setValueAtTime(gain, now);
     }
     if (rDur > 0.0005) {
-      // Two value curves may not overlap, and abutting them exactly is a
-      // question the specification does not answer the same way everywhere --
-      // so the release starts a millisecond after the attack can have ended.
-      const at = now + Math.max(aDur + 0.001, total - rDur);
+      // Two value curves may not overlap, and setValueCurveAtTime rounds its END
+      // up to the next 128-sample render quantum (~2.7 ms at 48 kHz) -- so the
+      // release must start a clear quantum-plus after the attack could have
+      // ended, not the 1 ms this used to leave, or on a short sample the two
+      // overlap and setValueCurveAtTime throws (dropping the release sound).
+      const at = now + Math.max(aDur + 0.006, total - rDur);
       const dur = now + total - at;
       if (dur > 0.001) g.gain.setValueCurveAtTime(this.env.relRelease.shape.curve(gain, 0), at, dur);
     }

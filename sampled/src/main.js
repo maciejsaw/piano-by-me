@@ -352,6 +352,7 @@ function buildUI() {
   bind('resTail', (v) => { engine.res.tailRelease = v; }, (v) => v.toFixed(2) + ' s');
   bind('sbAmt', (v) => { engine.sbGain.gain.value = v; }, db);
   bind('sbTail', (v) => engine.setSoundboardTail(v), (v) => v.toFixed(1) + ' s');
+  bind('resDamped', (v) => { engine.res.dampedAmount = v; }, (v) => v === 0 ? 'off' : `${(v * 100).toFixed(1)}% of open`);
   bind('resOffDrop', (v) => { engine.res.pedalOffDrop = v; }, (v) => `${(20 * Math.log10(Math.max(v, 1e-4))).toFixed(1)} dB`);
   bind('resOffFall', (v) => { engine.res.pedalOffFall = v; }, (v) => v.toFixed(2) + ' s');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
@@ -524,6 +525,10 @@ function restoreControls() { if (stored) applyControls(stored); }
 function collectSettings() {
   const sliders = {};
   for (const el of document.querySelectorAll('input[type=range][id]')) sliders[el.id] = el.value;
+  // The sustain pedal is a momentary performance control, not a setting: it must
+  // not survive a reload (or an export/import), or the instrument comes up with
+  // the pedal already down. So it is never persisted.
+  delete sliders.ped;
   const eqBands = [...document.querySelectorAll('#eqBands .eqband')].map((row) => ({
     f: row.querySelector('.f')?.value, g: row.querySelector('.g')?.value, q: row.querySelector('.q')?.value,
   }));
@@ -557,6 +562,7 @@ function applyControls(o) {
   // Sliders and EQ bands are applied by dispatching the same `input` event a
   // drag would, so each one's bound handler moves the engine and the readout.
   if (o.sliders) for (const [id, val] of Object.entries(o.sliders)) {
+    if (id === 'ped') continue;   // momentary; see collectSettings -- never restore it
     const el = $(id);
     if (el) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }
   }
