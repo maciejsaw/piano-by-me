@@ -315,7 +315,6 @@ function buildUI() {
   bezierRow('nr', envelopes.noteRelease);
   bezierRow('ra', envelopes.relAttack);
   bezierRow('rr', envelopes.relRelease);
-  bezierRow('pa', envelopes.pedalAttack);
   bezierRow('ho', envelopes.hold, { ghost: () => envelopes.ghostFor(lib.note(selNote)) });
   buildEq();
 
@@ -384,9 +383,6 @@ function buildUI() {
   bind('resOffFall', (v) => { engine.res.pedalOffFall = v; }, (v) => v.toFixed(2) + ' s');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
   bind('dampNoise', (v) => { engine.damperNoise = v; }, db);
-  bind('pedNoise', (v) => { engine.pedalNoise = v; }, db);
-  bind('pedTail', (v) => engine.setPedalTail(v), (v) => v.toFixed(1) + ' s');
-  bind('pedWet', (v) => { engine.pedalTail.gain.value = v; }, db);
   bind('relTrim', (v) => { engine.relStartTrim = v; }, (v) => v.toFixed(0) + ' ms');
   bind('relRR', (v) => { engine.relRoundRobin = v; }, (v) => '±' + v.toFixed(0) + ' ms');
   bind('relDelay', (v) => { engine.releaseDelay = v; }, (v) => v.toFixed(0) + ' ms');
@@ -398,7 +394,6 @@ function buildUI() {
   envMs('naMs', envelopes.noteAttack);
   envMs('raMs', envelopes.relAttack);
   envMs('rrMs', envelopes.relRelease);
-  envMs('paMs', envelopes.pedalAttack);
   bind('hoSec', (v) => { envelopes.hold.seconds = v; redrawEnvs(); save(); }, (v) => v.toFixed(1) + ' s held');
   bind('hoFloor', (v) => { envelopes.hold.floorDb = v; redrawEnvs(); save(); }, (v) => v.toFixed(0) + ' dB');
   bind('hoKey', (v) => { envelopes.hold.keyNoiseFollow = v; save(); }, (v) => (v * 100).toFixed(0) + '%');

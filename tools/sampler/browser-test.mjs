@@ -413,7 +413,7 @@ const r = await page.evaluate(async () => {
 const f = (v) => (typeof v === 'number' ? v.toExponential(2) : String(v));
 console.log('\n  samples decoded / failed       :', r.loaded, '/', r.failed);
 console.log('  resident after warm-up         :', r.resident, 'MB');
-console.log('  release/damper/pedal samples   :', r.aux, 'of', r.auxTotal, '(pinned)');
+console.log('  release/damper samples         :', r.aux, 'of', r.auxTotal, '(pinned)');
 console.log('  keys with a pinned layer       :', r.keysReady, 'of 88');
 console.log('  silence                        :', f(r.silence));
 console.log('  C4 at velocity 110             :', f(r.loud));
