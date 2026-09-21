@@ -146,6 +146,33 @@ is relative to the file's own peak with an absolute floor, and the cut is backed
 off 2 ms with a 1 ms raised-cosine fade, because the true start of a hammer
 strike is below any threshold you can set.
 
+Trimming at a threshold lines up where each file stops being silence. It does
+**not** line up where the note arrives, and those are not the same measurement:
+a hard blow on a short treble string is at full level a few milliseconds in,
+while a soft one on a long bass string takes tens of milliseconds to climb.
+Measured across this library (`tools/sampler/align.mjs`), the attack front —
+the moment the 2 ms envelope first reaches 20 dB under the peak of the attack —
+sits anywhere from **5 ms to 59 ms** into the file, median 12.7. Played as
+recorded, the keyboard does not feel even under the hand, and the unevenness is
+not musical: it is where the threshold happened to fall.
+
+So the fronts are measured once, written into the manifest as `t0` per sample,
+and lined up **at playback** rather than by re-cutting the files: a recording
+whose front is late is started further in, one whose front is early is held
+back by the difference, so every key's attack lands `alignMs` after the key
+goes down. Doing it as an offset rather than an edit means it is reversible
+(**align sample starts** in Mechanics switches it off), costs no quality, and
+can be re-run against a library that is already built. The engine fades the
+first 1.5 ms of a sample it skips into, because starting a recording at its
+−20 dB point is a step, and a step is a click. Per-key **Sample start** in the
+parameter editor is the manual override on top of it, for a key that still
+feels late against its neighbours.
+
+The peak, rather than the front, is deliberately *not* what is aligned: the
+peak of a pianissimo bass note is 250 ms in because the note genuinely swells,
+and lining that up with a treble note's instant crack would mean cutting a
+quarter of a second off its attack.
+
 The tail floor is **absolute first, relative second**, and that ordering is a
 quarter of the library's size. A pianissimo layer peaks 18 dB below a
 fortissimo one; a purely relative floor keeps it ringing just as long, eighteen
@@ -517,6 +544,23 @@ fifths of it stand up across the keyboard while the tritones stay flat — which
 is the coupling matrix, visible. It also gives `selectivity` some feedback,
 since at 1x almost nothing answers and the effect of widening it is otherwise
 only audible in aggregate.
+
+**Resonance level per key** is a curve you draw across the keyboard, in dB on
+top of the master `amount`. One knob cannot balance sympathetic resonance
+*across* an instrument, and the place that shows is the top: those twenty keys
+have no dampers, so they answer everything, pedal or no pedal, and go on
+ringing after everything else has been stopped. Pulling the right-hand end down
+quietens them *and* shortens them, because the curve scales the **energy** the
+accumulator receives (squared, so the number on screen is decibels on the
+resulting voice) rather than the voice's gain: a string given less energy drops
+under the voice threshold sooner. At the bottom of the curve a string stops
+answering altogether and costs nothing. It ships flat.
+
+**Solo** mutes every direct path — struck notes, their release and damper
+samples, the mechanical noise, the pedal's own reverb — and leaves the
+sympathetic voices and the soundboard, which is the only honest way to hear
+what this section is contributing while setting it. It is a monitoring switch
+and is never persisted.
 
 ### Mechanics
 

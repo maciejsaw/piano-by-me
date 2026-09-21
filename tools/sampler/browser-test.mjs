@@ -268,6 +268,10 @@ const r = await page.evaluate(async () => {
   // eighty-eight keys by hand. It has to move its own octave and leave the
   // neighbours alone, which is the only thing that can really go wrong.
   const { curves } = window.piano;
+  // From a clean slate: the shipped defaults carry their own trim ranges, and
+  // every measurement below is a difference against "no range edits at all".
+  // It is put back the same way at the end of the block.
+  curves.reset('trim');
   // A range edit with a hard edge, so the neighbour an octave away is
   // untouched and the effect is unambiguous.
   curves.setScope('trim', { lo: 57, hi: 62 }, -40, 0);
@@ -290,6 +294,74 @@ const r = await page.evaluate(async () => {
   out.featherLadder = [0, 3, 6, 10, 14].map(stepFor).map((v) => +v.toFixed(2));
   out.featherMonotonic = out.featherLadder.every((v, i, a) => i === 0 || v < a[i - 1]);
   curves.reset('trim');
+
+  // --- attack alignment -----------------------------------------------------
+  // Every recording's measured attack front has to land the same distance
+  // after the key goes down, whether the engine gets there by skipping into a
+  // late sample or by holding an early one back.
+  const landings = (on) => {
+    engine.alignStarts = on;
+    const out = [];
+    for (const midi of [21, 33, 45, 60, 72, 84, 96, 108]) {
+      for (const layer of [1, 8, 16]) {
+        const t0 = lib.m.notes[midi]?.layers?.[layer]?.t0;
+        if (t0 == null) continue;
+        const at = engine.startAt(midi, { t0, buf: { duration: 5 } });
+        out.push(t0 - at.offset * 1000 + at.delay * 1000);
+      }
+    }
+    return out;
+  };
+  const spread = (v) => Math.max(...v) - Math.min(...v);
+  out.alignSpread = spread(landings(true));
+  out.rawSpread = spread(landings(false));
+  engine.alignStarts = true;
+  out.alignTarget = lib.m.alignMs ?? null;
+  // Per-key Sample start, on top of the alignment, moving one key alone.
+  const startOf = (midi) => {
+    const t0 = lib.m.notes[midi].layers[8].t0;
+    return engine.startAt(midi, { t0, buf: { duration: 5 } }).offset * 1000;
+  };
+  const before = startOf(60), sibling = startOf(61);
+  curves.setKey('startTrim', 60, 20);
+  out.trimMoved = startOf(60) - before;
+  out.trimNeighbour = Math.abs(startOf(61) - sibling);
+  curves.setKey('startTrim', 60, 0);
+  // It must never skip so far in that the note is a fragment.
+  curves.setKey('startTrim', 60, 100000);
+  out.trimClamped = engine.startAt(60, { t0: 12, buf: { duration: 4 } }).offset;
+  curves.setKey('startTrim', 60, 0);
+
+  // --- the per-key resonance level curve ------------------------------------
+  // Drawn down over the top of the keyboard, the strings it covers must take
+  // less energy and the ones it does not must be untouched.
+  const ringTop = async () => {
+    engine.res.E.fill(0);
+    for (const m of [48, 55, 60]) { engine.noteOn(m, 120); await wait(40); engine.noteOff(m); }
+    await wait(300);
+    let top = 0, mid = 0;
+    for (let i = 0; i < engine.res.n; i++) {
+      const k = engine.res.lo + i;
+      if (k >= 96) top = Math.max(top, engine.res.E[i]);
+      else if (k > 60 && k < 90) mid = Math.max(mid, engine.res.E[i]);
+    }
+    return { top, mid };
+  };
+  // From flat: the shipped defaults carry a drawn curve of their own, and what
+  // is being checked here is what drawing one DOES. Put it back afterwards.
+  const shipped = engine.res.keyCurve.toJSON();
+  engine.res.keyCurve.reset(); engine.res.refreshKeyCurve();
+  engine.setPedal(1);
+  const flat = await ringTop();
+  engine.res.keyCurve.fromJSON({ points: [{ k: 21, db: 0 }, { k: 84, db: 0 }, { k: 96, db: -18 }, { k: 108, db: -18 }] });
+  engine.res.refreshKeyCurve();
+  const drawn = await ringTop();
+  out.resCurveTop = drawn.top / Math.max(1e-12, flat.top);
+  out.resCurveMid = drawn.mid / Math.max(1e-12, flat.mid);
+  out.resCurveAt = [60, 96].map((k) => engine.res.keyCurve.at(k));
+  engine.res.keyCurve.fromJSON(shipped); engine.res.refreshKeyCurve();
+  engine.setPedal(0);
+  await settle();
 
   // --- the output EQ --------------------------------------------------------
   // Measured on the output node, because the EQ sits after the master bus --
@@ -374,6 +446,12 @@ console.log('  C5, outside that range         :', f(r.octNeighbour));
 console.log('  C4 once the range is cleared   :', f(r.octRestored));
 console.log('  +12 dB range, inside it        :', r.featherInside.toFixed(1), 'dB');
 console.log('  biggest neighbour step, by fade:', r.featherLadder.map((v, i) => `${[0, 3, 6, 10, 14][i]}:${v}`).join('  '), 'dB');
+console.log('  attack front, aligned / raw    :', r.alignSpread.toFixed(2), '/', r.rawSpread.toFixed(1),
+  `ms of spread (target ${r.alignTarget} ms)`);
+console.log('  top-string resonance, drawn -18:',
+  (10 * Math.log10(Math.max(r.resCurveTop, 1e-12))).toFixed(1), 'dB of energy');
+console.log('  middle strings, same pass      :',
+  (10 * Math.log10(Math.max(r.resCurveMid, 1e-12))).toFixed(2), 'dB (should be 0)');
 console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
 console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
 console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
@@ -412,6 +490,15 @@ const checks = [
   ['...and a fade cuts the edge step fourfold', r.featherStep <= r.hardStep / 4],
   ['...with a hard edge dropping it all at once', r.hardStep > 11],
   ['...and a wider fade always being gentler', r.featherMonotonic],
+  ['aligned attacks land together', r.alignSpread < 0.5],
+  ['...which the recordings do not do on their own', r.rawSpread > 5],
+  ['...and per-key sample start moves one key', Math.abs(r.trimMoved - 20) < 0.5 && r.trimNeighbour < 0.01],
+  ['...and cannot skip past half the recording', r.trimClamped <= 2 + 1e-9],
+  ['the resonance curve quietens the keys it covers', r.resCurveTop < 0.2],
+  // A decibel of slack: the two passes are measured a beat apart in real time
+  // and the accumulator is leaking the whole while, which is worth a few
+  // percent on its own. The keys the curve covers come back 120 dB down.
+  ['...and leaves the keys it does not alone', Math.abs(10 * Math.log10(r.resCurveMid)) < 1],
   ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
   ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],

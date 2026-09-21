@@ -7,6 +7,7 @@ import { levelDb, pickLayer, nativeAt, nearestLayer, createVelCurveEditor, creat
 import { Envelopes } from './envelopes.js';
 import { createBezierEditor, SHAPES } from './bezier.js';
 import { BANDS } from './eq.js';
+import { createResCurveEditor } from './resonance.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
 
 const $ = (id) => document.getElementById(id);
@@ -21,6 +22,7 @@ let uiReady = false;              // true once buildUI has created every control
 let stored = null;               // the parsed localStorage state, applied in two passes
 let velCurveEditor = null;       // the hand-drawn velocity volume curve editor
 let velLayerEditor = null;       // the velocity -> layer curve editor
+let resCurveEditor = null;       // the per-key resonance level curve editor
 let lastVel = null, lastVelAt = 0;  // the most recent strike, for the curve's marker
 const down = new Set(), silent = new Set();
 // midi -> { layer, vel, at, held }: what the Sample map lights up. `layer` is
@@ -56,7 +58,7 @@ async function start() {
   lib.startWarm(LOW, HIGH);
   // Handles for the console and for tools/sampler/browser-test.mjs. Everything
   // the UI can do is a method on one of these.
-  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSostenuto, setUna, toggleSilent, pickLayer, levelDb, ui: true };
+  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSostenuto, setUna, setSoloRes, toggleSilent, pickLayer, levelDb, ui: true };
   $('overlay').style.display = 'none';
   // The resonance tick has to keep running; the painting does not. Offline
   // rendering turns the UI off, because repainting 88 keys every 40 ms is
@@ -101,7 +103,12 @@ const paint = (m) => kb?.paint(m, {
  * invisible otherwise -- you can hear that something happened but not which
  * strings it happened to, and "selectivity" is a knob with no feedback.
  */
+// The curve editor behind the map shows the same energies, so it only needs
+// repainting while something is ringing (plus once more when it stops).
+let resCurveLive = false;
 function paintResMap() {
+  const live = engine ? engine.res.E.some((e) => e > 0) : false;
+  if (live || resCurveLive) { resCurveEditor?.draw(); resCurveLive = live; }
   const c = $('resMap');
   if (!c || !engine) return;
   const g = c.getContext('2d');
@@ -261,6 +268,13 @@ function setPedal(v) {
   $('pedalBtn').textContent = v < 0.02 ? 'sustain' : v >= 0.98 ? 'sustain ▮▮▮' : `sustain ${(v * 100) | 0}%`;
   $('ped').value = v;
 }
+/** Mute everything but the sympathetic resonance and the soundboard. */
+function setSoloRes(on) {
+  engine.setSoloRes(on);
+  $('resSoloBtn').classList.toggle('on', on);
+  $('resSoloBtn').textContent = on ? 'solo ▮' : 'solo';
+}
+
 function setSostenuto(on) { engine.setSostenuto(on); $('sostBtn').classList.toggle('on', on); }
 function setUna(v) { engine.setUnaCorda(v); $('unaBtn').classList.toggle('on', v >= 0.5); }
 
@@ -315,6 +329,19 @@ function buildUI() {
     markVel: () => (performance.now() - lastVelAt < 900 ? lastVel : null),
     onChange: () => { save(); renderNote(); },
   });
+  // Per-key resonance level. Redrawn with the resonance map (paintResMap) so
+  // the ringing strings behind it move in real time.
+  resCurveEditor = createResCurveEditor($('resCurveCanvas'), engine.res.keyCurve, {
+    topDamped: engine.topDamped,
+    energy: (m) => engine.res.E[m - engine.res.lo] ?? 0,
+    onChange: () => { engine.res.refreshKeyCurve(); syncResCurve(); save(); },
+  });
+  $('resCurveResetBtn').onclick = () => {
+    engine.res.keyCurve.reset(); engine.res.refreshKeyCurve();
+    resCurveEditor.draw(); syncResCurve(); save();
+  };
+  syncResCurve();
+
   const syncVelCurveBtn = () => {
     $('velCurveBtn').classList.toggle('on', engine.velCurve.enabled);
     $('velCurveBtn').textContent = engine.velCurve.enabled
@@ -376,6 +403,14 @@ function buildUI() {
   bind('hoFloor', (v) => { envelopes.hold.floorDb = v; redrawEnvs(); save(); }, (v) => v.toFixed(0) + ' dB');
   bind('hoKey', (v) => { envelopes.hold.keyNoiseFollow = v; save(); }, (v) => (v * 100).toFixed(0) + '%');
 
+  const syncAlign = () => {
+    $('alignBtn').classList.toggle('on', engine.alignStarts);
+    $('alignBtn').textContent = engine.alignStarts ? 'on' : 'off — as recorded';
+    $('alignV').textContent = engine.alignStarts ? `${engine.alignMs.toFixed(1)} ms in` : '';
+  };
+  $('alignBtn').onclick = () => { engine.alignStarts = !engine.alignStarts; syncAlign(); save(); };
+  syncAlign();
+
   $('limBtn').onclick = () => {
     engine.setLimiter(!engine.limiterOn);
     $('limBtn').classList.toggle('on', engine.limiterOn);
@@ -391,9 +426,15 @@ function buildUI() {
   $('resBtn').onclick = () => {
     engine.res.enabled = !engine.res.enabled;
     $('resBtn').classList.toggle('on', engine.res.enabled);
-    $('resBtn').textContent = engine.res.enabled ? 'resonance on' : 'resonance off';
+    $('resBtn').textContent = engine.res.enabled ? 'on' : 'off';
+    // Soloing the resonance and then switching it off leaves the instrument
+    // silent for no visible reason, so switching it off drops the solo too.
+    if (!engine.res.enabled) setSoloRes(false);
     save();
   };
+  // Solo is a monitoring switch, not a setting -- it is deliberately absent
+  // from collectSettings(), so it never survives a reload or an export.
+  $('resSoloBtn').onclick = () => setSoloRes(!engine.soloRes);
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
   $('sostBtn').onclick = () => setSostenuto(!engine.sostenuto.size);
   $('unaBtn').onclick = () => setUna(engine.unaCorda >= 0.5 ? 0 : 1);
@@ -426,6 +467,17 @@ function buildUI() {
 // exists, because collectSettings reads the sliders out of the DOM and a save
 // fired mid-build would store a half-populated set.
 const save = () => { if (uiReady) localStorage.setItem(STORE, JSON.stringify(collectSettings())); };
+/** The resonance curve's readout: flat, or how far down it pulls the top. */
+function syncResCurve() {
+  const out = $('resCurveV');
+  if (!out || !engine) return;
+  const rc = engine.res.keyCurve;
+  if (rc.idle) { out.textContent = 'flat'; return; }
+  let lo = 0, at = rc.lo;
+  for (let m = rc.lo; m <= rc.hi; m++) { const d = rc.at(m); if (d < lo) { lo = d; at = m; } }
+  out.textContent = lo < 0 ? `${lo.toFixed(1)} dB at ${noteName(at)}` : 'drawn';
+}
+
 // ------------------------------------------------------------------- EQ ----
 const EQ_FREQS = (() => { const f = new Float32Array(160); for (let i = 0; i < 160; i++) f[i] = 20 * Math.pow(1000, i / 159); return f; })();
 
@@ -508,6 +560,7 @@ function restore() {
   envelopes.fromJSON(stored.envelopes);
   if (stored.velCurve) engine.velCurve.fromJSON(stored.velCurve);
   if (stored.velLayer) engine.velLayer.fromJSON(stored.velLayer);
+  if (stored.resCurve) { engine.res.keyCurve.fromJSON(stored.resCurve); engine.res.refreshKeyCurve(); }
   if (stored.eq) engine.eq.fromJSON(stored.eq);   // legacy files kept EQ here
 }
 
@@ -536,10 +589,12 @@ function collectSettings() {
     app: 'piano-sampled', version: 1, saved: new Date().toISOString(),
     curves: curves.toJSON(), envelopes: envelopes.toJSON(),
     velCurve: engine.velCurve.toJSON(), velLayer: engine.velLayer.toJSON(),
+    resCurve: engine.res.keyCurve.toJSON(),
     sliders, eqBands,
     toggles: {
       limiter: engine.limiterOn, eq: engine.eq.enabled,
       res: engine.res.enabled, perspective: engine.perspective,
+      align: engine.alignStarts,
     },
   };
 }
@@ -552,6 +607,11 @@ function applySettings(o) {
   if (o.envelopes) envelopes.fromJSON(o.envelopes);
   if (o.velCurve) engine.velCurve.fromJSON(o.velCurve);
   if (o.velLayer) engine.velLayer.fromJSON(o.velLayer);
+  // A file from before this curve existed has none: flatten, so importing an
+  // old settings file does not silently keep a curve it knows nothing about.
+  engine.res.keyCurve.reset();
+  if (o.resCurve) engine.res.keyCurve.fromJSON(o.resCurve);
+  engine.res.refreshKeyCurve();
   if (o.eq) engine.eq.fromJSON(o.eq);   // legacy files
   applyControls(o);
   save();
@@ -583,6 +643,7 @@ function applyControls(o) {
   if (t.limiter != null && engine.limiterOn !== t.limiter) $('limBtn').click();
   if (t.eq != null && engine.eq.enabled !== t.eq) $('eqBtn').click();
   if (t.res != null && engine.res.enabled !== t.res) $('resBtn').click();
+  if (t.align != null && engine.alignStarts !== t.align) $('alignBtn').click();
   if (t.perspective != null && engine.perspective !== t.perspective) $('persBtn').click();
   // Redraw the things that read from state rather than from a slider event.
   editor?.refresh(); redrawEnvs(); for (const e of envEditors) e.draw();
@@ -593,6 +654,7 @@ function applyControls(o) {
   }
   velCurveEditor?.draw();
   velLayerEditor?.draw();
+  resCurveEditor?.draw(); syncResCurve();
   drawEq(); renderNote(); engine.refreshStrips();
 }
 

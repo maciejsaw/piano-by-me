@@ -45,6 +45,8 @@ main>div{display:contents}
 .row{display:flex;align-items:center;gap:8px;margin:5px 0}
 .row label{flex:0 0 126px;color:var(--dim);font-size:11px}
 .row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
+.btnrow{flex:1;display:flex;gap:6px;min-width:0}
+.btnrow button{flex:1;padding:6px 4px}
 .row output{flex:0 0 118px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
 table{width:100%;border-collapse:collapse;font-size:11px}
 td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim);width:38%}
@@ -54,6 +56,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 #velCurveCanvas,#velLayerCanvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px;cursor:crosshair;touch-action:none}
 #eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
 #resMap{width:100%;height:75px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
+#resCurveCanvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px;cursor:crosshair;touch-action:none}
 #layerMap{width:100%;height:180px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
 .eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
 .eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
@@ -128,11 +131,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
 <header>
   <h1>Sampled</h1>
-  <select id="midiSel"><option>no MIDI</option></select>
-  <button id="pedalBtn">sustain</button>
-  <button id="sostBtn">sostenuto</button>
-  <button id="unaBtn">una corda</button>
-  <button id="resBtn" class="on">resonance on</button>
   <button id="panicBtn">panic</button>
   <span class="stat">voices <b id="statVoices">–</b></span>
   <span class="stat">ringing <b id="statRes">–</b></span>
@@ -256,6 +254,18 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         actually does. <b>Blue</b> is what you are holding down.
         Press the pedal and play: the background lights up, then the bars build where the partials agree.
       </div>
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Resonance level per key</h3>
+      <canvas id="resCurveCanvas" height="300"></canvas>
+      <div class="row"><label>this curve</label><span class="btnrow"><button id="resCurveResetBtn">flatten to 0 dB</button></span><output id="resCurveV"></output></div>
+      <div class="hint" style="margin-bottom:12px">How strongly each string answers, in dB on top of the
+        <b>amount</b> above: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove,
+        pull a point to the bottom to stop those strings answering at all. It ships <b>flat</b>, doing nothing.
+        The point of it is the right-hand end: the top strings of a piano have <b>no dampers</b> (the green
+        line is where they stop), so they are free to answer everything you play whether the pedal is down
+        or not, and go on ringing after the rest of the instrument has been stopped. Taking them down here
+        quietens them <i>and</i> shortens them — a string given less energy drops under the voice threshold
+        sooner — which is the difference between this and turning the whole resonance down.</div>
+      <div class="row"><label>resonance</label><span class="btnrow"><button id="resBtn" class="on">on</button><button id="resSoloBtn">solo</button></span><output></output></div>
       <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="0.8" step="0.005" value="0.15"><output id="resAmtV"></output></div>
       <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
@@ -280,7 +290,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         <b>Pedal-up bleed</b> is how much a <b>damped</b> string still answers: a damper never fully stills a
         string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
         no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
-        free strings resonate, as before.</div>
+        free strings resonate, as before.
+        <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds, the
+        pedal action &mdash; and leaves only the sympathetic voices and the soundboard, which is the one way to
+        hear what this section is actually contributing while you set it. It is a monitoring switch, not a
+        setting: it is never saved, and the instrument always comes up unsoloed.</div>
     </div>
 
     <div class="panel" style="order:4">
@@ -339,6 +353,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
     <div class="panel" style="order:9">
       <h2>Mechanics</h2>
+      <div class="row"><label>MIDI input</label><select id="midiSel" style="flex:1;max-width:none"><option>no MIDI</option></select><output></output></div>
+      <div class="row"><label>pedals</label><span class="btnrow"><button id="pedalBtn">sustain</button><button id="sostBtn">sostenuto</button><button id="unaBtn">una corda</button></span><output></output></div>
       <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
       <div class="row"><label>una corda</label><input type="range" id="una" min="0" max="1" step="0.01" value="0"><output id="unaV"></output></div>
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
@@ -350,12 +366,20 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
       <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
       <div class="row"><label>memory budget</label><input type="range" id="budget" min="128" max="1536" step="32" value="640"><output id="budgetV"></output></div>
+      <div class="row"><label>align sample starts</label><span class="btnrow"><button id="alignBtn" class="on">on</button></span><output id="alignV"></output></div>
       <div class="row"><label>output limiter</label><button id="limBtn" class="on" style="flex:1">on</button><output></output></div>
       <div class="hint">The sustain pedal is continuous, not a switch: half-pedalling shortens a note without
         stopping it, and CC 64 is read across its whole range. The damper-fall sound is picked by velocity and
         scaled by how long the key was held — a string ringing for four seconds has less left in it to stop.
         The limiter is a seatbelt, not a sound: it is doing nothing until eighty-eight undamped strings would
-        have run out of headroom. <b>Release start trim</b> shaves a fixed few ms off the front of every
+        have run out of headroom. <b>Align sample starts</b> lines up the attack of all 1408 recordings:
+        each one was measured (<code>tools/sampler/align.mjs</code>) for how far into the file its attack front
+        actually is, and it runs from <b>5 ms to 59 ms</b> across this library — the build trims each head at a
+        level threshold, which lines up where silence ends, not where the note arrives. With this on, a late
+        recording is started further in and an early one is held back by the difference, so every key's attack
+        lands the same distance after the key goes down and the keyboard feels even. Nothing is re-cut: it is
+        an offset at playback, and <b>Sample start</b> in the Parameters panel nudges one key or one range on
+        top of it. <b>Release start trim</b> shaves a fixed few ms off the front of every
         release and damper sample; <b>round-robin</b> adds a random few ms on top of that per play, so the same
         key let go twice does not replay the identical file and machine-gun. <b>Release delay</b> holds the
         note a millisecond past the key-up so its damper falls in step with the release sample, not a hair
