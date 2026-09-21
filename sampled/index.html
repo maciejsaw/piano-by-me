@@ -274,6 +274,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
       <div class="row"><label>soundboard level</label><input type="range" id="sbAmt" min="0" max="2" step="0.01" value="0.5"><output id="sbAmtV"></output></div>
       <div class="row"><label>soundboard tail</label><input type="range" id="sbTail" min="0.5" max="8" step="0.1" value="4.5"><output id="sbTailV"></output></div>
+      <div class="row"><label>self resonance</label><input type="range" id="resSelf" min="0" max="1" step="0.01" value="0"><output id="resSelfV"></output></div>
       <div class="row"><label>pedal-up bleed</label><input type="range" id="resDamped" min="0" max="0.5" step="0.005" value="0.12"><output id="resDampedV"></output></div>
       <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
       <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
@@ -291,6 +292,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
         no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
         free strings resonate, as before.
+        <b>Self resonance</b> lets the struck string answer itself: a note is never one string but a unison of
+        two or three plus the duplex behind the bridge, and part of what follows the knock is the rest of
+        them coming up through the bridge. Here that is the softest layer of the <i>same</i> key fed into the
+        same accumulator, so it blooms just behind the attack and sustains under it until the damper lands —
+        100% drives it as hard as a perfectly coupled string would be. At zero the diagonal is empty, as before.
         <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds &mdash;
         and leaves only the sympathetic voices and the soundboard, which is the one way to
         hear what this section is actually contributing while you set it. It is a monitoring switch, not a

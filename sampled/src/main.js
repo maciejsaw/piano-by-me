@@ -378,6 +378,8 @@ function buildUI() {
   bind('resTail', (v) => { engine.res.tailRelease = v; }, (v) => v.toFixed(2) + ' s');
   bind('sbAmt', (v) => { engine.sbGain.gain.value = v; }, db);
   bind('sbTail', (v) => engine.setSoundboardTail(v), (v) => v.toFixed(1) + ' s');
+  bind('resSelf', (v) => { engine.res.self = v; },
+    (v) => v === 0 ? 'off' : `${(v * 100).toFixed(0)}% of a coupled string`);
   bind('resDamped', (v) => { engine.res.dampedAmount = v; }, (v) => v === 0 ? 'off' : `${(v * 100).toFixed(1)}% of open`);
   bind('resOffDrop', (v) => { engine.res.pedalOffDrop = v; }, (v) => `${(20 * Math.log10(Math.max(v, 1e-4))).toFixed(1)} dB`);
   bind('resOffFall', (v) => { engine.res.pedalOffFall = v; }, (v) => v.toFixed(2) + ' s');
