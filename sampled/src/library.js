@@ -17,6 +17,9 @@
 //                       dropout, which is the right way round.
 //   LRU by bytes        eviction is by decoded size, not by count, so one
 //                       25-second A0 does not quietly cost what forty C8s do
+// Priority of a sample a note is waiting for right now. See pump().
+const URGENT = 10;
+
 export class Library {
   constructor(ctx, base, { budgetMb = 640, concurrency = 6 } = {}) {
     this.ctx = ctx;
@@ -95,22 +98,40 @@ export class Library {
   setHeld(set) { this.held = set; }
 
   // ----------------------------------------------------------------- fetch --
-  /** Decode, but never more than `decodeConcurrency` at once. FIFO gate. */
-  async decode(bytes) {
-    while (this.decoding >= this.decodeConcurrency) {
-      await new Promise((res) => this.decodeWaiters.push(res));
+  /**
+   * Decode, but never more than `decodeConcurrency` at once.
+   *
+   * Highest priority first, not FIFO. During the warm-up there are always a
+   * handful of warm files fetched and waiting here, and a key the player has
+   * just struck used to queue behind all of them -- which is most of why its
+   * first play was a substitute layer for so long. The priority is read from
+   * the job when a slot frees, so a bump from want() counts even after the
+   * fetch has started.
+   */
+  async decode(bytes, job) {
+    if (this.decoding >= this.decodeConcurrency) {
+      await new Promise((res) => this.decodeWaiters.push({ job, res }));
     }
     this.decoding++;
     try { return await this.ctx.decodeAudioData(bytes); }
-    finally { this.decoding--; this.decodeWaiters.shift()?.(); }
+    finally {
+      this.decoding--;
+      const w = this.decodeWaiters;
+      if (w.length) {
+        let best = 0;
+        for (let i = 1; i < w.length; i++) if (w[i].job.priority > w[best].job.priority) best = i;
+        w.splice(best, 1)[0].res();
+      }
+    }
   }
 
-  async fetchOne(file, k) {
+  async fetchOne(job) {
+    const { file, k } = job;
     const r = await fetch(`${this.base}/${file}`);
     if (!r.ok) throw new Error(`${r.status} ${file}`);
     // Fetch (network) in parallel, but hold the compressed bytes at the decode
     // gate so the CPU-heavy decode does not glitch whatever is sounding.
-    const buf = await this.decode(await r.arrayBuffer());
+    const buf = await this.decode(await r.arrayBuffer(), job);
     this.put(k, buf);
     if (this.floor?.has(k)) this.pinned.add(k);
     this.loaded++;
@@ -122,7 +143,13 @@ export class Library {
   want(file, k, priority = 0) {
     const c = this.touch(k);
     if (c) return c.buf;
-    if (this.pending.has(k)) return null;
+    const p = this.pending.get(k);
+    if (p) {
+      // Already asked for -- typically by the warm pass, at a low priority and
+      // far down the queue. A player asking for it now is a different request.
+      if (priority > p.priority) { p.priority = priority; this.pump(); }
+      return null;
+    }
     const job = { file, k, priority };
     this.pending.set(k, job);
     this.queue.push(job);
@@ -131,13 +158,16 @@ export class Library {
   }
 
   pump() {
-    while (this.inflight < this.concurrency && this.queue.length) {
+    while (this.queue.length) {
       // Highest priority first, and cheap to keep sorted because the queue is
       // only ever appended to between pumps.
       this.queue.sort((a, b) => b.priority - a.priority);
+      // A note being played does not wait for a fetch slot: every slot can be
+      // held by the warm pass, and a played key is worth one fetch over the cap.
+      if (this.inflight >= this.concurrency && this.queue[0].priority < URGENT) break;
       const job = this.queue.shift();
       this.inflight++;
-      this.fetchOne(job.file, job.k)
+      this.fetchOne(job)
         .catch(() => { this.failed++; })
         .finally(() => { this.inflight--; this.pending.delete(job.k); this.pump(); });
     }
@@ -153,8 +183,15 @@ export class Library {
     if (!n) return null;
     const exact = n.layers[layer];
     if (exact) {
-      const buf = this.want(exact.file, this.key(midi, layer), 10);
+      const buf = this.want(exact.file, this.key(midi, layer), URGENT);
       if (buf) return { buf, layer, entry: exact, trimDb: 0 };
+      // A miss means the player is somewhere memory is not. The next strike of
+      // this key will rarely be at exactly the same velocity, so queue the
+      // layers either side as well -- below the release samples and the floor,
+      // which matter more, and above the rest of the warm pass.
+      for (const l of [layer - 1, layer + 1]) {
+        if (n.layers[l]) this.want(n.layers[l].file, this.key(midi, l), 4);
+      }
     }
     let found = null, bestD = 1e9;
     for (const l of this.layers) {

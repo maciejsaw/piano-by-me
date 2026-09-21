@@ -489,20 +489,20 @@ export const DEFAULT_SETTINGS = {
         "db": -9.162500000000001
       },
       {
-        "k": 88,
-        "db": -0.5859375
+        "k": 87,
+        "db": -12.1796875
       },
       {
         "k": 89,
-        "db": -4.339062500000001
+        "db": -12.5515625
       },
       {
         "k": 90,
-        "db": -11.829687499999999
+        "db": -12.95
       },
       {
         "k": 108,
-        "db": -12.4375
+        "db": -16.159374999999997
       }
     ]
   },
@@ -515,16 +515,19 @@ export const DEFAULT_SETTINGS = {
     "rt60": "1.35",
     "absorb": "0.26",
     "dist": "0.72",
-    "resAmt": "0.755",
-    "resDrive": "3.7",
-    "resSel": "1.5",
+    "resAmt": "1.675",
+    "resDrive": "3.55",
+    "resSustain": "0.5",
+    "resRing": "1",
+    "resSel": "1",
+    "resProx": "1.5",
     "resTone": "7300",
     "resMax": "18",
     "resTail": "2",
-    "sbAmt": "0.17",
+    "sbAmt": "0.24",
     "sbTail": "6.3",
-    "resSelf": "0",
-    "resDamped": "0.22",
+    "resSelf": "0.36",
+    "resDamped": "0.17",
     "resOffDrop": "0.17",
     "resOffFall": "3.5",
     "naMs": "0",
@@ -537,7 +540,7 @@ export const DEFAULT_SETTINGS = {
     "relNoise": "0.67",
     "dampNoise": "1.22",
     "relTrim": "99",
-    "relRR": "33",
+    "relRR": "7",
     "relDelay": "1",
     "budget": "1120"
   },
@@ -547,9 +550,9 @@ export const DEFAULT_SETTINGS = {
       "g": "2.3"
     },
     {
-      "f": "6.28517018598809",
-      "g": "-7.5",
-      "q": "1"
+      "f": "6.25317018598809",
+      "g": "-9.4",
+      "q": "0.75"
     },
     {
       "f": "8.04161172766793",
@@ -558,7 +561,7 @@ export const DEFAULT_SETTINGS = {
     },
     {
       "f": "9.27090245954208",
-      "g": "2.6"
+      "g": "-0.7"
     }
   ],
   "toggles": {

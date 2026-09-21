@@ -123,6 +123,44 @@ const r = await page.evaluate(async () => {
   out.afterPedalUp = engine.res.E.reduce((a, b) => a + b, 0);
   await settle();
 
+  // --- a halo under a LONG held note ---
+  //
+  // The thing a strike-only resonance engine gets wrong. A real piano's
+  // sympathetic answer to a held note lasts as long as the note does, because
+  // the struck string goes on driving the bridge the whole time; an engine
+  // that only deposits energy at the attack has a halo that dies on its own
+  // schedule a second or two later whatever is being played, and the longer
+  // the note is held the more obviously it is missing.
+  //
+  // So: hold three treble strings silently, strike a bass note into them, keep
+  // the key DOWN, and read the accumulator half a second in and again eight
+  // seconds in. The treble is the case that matters -- its strings have the
+  // shortest time constants, about a second, so by eight seconds nothing the
+  // strike deposited is left and what is there is the drive or nothing.
+  //
+  // Measured twice, the second time with the sustained drive switched off,
+  // because the number that means anything is the difference between them.
+  const holdHalo = async () => {
+    for (const m of [79, 83, 86]) engine.silentHold(m, true);
+    engine.noteOn(36, 120);
+    await wait(500);
+    const early = engine.res.E.reduce((a, b) => a + b, 0);
+    await wait(7500);                      // still held, eight seconds in
+    const late = engine.res.E.reduce((a, b) => a + b, 0);
+    engine.noteOff(36);
+    for (const m of [79, 83, 86]) engine.silentHold(m, false);
+    await settle();
+    return { early, late };
+  };
+  const shippedSustain = engine.res.sustain;
+  const driven = await holdHalo();
+  engine.res.sustain = 0;
+  const struckOnly = await holdHalo();
+  engine.res.sustain = shippedSustain;
+  out.haloHeldEarly = driven.early;
+  out.haloHeld8s = driven.late;
+  out.haloHeld8sNoDrive = struckOnly.late;
+
   // --- envelopes -----------------------------------------------------------
   // Each of these measures ONE thing, so everything else that makes noise is
   // turned off first: the room, whose 1.35 s tail outlives every gesture
@@ -384,6 +422,12 @@ const r = await page.evaluate(async () => {
     engine.noteOff(36); await settle();
     return m;
   };
+  // Resonance off for the whole block: this measures a filter, and the bass
+  // note the probe holds rings the undamped top of the keyboard sympathetically
+  // for all 500 ms of the window. That ring is voice-allocated and jittered, so
+  // it is run-to-run noise in a measurement whose tolerance is 2 dB.
+  const eqRes = engine.res.enabled;
+  engine.res.enabled = false;
   engine.eq.setEnabled(true);
   for (const i of [0, 1, 2, 3]) engine.eq.set(i, 'gain', 0);
   // The shelf corner is moved well above the probe frequency first. At the
@@ -399,6 +443,7 @@ const r = await page.evaluate(async () => {
   engine.eq.setEnabled(true);
   engine.eq.set(0, 'gain', 0);
   engine.eq.set(0, 'freq', 90);
+  engine.res.enabled = eqRes;
 
   out.loaded = lib.loaded;
   out.aux = lib.auxResident(21, 108);
@@ -423,6 +468,10 @@ console.log('  held C-E-G after a struck C3   :', f(r.sympathetic), `on ${r.ring
 console.log('  same gesture, nothing held     :', f(r.damped));
 console.log('  accumulated energy, 1 strike   :', f(r.once));
 console.log('  accumulated energy, 4 strikes  :', f(r.fourTimes));
+console.log('  halo under a held note, 0.5 s  :', f(r.haloHeldEarly));
+console.log('  ...the same note, 8 s in       :', f(r.haloHeld8s));
+console.log('  ...with the sustained drive off:', f(r.haloHeld8sNoDrive),
+  `(the drive is worth ${(10 * Math.log10(Math.max(r.haloHeld8s, 1e-14) / Math.max(r.haloHeld8sNoDrive, 1e-14))).toFixed(1)} dB at 8 s)`);
 console.log('  after the pedal comes up       :', f(r.afterPedalUp));
 console.log('  key released, pedal still down :', f(r.pedalHeld));
 console.log('  ...then the pedal comes up     :', f(r.pedalLifted));
@@ -469,6 +518,16 @@ const checks = [
   ['held strings ring', r.sympathetic > Math.max(r.silence * 6, 2e-4)],
   ['damped strings do not', r.damped < r.sympathetic * 0.4],
   ['resonance piles up', r.fourTimes > r.once * 1.8],
+  // Only that the halo is STILL THERE eight seconds into a held note, which is
+  // what the aftersound decay fit and the energy floor buy. There is no check
+  // on the sustained drive's share of it: measured on a held pedalled chord it
+  // is worth 0.0 dB, because a strike deposits its energy all at once and a
+  // note twenty-five decibels into its own decay cannot compete with what that
+  // strike left behind. It earns its keep only where the resonator's time
+  // constant is far shorter than the driving note's -- a treble string under a
+  // long bass note -- and that is too narrow a case to assert a ratio on. The
+  // number is printed above; it is a diagnostic, not a guarantee.
+  ['a held note still has a halo 8 s in', r.haloHeld8s > 0],
   ['the pedal cuts it', r.afterPedalUp < r.fourTimes * 0.05],
   ['a released key rings on under the pedal', r.pedalHeld > 5e-3],
   ['lifting the pedal stops it', r.pedalLifted < r.pedalHeld * 0.3],
