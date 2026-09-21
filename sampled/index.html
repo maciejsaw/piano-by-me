@@ -264,6 +264,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
       <div class="row"><label>soundboard level</label><input type="range" id="sbAmt" min="0" max="2" step="0.01" value="0.5"><output id="sbAmtV"></output></div>
       <div class="row"><label>soundboard tail</label><input type="range" id="sbTail" min="0.5" max="8" step="0.1" value="4.5"><output id="sbTailV"></output></div>
+      <div class="row"><label>pedal-up bleed</label><input type="range" id="resDamped" min="0" max="0.5" step="0.005" value="0.12"><output id="resDampedV"></output></div>
       <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
       <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
       <div class="hint">Which strings answer is decided by partial coincidence, with each string's real
@@ -275,7 +276,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         resonance dead: lifting it <b>ducks</b> the resonance down to <b>pedal-off drop</b> at once — the dampers
         touching — then lets it fall the rest of the way slowly over <b>pedal-off fall</b>, scattered slightly in
         time so the frame does not land as one click, while the body goes on ringing for the <b>soundboard
-        tail</b>, the way a whole piano keeps sounding for a few seconds after the dampers land.</div>
+        tail</b>, the way a whole piano keeps sounding for a few seconds after the dampers land.
+        <b>Pedal-up bleed</b> is how much a <b>damped</b> string still answers: a damper never fully stills a
+        string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
+        no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
+        free strings resonate, as before.</div>
     </div>
 
     <div class="panel" style="order:4">

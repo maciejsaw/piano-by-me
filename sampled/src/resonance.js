@@ -158,6 +158,15 @@ export class Resonance {
     this.pedalOffJitter = 0.06;   // seconds of random stagger across the frame
     this.pedalOffDrop = 0.4;      // level the quick duck drops to (fraction)
     this.pedalOffFall = 2.0;      // seconds for the slow release after the drop
+    // Soundboard bleed with the pedal UP. A damper does not fully still its
+    // string, and every string couples through the soundboard whether its damper
+    // is down or not -- so a real grand has a faint pitched halo and body ring
+    // even with no pedal. `dampedAmount` is the fraction of the normal coupling
+    // a DAMPED string still receives; those strings ring only briefly, leaking
+    // at `dampedDecay` rather than their open decay, because the damper is on
+    // them. At 0 the engine behaves exactly as before (only free strings answer).
+    this.dampedAmount = 0;
+    this.dampedDecay = 0.4;       // e-folding time of a damped string's bleed, s
     this.build();
   }
 
@@ -175,9 +184,15 @@ export class Resonance {
   }
 
   setUndamped(set) {
+    const prev = this.undamped;
     this.undamped = set;
     for (let i = 0; i < this.n; i++) {
-      if (!set.has(this.lo + i) && this.E[i] > 0) { this.E[i] = 0; this.stop(this.lo + i, true); }
+      const m = this.lo + i;
+      // Only a damper LANDING cuts a string: it was free, now it is not. A
+      // string that was already damped is left alone -- otherwise the pedal-up
+      // soundboard bleed would be zeroed on every key change instead of leaking
+      // away at dampedDecay.
+      if (prev.has(m) && !set.has(m) && this.E[i] > 0) { this.E[i] = 0; this.stop(m, true); }
     }
   }
 
@@ -190,15 +205,23 @@ export class Resonance {
     // and what reaches the bridge is a little more sharply graded than that.
     const e = Math.pow(vel / 127, this.drive);
     const W = this.mat.W, n = this.n;
-    for (const r of this.undamped) {
+    const bleed = this.dampedAmount;
+    // Every coupled string, not only the free ones: a free string takes the full
+    // drive, a damped one takes `bleed` of it (the soundboard halo with the pedal
+    // up). When bleed is 0 the damped branch adds nothing, so this is exactly the
+    // old "only undamped strings answer".
+    for (let ri = 0; ri < n; ri++) {
+      const r = this.lo + ri;
       if (r === midi) continue;
-      const ri = r - this.lo;
       const w = W[si * n + ri];
       if (w < 1e-4) continue;
+      const open = this.undamped.has(r);
+      if (!open && bleed <= 0) continue;
       // The pedal does not make a string resonate harder -- it makes more
       // strings free to. What it does add is the body of the whole undamped
       // frame moving together, which is a real and audible extra few dB.
-      this.E[ri] += w * e * this.curves.at('resonance', r) * (1 + 0.35 * pedal);
+      const factor = open ? (1 + 0.35 * pedal) : bleed;
+      this.E[ri] += w * e * this.curves.at('resonance', r) * factor;
       // A fresh strike drives the string again, so a voice that had run its
       // recording out is allowed to speak once more.
       this.spent.delete(r);
@@ -208,12 +231,20 @@ export class Resonance {
   /** Control rate. Leak, re-rank, and move the voices' gains. */
   tick(dt) {
     if (!this.enabled) { if (this.voices.size) this.allOff(); return; }
+    const bleedOn = this.dampedAmount > 0;
     const want = [];
     for (let i = 0; i < this.n; i++) {
       if (this.E[i] <= 0) continue;
-      this.E[i] *= Math.exp(-dt / this.tau[i]);
-      if (this.E[i] < this.threshold * 0.4) { this.E[i] = 0; this.spent.delete(this.lo + i); this.stop(this.lo + i); continue; }
-      if (this.E[i] > this.threshold && this.undamped.has(this.lo + i)) want.push(i);
+      const m = this.lo + i;
+      const open = this.undamped.has(m);
+      // A damped string bleeds only briefly -- the damper is resting on it -- so
+      // it leaks at dampedDecay, not at its open (measured) decay rate.
+      this.E[i] *= Math.exp(-dt / (open ? this.tau[i] : this.dampedDecay));
+      if (this.E[i] < this.threshold * 0.4) { this.E[i] = 0; this.spent.delete(m); this.stop(m); continue; }
+      // Free strings always compete for a voice; damped ones only when the
+      // soundboard bleed is switched on. They rank below the free strings by
+      // energy, so real resonance keeps priority and bleed fills spare voices.
+      if (this.E[i] > this.threshold && (open || bleedOn)) want.push(i);
     }
     want.sort((a, b) => this.E[b] - this.E[a]);
     const keep = new Set(want.slice(0, this.maxVoices).map((i) => this.lo + i));
@@ -339,35 +370,59 @@ export class Resonance {
     if (!v) return;
     this.voices.delete(midi);
     const now = this.ctx.currentTime;
-    const from = Math.max(1e-5, v.target);
     const shape = this.env?.noteRelease.shape;
     v.src.onended = null;
-    v.lvl.gain.cancelScheduledValues(now);
-    v.lvl.gain.setValueAtTime(from, now);
+    // Freeze the gain at the value it ACTUALLY has right now, not at v.target.
+    // tick() drives lvl with setTargetAtTime -- an exponential still on its way
+    // to target and, by design, never quite there -- so starting the fade from
+    // target steps the gain, which is a click, panned to wherever this key sits
+    // on the soundboard. cancelAndHold holds the running curve exactly where it
+    // is; `from` is then read back from the param rather than assumed.
+    // Schedule the fade, but NEVER let a scheduling error skip the src.stop()
+    // below: an unstopped source is removed from this.voices with onended
+    // nulled, so nothing ever cleans it up -- it plays its multi-second buffer
+    // to the end with that buffer pinned in native memory. A frame of those
+    // orphaned at a pedal-off is what ran the tab out of memory.
+    let stopAt = now + 0.35;
+    try {
+      if (v.lvl.gain.cancelAndHoldAtTime) v.lvl.gain.cancelAndHoldAtTime(now);
+      else { v.lvl.gain.cancelScheduledValues(now); v.lvl.gain.setValueAtTime(Math.max(1e-5, v.target), now); }
+      const from = Math.max(1e-5, v.lvl.gain.value);
 
-    if (damped) {
-      // Two stages, scattered slightly in time so the frame does not land as one
-      // click. First a quick duck to a fraction of the level -- the damper
-      // touching -- then a slow fall the rest of the way, the string ringing on
-      // under the damper while the soundboard reverb carries the body.
-      const jitter = Math.random() * this.pedalOffJitter;
-      const t0 = now + jitter;
-      const duck = Math.max(0.02, 0.09 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60));
-      const drop = Math.max(1e-5, from * Math.min(1, Math.max(0, this.pedalOffDrop)));
-      const fall = Math.max(0.05, this.pedalOffFall);
-      v.lvl.gain.setValueAtTime(from, t0);
-      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, drop), t0, duck);
-      else v.lvl.gain.linearRampToValueAtTime(drop, t0 + duck);
-      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck, fall);
-      else v.lvl.gain.linearRampToValueAtTime(0, t0 + duck + fall);
-      try { v.src.stop(t0 + duck + fall + 0.03); } catch { /* already stopped */ }
-    } else {
-      // An undamped-region leak below threshold: just a short fade.
-      const fall = 0.25;
-      if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, 0), now, fall);
-      else v.lvl.gain.linearRampToValueAtTime(0, now + fall);
-      try { v.src.stop(now + fall + 0.03); } catch { /* already stopped */ }
-    }
+      if (damped) {
+        // Two stages, scattered slightly in time so the frame does not land as one
+        // click. First a quick duck to a fraction of the level -- the damper
+        // touching -- then a slow fall the rest of the way, the string ringing on
+        // under the damper while the soundboard reverb carries the body. The held
+        // value carries flat across the jitter, so the curve at t0 starts from it.
+        const jitter = Math.random() * this.pedalOffJitter;
+        const t0 = now + jitter;
+        const duck = Math.max(0.02, 0.09 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60));
+        const drop = Math.max(1e-5, from * Math.min(1, Math.max(0, this.pedalOffDrop)));
+        const fall = Math.max(0.05, this.pedalOffFall);
+        // A gap between the two curves. setValueCurveAtTime rounds its END up to
+        // the next 128-sample render quantum (~2.7 ms at 48 kHz), so a second
+        // curve abutting it exactly at t0+duck starts INSIDE the first and throws
+        // NotSupportedError. One quantum-plus of gap avoids it; the value holds
+        // flat at `drop` across it, so it stays continuous and click-free.
+        const GAP = 0.006;
+        if (shape) {
+          v.lvl.gain.setValueCurveAtTime(shape.curve(from, drop), t0, duck);
+          v.lvl.gain.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck + GAP, fall);
+        } else {
+          v.lvl.gain.linearRampToValueAtTime(drop, t0 + duck);
+          v.lvl.gain.linearRampToValueAtTime(0, t0 + duck + GAP + fall);
+        }
+        stopAt = t0 + duck + GAP + fall + 0.03;
+      } else {
+        // An undamped-region leak below threshold: just a short fade.
+        const fall = 0.25;
+        if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, 0), now, fall);
+        else v.lvl.gain.linearRampToValueAtTime(0, now + fall);
+        stopAt = now + fall + 0.03;
+      }
+    } catch { /* fall through: the source is still stopped below */ }
+    try { v.src.stop(stopAt); } catch { /* already stopped */ }
   }
 
   allOff() { for (const midi of [...this.voices.keys()]) this.stop(midi, true); this.E.fill(0); this.spent.clear(); }

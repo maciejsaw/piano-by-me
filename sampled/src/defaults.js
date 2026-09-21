@@ -134,7 +134,7 @@ export const DEFAULT_SETTINGS = {
       },
       {
         "v": 94,
-        "layer": 12.838507080078125
+        "layer": 11.509857177734375
       },
       {
         "v": 101,
@@ -156,23 +156,24 @@ export const DEFAULT_SETTINGS = {
   },
   "sliders": {
     "gain": "0.45",
-    "spread": "0.55",
-    "width": "1",
-    "wet": "0.06",
+    "spread": "-0.15",
+    "width": "0.56",
+    "wet": "0",
     "size": "1",
     "rt60": "1.35",
     "absorb": "0.26",
     "dist": "0.72",
-    "resAmt": "0.21",
+    "resAmt": "0.25",
     "resDrive": "3.3",
     "resSel": "14.5",
     "resTone": "5200",
-    "resMax": "32",
-    "resTail": "0.6",
-    "sbAmt": "0.06",
-    "sbTail": "2.1",
-    "resOffDrop": "0.4",
-    "resOffFall": "0.55",
+    "resMax": "16",
+    "resTail": "0.8",
+    "sbAmt": "0.09",
+    "sbTail": "4.1",
+    "resDamped": "0.12",
+    "resOffDrop": "0.17",
+    "resOffFall": "3.5",
     "naMs": "0",
     "raMs": "4",
     "rrMs": "240",
@@ -190,26 +191,26 @@ export const DEFAULT_SETTINGS = {
     "relTrim": "99",
     "relRR": "33",
     "relDelay": "1",
-    "budget": "960"
+    "budget": "768"
   },
   "eqBands": [
     {
-      "f": "4.50019738166216",
-      "g": "0"
+      "f": "4.34919738166216",
+      "g": "2.3"
     },
     {
-      "f": "5.70417018598809",
+      "f": "6.28517018598809",
+      "g": "-7.5",
+      "q": "1"
+    },
+    {
+      "f": "8.04161172766793",
       "g": "0",
       "q": "0.9"
     },
     {
-      "f": "8.00661172766793",
-      "g": "0",
-      "q": "0.9"
-    },
-    {
-      "f": "8.85390245954208",
-      "g": "0"
+      "f": "9.27090245954208",
+      "g": "2.6"
     }
   ],
   "toggles": {
