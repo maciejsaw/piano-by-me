@@ -523,6 +523,7 @@ export const DEFAULT_SETTINGS = {
     "resTail": "2",
     "sbAmt": "0.17",
     "sbTail": "6.3",
+    "resSelf": "0",
     "resDamped": "0.22",
     "resOffDrop": "0.17",
     "resOffFall": "3.5",

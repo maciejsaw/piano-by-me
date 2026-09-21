@@ -239,6 +239,19 @@ export class Resonance {
     // them. At 0 the engine behaves exactly as before (only free strings answer).
     this.dampedAmount = 0;
     this.dampedDecay = 0.4;       // e-folding time of a damped string's bleed, s
+    // The struck string answering ITSELF.
+    //
+    // A note is never one string: two or three in a unison, slightly detuned,
+    // plus whatever the duplex scale behind the bridge is free to ring at. The
+    // hammer drives one set of them and the rest answer through the bridge, so
+    // part of what a real note does after the knock is sympathetic response to
+    // its own fundamental -- a bloom that arrives just behind the attack and
+    // sustains under it. The sample already contains its own unisons, so this
+    // is not physics being restored; it is a send that thickens and lengthens
+    // the note by putting the library's softest layer of the SAME key under it,
+    // driven by the same accumulator as every other string. Kept separate from
+    // the coupling matrix, which has no diagonal, and off by default.
+    this.self = 0;                // fraction of a perfectly-coupled string's drive
     // Per-key send level, drawn (see ResCurve). Kept as a table of energy
     // factors, rebuilt when the curve moves, because excite() reads it once
     // per coupled string per note-on.
@@ -312,6 +325,13 @@ export class Resonance {
       // A fresh strike drives the string again, so a voice that had run its
       // recording out is allowed to speak once more.
       this.spent.delete(r);
+    }
+    // The struck string itself. Its damper is up (the key is down), so it takes
+    // the open drive; a weight of 1, since a string coincides perfectly with
+    // its own partials.
+    if (this.self > 0) {
+      this.E[si] += this.self * e * this.curves.at('resonance', midi) * (1 + 0.35 * pedal) * this.keyE[si];
+      this.spent.delete(midi);
     }
   }
 
