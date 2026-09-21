@@ -103,6 +103,78 @@ export function couplingMatrix(hz, { partials = 16, selectivity = 8, lo = 21, hi
 // other half of what made this sound granular.
 const LIMIT_DB = 6;
 
+// How far the per-key level curve reaches down. At the floor a string does not
+// answer at all: its energy never clears the voice threshold, so it costs
+// nothing and makes no sound.
+export const RES_FLOOR = -48;
+export const RES_CEIL = 12;
+
+/**
+ * A hand-drawn key -> level curve for the sympathetic resonance, in dB.
+ *
+ * The one thing a single "amount" knob cannot do is balance the resonance
+ * ACROSS the keyboard, and the place that shows is the top of the instrument:
+ * the highest strings have no dampers at all, so they are free to answer
+ * whatever you play, forever, whether the pedal is down or not. On a real
+ * grand they are also small, quiet and far from the bridge's centre; here they
+ * are recordings played at the same send as everything else, and they ring on
+ * over a passage that should have stopped. This is where you take them down.
+ *
+ * Same shape as the velocity curves: a list of points the user places, pinned
+ * at the two ends and linearly interpolated between. Flat 0 dB by default, so
+ * it changes nothing until it is drawn.
+ *
+ * The value is applied to the ENERGY the accumulator receives, squared, which
+ * is what makes it a level in dB on the resulting voice -- the voice's gain
+ * goes as the square root of energy. Doing it there rather than at the voice
+ * also shortens what it quietens: a string fed less energy falls under the
+ * voice threshold sooner, so the too-long ring goes with the too-loud one.
+ */
+export class ResCurve {
+  constructor(lo = 21, hi = 108) {
+    this.lo = lo; this.hi = hi;
+    this.points = [{ k: lo, db: 0 }, { k: hi, db: 0 }];
+  }
+
+  /** Level in dB for a key. */
+  at(midi) {
+    const p = this.points;
+    const k = Math.max(this.lo, Math.min(this.hi, midi));
+    if (k <= p[0].k) return p[0].db;
+    for (let i = 0; i < p.length - 1; i++) {
+      if (k <= p[i + 1].k) {
+        const u = (k - p[i].k) / Math.max(1e-6, p[i + 1].k - p[i].k);
+        return p[i].db + (p[i + 1].db - p[i].db) * u;
+      }
+    }
+    return p[p.length - 1].db;
+  }
+
+  /** The factor on ACCUMULATED ENERGY -- amplitude squared. Floor means off. */
+  energy(midi) {
+    const db = this.at(midi);
+    return db <= RES_FLOOR ? 0 : Math.pow(10, db / 10);
+  }
+
+  /** True while the curve is flat at 0 dB, i.e. doing nothing. */
+  get idle() { return this.points.every((p) => p.db === 0); }
+
+  reset() { this.points = [{ k: this.lo, db: 0 }, { k: this.hi, db: 0 }]; }
+
+  toJSON() { return { points: this.points.map((p) => ({ k: p.k, db: p.db })) }; }
+  fromJSON(o) {
+    if (!o || !Array.isArray(o.points) || o.points.length < 2) return;
+    this.points = o.points
+      .map((p) => ({
+        k: Math.max(this.lo, Math.min(this.hi, Math.round(p.k))),
+        db: Math.max(RES_FLOOR, Math.min(RES_CEIL, p.db)),
+      }))
+      .sort((a, b) => a.k - b.k);
+    this.points[0].k = this.lo;
+    this.points[this.points.length - 1].k = this.hi;
+  }
+}
+
 export class Resonance {
   /**
    * @param strip  (midi) => the per-key channel strip to play into, so a
@@ -167,6 +239,11 @@ export class Resonance {
     // them. At 0 the engine behaves exactly as before (only free strings answer).
     this.dampedAmount = 0;
     this.dampedDecay = 0.4;       // e-folding time of a damped string's bleed, s
+    // Per-key send level, drawn (see ResCurve). Kept as a table of energy
+    // factors, rebuilt when the curve moves, because excite() reads it once
+    // per coupled string per note-on.
+    this.keyCurve = new ResCurve(this.lo, this.hi);
+    this.keyE = new Float64Array(this.n).fill(1);
     this.build();
   }
 
@@ -181,6 +258,16 @@ export class Resonance {
       this.tau[i] = Math.max(0.15, 8.686 / edr);
     }
     this.selectivity = selectivity;
+  }
+
+  /** Re-read the per-key level curve. Call after drawing on it. */
+  refreshKeyCurve() {
+    for (let i = 0; i < this.n; i++) this.keyE[i] = this.keyCurve.energy(this.lo + i);
+    // A string just taken to the floor should not go on ringing from energy it
+    // was given before the curve moved.
+    for (let i = 0; i < this.n; i++) {
+      if (this.keyE[i] === 0 && this.E[i] > 0) { this.E[i] = 0; this.stop(this.lo + i); }
+    }
   }
 
   setUndamped(set) {
@@ -221,7 +308,7 @@ export class Resonance {
       // strings free to. What it does add is the body of the whole undamped
       // frame moving together, which is a real and audible extra few dB.
       const factor = open ? (1 + 0.35 * pedal) : bleed;
-      this.E[ri] += w * e * this.curves.at('resonance', r) * factor;
+      this.E[ri] += w * e * this.curves.at('resonance', r) * factor * this.keyE[ri];
       // A fresh strike drives the string again, so a voice that had run its
       // recording out is allowed to speak once more.
       this.spent.delete(r);
@@ -436,4 +523,137 @@ export class Resonance {
 
   /** Keys whose buffers are in use, so the library does not evict them. */
   heldKeys(out) { for (const midi of this.voices.keys()) out.add(this.lib.key(midi, this.lib.layers[0])); }
+}
+
+
+/**
+ * The interactive editor for a ResCurve.
+ *
+ * Click empty space to add a point, drag to move it, double-click to remove --
+ * the same gestures as the velocity curves, because it is the same kind of
+ * object. The keyboard is drawn behind it: octaves labelled, the black keys
+ * marked, and the region above the last damper shaded, since that region is
+ * the reason this control exists. Strings that are currently ringing are drawn
+ * as faint bars, so a pass can be aimed at what is actually sounding.
+ */
+export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = null, onChange } = {}) {
+  const ctx = canvas.getContext('2d');
+  const dpr = () => window.devicePixelRatio || 1;
+  const { lo, hi } = rc;
+  const SPAN = RES_CEIL - RES_FLOOR;
+  const xOf = (k, w) => (k - lo) / (hi - lo) * w;
+  const yOf = (db, h) => (RES_CEIL - db) / SPAN * h;
+  const kOf = (px, w) => Math.max(lo, Math.min(hi, Math.round(lo + px / w * (hi - lo))));
+  const dbOf = (py, h) => Math.max(RES_FLOOR, Math.min(RES_CEIL, RES_CEIL - py / h * SPAN));
+  const BLACK = new Set([1, 3, 6, 8, 10]);
+  let drag = -1;
+
+  function draw() {
+    const w = canvas.width = canvas.clientWidth * dpr();
+    const h = canvas.height;
+    const kw = w / (hi - lo + 1);
+    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    // The keys, and the undamped region that has no choice but to ring.
+    for (let k = lo; k <= hi; k++) {
+      const x = xOf(k, w);
+      if (k > topDamped) { ctx.fillStyle = '#231d12'; ctx.fillRect(x, 0, kw + 1, h); }
+      if (BLACK.has(k % 12)) { ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(x, 0, kw + 1, h); }
+    }
+    // What is ringing right now, faintly, behind the curve.
+    if (energy) {
+      for (let k = lo; k <= hi; k++) {
+        const e = energy(k);
+        if (!(e > 0)) continue;
+        const a = Math.min(1, Math.sqrt(e) * 3);
+        ctx.fillStyle = `rgba(217,164,65,${0.12 + 0.2 * a})`;
+        ctx.fillRect(xOf(k, w), h - h * Math.min(1, a), kw + 1, h);
+      }
+    }
+    // dB grid. 0 is the line that means "as sent", so it is the bright one.
+    ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.textAlign = 'left';
+    for (let d = RES_CEIL; d >= RES_FLOOR; d -= 12) {
+      const y = yOf(d, h);
+      ctx.strokeStyle = d === 0 ? '#5a4a32' : '#302a20';
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      ctx.fillStyle = '#6d6458';
+      ctx.fillText(d === RES_FLOOR ? 'off' : `${d > 0 ? '+' : ''}${d}`, 3 * dpr(), Math.min(h - 2, y + 10 * dpr()));
+    }
+    // Octave lines, labelled at every C.
+    ctx.strokeStyle = '#2b261d'; ctx.fillStyle = '#5c5449';
+    for (let k = lo; k <= hi; k++) {
+      if (k % 12 !== 0) continue;
+      const x = xOf(k, w);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      ctx.fillText(`C${k / 12 - 1}`, x + 2 * dpr(), h - 3 * dpr());
+    }
+    // The damper break, named -- everything right of it is always free.
+    if (topDamped >= lo && topDamped < hi) {
+      const x = xOf(topDamped + 1, w);
+      ctx.strokeStyle = '#7fbf7f'; ctx.setLineDash([4 * dpr(), 4 * dpr()]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#7fbf7f'; ctx.textAlign = 'left';
+      ctx.fillText('no dampers →', x + 4 * dpr(), 11 * dpr());
+    }
+    // The curve, then its handles.
+    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    for (let k = lo; k <= hi; k++) {
+      const x = xOf(k, w), y = yOf(rc.at(k), h);
+      k === lo ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    for (const p of rc.points) {
+      ctx.fillStyle = '#ffeec0';
+      ctx.beginPath(); ctx.arc(xOf(p.k, w), yOf(p.db, h), 4 * dpr(), 0, 7); ctx.fill();
+    }
+  }
+
+  const local = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * canvas.width, y: (e.clientY - r.top) / r.height * canvas.height };
+  };
+  const hit = (x, y) => {
+    const w = canvas.width, h = canvas.height, R = 12 * dpr();
+    for (let i = 0; i < rc.points.length; i++) {
+      if (Math.hypot(x - xOf(rc.points[i].k, w), y - yOf(rc.points[i].db, h)) < R) return i;
+    }
+    return -1;
+  };
+
+  canvas.addEventListener('pointerdown', (e) => {
+    const { x, y } = local(e);
+    let i = hit(x, y);
+    if (i < 0) {
+      const p = { k: kOf(x, canvas.width), db: dbOf(y, canvas.height) };
+      rc.points.push(p); rc.points.sort((a, b) => a.k - b.k);
+      i = rc.points.indexOf(p);
+    }
+    drag = i;
+    canvas.setPointerCapture(e.pointerId);
+    draw(); onChange?.();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (drag < 0) return;
+    const { x, y } = local(e);
+    const p = rc.points[drag], last = rc.points.length - 1;
+    p.db = dbOf(y, canvas.height);
+    // The ends are pinned to the ends of the keyboard; the rest move freely in
+    // both axes but cannot cross their neighbours, so the map stays a function.
+    if (drag > 0 && drag < last) {
+      const a = rc.points[drag - 1].k + 1, b = rc.points[drag + 1].k - 1;
+      p.k = Math.max(a, Math.min(b, kOf(x, canvas.width)));
+    }
+    draw(); onChange?.();
+  });
+  const end = (e) => { if (drag >= 0) { drag = -1; try { canvas.releasePointerCapture(e.pointerId); } catch { /* */ } onChange?.(); } };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('dblclick', (e) => {
+    const { x, y } = local(e);
+    const i = hit(x, y);
+    if (i > 0 && i < rc.points.length - 1) { rc.points.splice(i, 1); draw(); onChange?.(); }
+  });
+
+  draw();
+  return { draw };
 }

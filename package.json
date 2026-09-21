@@ -10,6 +10,7 @@
     "render": "node tools/render.mjs",
     "sampled:fetch": "node tools/sampler/fetch.mjs",
     "sampled:build": "node tools/sampler/build.mjs",
+    "sampled:align": "node tools/sampler/align.mjs",
     "sampled:selftest": "node tools/sampler/selftest.mjs",
     "sampled:verify": "node tools/sampler/verify.mjs",
     "sampled:test": "node tools/sampler/browser-test.mjs",

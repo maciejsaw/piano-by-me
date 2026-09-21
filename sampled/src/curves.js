@@ -59,6 +59,8 @@ export const PARAMS = [
   { key: 'width', label: 'Width', group: 'Stereo', def: 1, span: 1, unit: 'x',
     hint: 'Side-signal gain for this key. 0 is mono, 1 is the recording as made, above 1 widens.' },
 
+  { key: 'startTrim', label: 'Sample start', group: 'Note', def: 0, span: 150, unit: 'ms',
+    hint: 'How far into the recording this key starts, on top of the measured alignment. Positive skips further in (a shorter, harder front); negative holds the note back, which delays it. The library is aligned on its attack front by default, so 0 already means "arrives with every other key" — this is for a key that still feels late or early against its neighbours. The full span reaches \u00b1150 ms, far past alignment and into using the slider as an edit: at +150 the hammer is gone and what is left is the string already ringing, which is a way of getting a soft attack out of a hard recording. Zoom in with the \u00b1 menu for the small adjustments.' },
   { key: 'tune', label: 'Tuning', group: 'Note', def: 0, span: 30, unit: 'cents',
     hint: 'Per-key detune. This library\'s own top octave runs up to 90 cents sharp of equal temperament; this is where you disagree with it.' },
   { key: 'resonance', label: 'Resonance send', group: 'Note', def: 1, span: 1, unit: 'x',
@@ -388,7 +390,7 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
         <div class="pe-head">
           <input type="range" class="pe-slider" min="-1" max="1" step="0.002" value="0">
           <select class="pe-zoom" title="precision — zooms the slider and the chart">
-            ${ZOOMS.map((z, i) => `<option value="${i}">±${(p.span * z).toPrecision(2)}</option>`).join('')}
+            ${ZOOMS.map((z, i) => `<option value="${i}">±${+(p.span * z).toPrecision(2)}</option>`).join('')}
           </select>
         </div>
         <output class="pe-out"></output>

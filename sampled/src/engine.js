@@ -55,6 +55,19 @@ export class Engine {
     this.master.connect(this.eq.in);
     this.eq.out.connect(this.limiter).connect(ctx.destination);
     this.limiterOn = true;
+    this.soloRes = false;      // resonance solo: see setSoloRes()
+    // Attack alignment. Salamander's recordings do not all hit at the same
+    // distance into the file -- the build trims each head at a level
+    // threshold, which lines up where silence ends rather than where the note
+    // arrives, and on this library the attack front ranges from 5 ms to 59 ms
+    // in. Played as they are, the keys do not feel the same under the hand.
+    // `align.mjs` measures each sample's front and the manifest carries it;
+    // playback starts each one so that every front lands `alignMs` after the
+    // key goes down. A sample that is late is started further in, one that is
+    // early is held back by the difference, so nothing is cut that does not
+    // have to be and the worst delay is a few milliseconds.
+    this.alignStarts = lib.m.alignMs != null;
+    this.alignMs = lib.m.alignMs ?? 0;
 
     this.dry = ctx.createGain(); this.dry.connect(this.master);
     this.wet = ctx.createGain(); this.wet.gain.value = 0.34; this.wet.connect(this.master);
@@ -70,7 +83,11 @@ export class Engine {
     // key's place on the soundboard, so it bypasses the strips.
     this.noise = ctx.createGain();
     this.noise.gain.value = 1;
-    this.noise.connect(this.dry); this.noise.connect(this.send);
+    // ...and through the solo mute, so "solo resonance" silences it with the
+    // struck notes rather than leaving key and pedal thuds on their own.
+    this.noiseSolo = ctx.createGain();
+    this.noise.connect(this.noiseSolo);
+    this.noiseSolo.connect(this.dry); this.noiseSolo.connect(this.send);
 
     // A dedicated, long reverb JUST for the pedal action. The pedal thud on a
     // real grand sets the whole undamped frame ringing, which lasts far longer
@@ -82,7 +99,8 @@ export class Engine {
     this.pedalConv.normalize = false;
     this.pedalTail = ctx.createGain();
     this.pedalTail.gain.value = 0.6;      // the pedal reverb's wet level
-    this.pedalConv.connect(this.pedalTail).connect(this.master);
+    this.pedalSolo = ctx.createGain();
+    this.pedalConv.connect(this.pedalTail).connect(this.pedalSolo).connect(this.master);
     this.pedalTailSec = 5;                 // rt60 of that reverb, in seconds
     this.rebuildPedalVerb();
 
@@ -165,6 +183,11 @@ export class Engine {
   makeStrip(midi) {
     const c = this.ctx;
     const inG = c.createGain();
+    // Everything the player strikes -- the note, its release sample, its
+    // damper -- enters through `direct`, which the resonance solo closes.
+    // Sympathetic voices connect to `in` past it, so they survive the mute.
+    const direct = c.createGain();
+    direct.connect(inG);
     const split = c.createChannelSplitter(2);
     const merge = c.createChannelMerger(2);
     const g = [c.createGain(), c.createGain(), c.createGain(), c.createGain()];   // LL, RL, LR, RR
@@ -179,7 +202,7 @@ export class Engine {
     merge.connect(out);
     out.connect(this.dry);
     out.connect(this.send);
-    return { midi, in: inG, g, out };
+    return { midi, in: inG, direct, g, out };
   }
 
   /**
@@ -243,9 +266,51 @@ export class Engine {
     else { this.eq.out.disconnect(this.limiter); this.eq.out.connect(this.ctx.destination); }
   }
 
+  /**
+   * Solo the sympathetic resonance: mute every direct path -- the struck
+   * notes, their release and damper samples, the mechanical noise and the
+   * pedal's own reverb -- and leave the resonance voices and the soundboard
+   * sounding. It is a monitoring switch for setting this section up by ear,
+   * not a setting: nothing persists it, so the instrument always starts unsoloed.
+   *
+   * Every mute is a short ramp rather than a jump, because closing a gain
+   * under a ringing chord instantaneously is a click.
+   */
+  setSoloRes(on) {
+    if (on === this.soloRes) return;
+    this.soloRes = on;
+    const t = this.ctx.currentTime, v = on ? 0 : 1;
+    const ramp = (g) => {
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.linearRampToValueAtTime(v, t + 0.02);
+    };
+    for (const strip of this.strips.values()) ramp(strip.direct);
+    ramp(this.noiseSolo);
+    ramp(this.pedalSolo);
+  }
+
   /** The last node before the destination -- what a recorder should tap. */
   outputNode() { return this.limiterOn ? this.limiter : this.eq.out; }
   setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); this.rebuildPedalVerb(); this.rebuildSoundboard(); }
+
+  /**
+   * Where in the buffer to start this note, and how long to wait first.
+   *
+   * Returns seconds: `offset` into the recording, `delay` before starting it.
+   * Only one of the two is ever non-zero -- a sample whose front is late is
+   * skipped into, one whose front is early is held back -- and the per-key
+   * `Sample start` offset is added to the same number, so a key that still
+   * feels out of step can be nudged by hand.
+   */
+  startAt(midi, p) {
+    const align = this.alignStarts && p.t0 != null ? (p.t0 - this.alignMs) / 1000 : 0;
+    const want = align + this.curves.at('startTrim', midi) / 1000;
+    // Never skip so far in that the note is a fragment: half the recording is
+    // far past anything alignment needs and is a guard against a bad manifest.
+    const offset = Math.max(0, Math.min(want, p.buf.duration * 0.5));
+    return { offset, delay: Math.max(0, Math.min(0.25, -want)) };
+  }
 
   // ------------------------------------------------------------------ notes --
   //
@@ -297,19 +362,33 @@ export class Engine {
     const lvl = ctx.createGain();
     lvl.gain.value = p.gain * (soft ? Math.pow(10, -2.5 / 20) : 1);
     const env = ctx.createGain();
+    // Alignment first: everything below is timed from when the note actually
+    // starts, which is a few milliseconds after `now` for a recording whose
+    // attack front is early.
+    const at = this.startAt(midi, p);
+    const t0 = now + at.delay;
     const a = this.env.noteAttack;
     const aDur = Math.max(0, a.ms) / 1000;
+    // Starting a recording partway in starts it at a level, not at silence,
+    // which is a click. The alignment cuts at the -20 dB point of the attack,
+    // so the step is real but small: a fade of a millisecond and a half covers
+    // it and is far too short to be heard as an attack of its own. A note
+    // attack the player has actually dialled in is longer than this and wins.
+    const fade = at.offset > 0.001 ? 0.0015 : 0;
     if (aDur > 0.0005) {
-      env.gain.setValueAtTime(1e-5, now);
-      env.gain.setValueCurveAtTime(a.shape.curve(0, 1), now, aDur);
+      env.gain.setValueAtTime(1e-5, t0);
+      env.gain.setValueCurveAtTime(a.shape.curve(0, 1), t0, aDur);
+    } else if (fade > 0) {
+      env.gain.setValueAtTime(0, t0);
+      env.gain.linearRampToValueAtTime(1, t0 + fade);
     } else {
       env.gain.value = 1;
     }
-    src.connect(lvl).connect(env).connect(this.strips.get(midi).in);
-    src.start(now);
+    src.connect(lvl).connect(env).connect(this.strips.get(midi).direct);
+    src.start(t0, at.offset);
 
     const v = { src, g: lvl, env, midi, layer: p.layer, vel, started: now,
-      att: aDur > 0.0005 ? { start: now, dur: aDur, shape: a.shape } : null, rel: null,
+      att: aDur > 0.0005 ? { start: t0, dur: aDur, shape: a.shape } : null, rel: null,
       key: this.lib.key(midi, p.layer) };
     src.onended = () => this.forget(v);
     let list = this.voices.get(midi);
@@ -541,7 +620,7 @@ export class Engine {
     const hold = this.env.holdLevel(heldFor, this.env.hold.keyNoiseFollow);
     // Through the key's own strip, so the release sample gets the same stereo
     // swap, placement and spread as the note it belongs to.
-    this.oneShot(buf, d.gain * this.db('release') * this.releaseNoise * scale * perKey * hold * (0.25 + 0.75 * relVel / 127), 1, when, this.relOffset(), this.strips.get(midi).in);
+    this.oneShot(buf, d.gain * this.db('release') * this.releaseNoise * scale * perKey * hold * (0.25 + 0.75 * relVel / 127), 1, when, this.relOffset(), this.strips.get(midi).direct);
   }
 
   /**
@@ -563,7 +642,7 @@ export class Engine {
       const desc = d[variant];
       if (!desc) return;
       const buf = this.lib.aux(desc, `h${midi}${variant}`, 2);
-      if (buf) this.oneShot(buf, desc.gain * this.db(key) * this.damperNoise * perKey * hold * scale * (0.3 + 0.7 * vel / 127), 1, when, this.relOffset(), this.strips.get(midi).in);
+      if (buf) this.oneShot(buf, desc.gain * this.db(key) * this.damperNoise * perKey * hold * scale * (0.3 + 0.7 * vel / 127), 1, when, this.relOffset(), this.strips.get(midi).direct);
     };
     pick(vel >= 45 ? 'L' : 'S', vel >= 45 ? 'damperL' : 'damperS');
     pick('V', 'damperV');
