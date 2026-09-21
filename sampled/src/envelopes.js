@@ -33,7 +33,6 @@ export class Envelopes {
     // event with a real rise to it, and shaping that rise -- softening the
     // knock, or sharpening it -- is separate from everything else, so it gets
     // its own curve. Its long reverberant tail is the engine's, not a shape.
-    this.pedalAttack = { ms: 6, shape: SHAPES.fast() };
 
     // Release level against how long the key was held. Not an envelope -- a
     // function of a number that is not time-since-note-off.
@@ -84,14 +83,13 @@ export class Envelopes {
       noteRelease: { shape: this.noteRelease.shape.toJSON() },
       relAttack: { ms: this.relAttack.ms, shape: this.relAttack.shape.toJSON() },
       relRelease: { ms: this.relRelease.ms, shape: this.relRelease.shape.toJSON() },
-      pedalAttack: { ms: this.pedalAttack.ms, shape: this.pedalAttack.shape.toJSON() },
       hold: { seconds: this.hold.seconds, floorDb: this.hold.floorDb, keyNoiseFollow: this.hold.keyNoiseFollow, shape: this.hold.shape.toJSON() },
     };
   }
   fromJSON(o) {
     if (!o) return;
     const d = new Envelopes();
-    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'pedalAttack', 'hold']) {
+    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'hold']) {
       if (!o[k]) continue;
       // Keep the SAME shape instance -- the Bezier editors hold a reference to
       // it, so an import that replaced it would leave them editing a ghost.

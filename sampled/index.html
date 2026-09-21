@@ -291,8 +291,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
         no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
         free strings resonate, as before.
-        <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds, the
-        pedal action &mdash; and leaves only the sympathetic voices and the soundboard, which is the one way to
+        <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds &mdash;
+        and leaves only the sympathetic voices and the soundboard, which is the one way to
         hear what this section is actually contributing while you set it. It is a monitoring switch, not a
         setting: it is never saved, and the instrument always comes up unsoloed.</div>
     </div>
@@ -327,13 +327,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
           <div class="row"><label>time</label><input type="range" id="rrMs" min="0" max="1500" step="10" value="240"><output id="rrMsV"></output></div>
           <p>Applied at the tail of the release sample, so it lands rather than stops.</p>
         </div>
-        <div class="env">
-          <h3>Pedal attack<span id="paPreset"></span></h3>
-          <canvas id="paCanvas" height="220"></canvas>
-          <div class="row"><label>time</label><input type="range" id="paMs" min="0" max="200" step="1" value="6"><output id="paMsV"></output></div>
-          <p>The rise of the pedal-action sample — soften the knock or sharpen it. Its long reverberant tail is
-             set under <b>Mechanics → pedal reverb</b>, not here: that length is the room ringing, not a shape.</p>
-        </div>
         <div class="env wide">
           <h3>Release level against how long the key was held<span id="hoPreset"></span></h3>
           <canvas id="hoCanvas" height="220"></canvas>
@@ -359,9 +352,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>una corda</label><input type="range" id="una" min="0" max="1" step="0.01" value="0"><output id="unaV"></output></div>
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
       <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
-      <div class="row"><label>pedal action</label><input type="range" id="pedNoise" min="0" max="2" step="0.01" value="0.8"><output id="pedNoiseV"></output></div>
-      <div class="row"><label>pedal reverb tail</label><input type="range" id="pedTail" min="0.3" max="10" step="0.1" value="5"><output id="pedTailV"></output></div>
-      <div class="row"><label>pedal reverb level</label><input type="range" id="pedWet" min="0" max="2" step="0.01" value="0.6"><output id="pedWetV"></output></div>
       <div class="row"><label>release start trim</label><input type="range" id="relTrim" min="0" max="200" step="1" value="0"><output id="relTrimV"></output></div>
       <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
       <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
@@ -383,9 +373,10 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         release and damper sample; <b>round-robin</b> adds a random few ms on top of that per play, so the same
         key let go twice does not replay the identical file and machine-gun. <b>Release delay</b> holds the
         note a millisecond past the key-up so its damper falls in step with the release sample, not a hair
-        ahead of it. <b>Pedal reverb</b> gives the pedal-action sample its own several-second tail — the whole
-        undamped frame ringing, far longer than the room — with its rise shaped by the <b>Pedal attack</b>
-        curve in the Envelopes panel.</div>
+        ahead of it. There is <b>no pedal-action sample</b>: Salamander's two pedal recordings are a mechanism
+        being worked, with a room and a frame ringing in them that are not this room or this frame, and what
+        they stand in for — the whole undamped frame lighting up as the pedal goes down — is something this
+        engine does properly, string by string, under <b>Sympathetic resonance</b>. They are not loaded.</div>
     </div>
   </div>
 

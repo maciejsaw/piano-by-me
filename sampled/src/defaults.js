@@ -367,15 +367,6 @@ export const DEFAULT_SETTINGS = {
         0.9
       ]
     },
-    "pedalAttack": {
-      "ms": 6,
-      "shape": [
-        0.05,
-        0.75,
-        0.2,
-        0.98
-      ]
-    },
     "hold": {
       "seconds": 8,
       "floorDb": -26,
@@ -538,16 +529,12 @@ export const DEFAULT_SETTINGS = {
     "naMs": "0",
     "raMs": "4",
     "rrMs": "240",
-    "paMs": "6",
     "hoSec": "8",
     "hoFloor": "-26",
     "hoKey": "0",
     "una": "0",
     "relNoise": "0.67",
     "dampNoise": "1.22",
-    "pedNoise": "0",
-    "pedTail": "5",
-    "pedWet": "0.6",
     "relTrim": "99",
     "relRR": "33",
     "relDelay": "1",

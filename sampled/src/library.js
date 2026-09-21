@@ -169,7 +169,7 @@ export class Library {
     return found;
   }
 
-  /** A short auxiliary sample -- key release, damper resonance, pedal. */
+  /** A short auxiliary sample -- key release or damper resonance. */
   aux(desc, k, priority = 1) { return desc ? this.want(desc.file, k, priority) : null; }
 
   /**
@@ -199,7 +199,7 @@ export class Library {
 
   // ------------------------------------------------------------------ warm --
   /**
-   * Every key-release, damper-release and pedal sample, as one list.
+   * Every key-release and damper-release sample, as one list.
    *
    * These go first in the warm order and it matters more than their size
    * suggests. They are fetched on demand otherwise, and a fetch takes longer
@@ -215,7 +215,8 @@ export class Library {
       if (n.release) out.push({ file: n.release.file, k: `r${m}` });
       for (const [variant, d] of Object.entries(n.damper ?? {})) out.push({ file: d.file, k: `h${m}${variant}` });
     }
-    for (const d of [...(this.m.pedal?.down ?? []), ...(this.m.pedal?.up ?? [])]) out.push({ file: d.file, k: `p${d.file}` });
+    // The pedal-action recordings are deliberately not here and never
+    // fetched: the engine has no pedal sample. See setPedal().
     return out;
   }
 

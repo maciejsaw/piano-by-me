@@ -16,7 +16,7 @@ npm start                 # -> http://localhost:8080/sampled/
 ```
 
 **The rendered library is committed**, all 1704 files of it — 88 keys x 16
-velocity layers, plus 296 release, damper and pedal samples, 183 MB of Opus.
+velocity layers, plus 292 release and damper samples, 183 MB of Opus.
 Nothing has to be built or downloaded to play it.
 
 To rebuild it from the recordings, which is only needed to change how it is
@@ -262,7 +262,7 @@ cannot tell that from a dud key:
 
 | pinned | size | why |
 |---|---|---|
-| all 296 release, damper and pedal samples | 134 MB | wanted on every key lift, and their absence is silent. The browser test caught exactly this: the first time any key was let go, nothing happened, and the fetch it queued arrived far too late to be heard. |
+| all 292 release and damper samples | 134 MB | wanted on every key lift, and their absence is silent. The browser test caught exactly this: the first time any key was let go, nothing happened, and the fetch it queued arrived far too late to be heard. |
 | the softest layer of every key | 190 MB | the floor. The *softest*, because those are the shortest files — a mezzo-forte layer for all 88 keys is 383 MB, most of the budget spent on something that is almost never the thing actually playing. |
 
 Two more consequences the tests forced out. A note-on for a key with nothing
@@ -564,9 +564,19 @@ and is never persisted.
 
 ### Mechanics
 
-Key-release noise (all 88 recorded separately), damper-release string resonance
-in Salamander's three variants picked by velocity, and pedal action, all on their
-own bus — mechanical noise does not belong to a key's place on the soundboard.
+Key-release noise (all 88 recorded separately) and damper-release string
+resonance in Salamander's three variants picked by velocity, on their own bus —
+mechanical noise does not belong to a key's place on the soundboard.
+
+**There is no pedal-action sample, by choice.** Salamander records the pedal
+twice down and twice up, and those four files are not built, not shipped and
+not loaded. They are a mechanism being worked: the same recording however the
+pedal is used, with a room and a frame ringing in it that are not this room or
+this frame. What they stand in for — the whole undamped frame lighting up when
+the pedal goes down, and going on ringing after it lifts — is something this
+engine does properly and per string, through the resonance accumulator and the
+soundboard reverb. Playing a recording of it on top was two answers to the same
+question, and the honest one is already there.
 
 **At Salamander's own levels, which are not the levels in the files.** The
 key-release recordings sit at full scale — `rel40.wav` peaks within 2 dB of a

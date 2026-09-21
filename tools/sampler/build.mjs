@@ -4,7 +4,7 @@
 //
 // In:  thirty recordings of a Yamaha C5, every third semitone, sixteen
 //      velocity layers each, plus key-release noise, damper-release string
-//      resonance and pedal action.
+//      resonance.
 // Out: one dedicated sample per key per layer -- 88 x 16 rather than 30 x 16 --
 //      repitched with the body response held still, silence stripped from the
 //      front, tails cut at the noise floor, peak-normalised, Opus-encoded, and
@@ -36,8 +36,7 @@ const HIVEL = [26, 34, 36, 43, 46, 50, 56, 64, 72, 80, 88, 96, 104, 112, 120, 12
 //   rel*      <group> trigger=release pitch_keytrack=0 volume=-37 rt_decay=2
 //   harmL/S   <group> trigger=release volume=-4 rt_decay=6..9
 //   harmV3    <group> trigger=release rt_decay=2
-//   pedalD/U  <group> volume=-20 / -19
-const MIX_DB = { release: -37, damperL: -4, damperS: -4, damperV: 0, pedalDown: -20, pedalUp: -19 };
+const MIX_DB = { release: -37, damperL: -4, damperS: -4, damperV: 0 };
 
 // The top twenty keys of a grand have no dampers: they ring until they stop.
 // Salamander's SFZ puts the break at key 89, and so do we.
@@ -92,7 +91,7 @@ function usage() {
                     none     exact equal-tempered ratios from each root
   --only A,B      build only these target keys, for trying things out
   --no-correct    skip the body correction -- plain resampling, for comparison
-  --no-extras     notes only: no release, damper or pedal samples
+  --no-extras     notes only: no release or damper samples
 `);
 }
 
@@ -179,10 +178,12 @@ async function main() {
       const file = join(o.src, `rel${m - 20}.wav`);
       if (existsSync(file)) jobs.push({ kind: 'release', id: `rel${m - 20}`, midi: m, file, name: `r${m}${EXT[o.format]}`, capS: 3 });
     }
-    for (const id of ['pedalD1', 'pedalD2', 'pedalU1', 'pedalU2']) {
-      const file = join(o.src, `${id}.wav`);
-      if (existsSync(file)) jobs.push({ kind: 'pedal', id, file, name: `p-${id}${EXT[o.format]}`, capS: 3 });
-    }
+    // Salamander's pedalD/pedalU recordings are deliberately NOT built. They
+    // are a mechanism being worked -- two files, whichever way you use the
+    // pedal, carrying a room and a frame that are not the ones this engine
+    // renders -- and the thing they stand in for, the undamped frame lighting
+    // up under the pedal, is modelled properly by the resonance accumulator
+    // and the soundboard reverb instead.
   }
 
   console.log(`  source   ${o.src}`);
@@ -245,11 +246,6 @@ async function main() {
       need(r.midi).release = { file: r.file, gain: r.gain, dur: r.dur };
     }
   }
-  const pedal = { down: [], up: [] };
-  for (const r of results.filter((x) => x.kind === 'pedal')) {
-    (r.id.includes('D') ? pedal.down : pedal.up).push({ file: r.file, gain: r.gain, dur: r.dur });
-  }
-
   let bytes = 0, count = 0;
   for (const f of readdirSync(o.out)) if (f !== 'manifest.json') { bytes += statSync(join(o.out, f)).size; count++; }
 
@@ -270,7 +266,7 @@ async function main() {
     // Every sample was normalised to -1 dBFS; `gain` on each entry puts the
     // real level back. Nothing downstream should ever ignore it.
     normalisedToDbfs: -3,
-    notes, pedal,
+    notes,
   };
   writeFileSync(join(o.out, 'manifest.json'), JSON.stringify(manifest));
 

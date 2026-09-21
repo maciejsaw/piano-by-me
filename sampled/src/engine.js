@@ -89,20 +89,14 @@ export class Engine {
     this.noise.connect(this.noiseSolo);
     this.noiseSolo.connect(this.dry); this.noiseSolo.connect(this.send);
 
-    // A dedicated, long reverb JUST for the pedal action. The pedal thud on a
-    // real grand sets the whole undamped frame ringing, which lasts far longer
-    // than the room's own tail -- so the pedal sample gets its own convolver
-    // with a several-second impulse, on top of the short recording, to give it
-    // that length. Its own wet gain, so it can be dialled in without touching
-    // the room the notes sit in.
-    this.pedalConv = ctx.createConvolver();
-    this.pedalConv.normalize = false;
-    this.pedalTail = ctx.createGain();
-    this.pedalTail.gain.value = 0.6;      // the pedal reverb's wet level
-    this.pedalSolo = ctx.createGain();
-    this.pedalConv.connect(this.pedalTail).connect(this.pedalSolo).connect(this.master);
-    this.pedalTailSec = 5;                 // rt60 of that reverb, in seconds
-    this.rebuildPedalVerb();
+    // There is no pedal-action sample and no reverb for one. Salamander's
+    // pedal recordings are a mechanism being worked, not an instrument
+    // responding: the same two files however you use the pedal, with a room
+    // and a frame ringing in them that are not this room or this frame. What
+    // they were standing in for -- the whole undamped frame lighting up when
+    // the pedal goes down -- is something this engine already does properly,
+    // string by string, through the resonance accumulator and the soundboard
+    // reverb. Playing a recording of it on top was two answers to one question.
 
     // The soundboard. Sympathetic resonance is fed continuously into a long
     // reverb, so that when the pedal lifts and the dampers cut the strings, the
@@ -123,7 +117,7 @@ export class Engine {
     // key-release recordings sit at full scale in the file and the SFZ takes
     // 37 dB back off; playing them at face value makes every key lift sound
     // like a dropped hammer, which is exactly what it did before this.
-    this.mix = lib.m.mixDb ?? { release: -37, damperL: -4, damperS: -4, damperV: 0, pedalDown: -20, pedalUp: -19 };
+    this.mix = lib.m.mixDb ?? { release: -37, damperL: -4, damperS: -4, damperV: 0 };
     this.db = (k) => Math.pow(10, (this.mix[k] ?? 0) / 20);
 
     this.oneShots = new Set();
@@ -159,7 +153,6 @@ export class Engine {
     // on the key-up, so only the note's own stop is nudged.
     this.releaseDelay = 1;
     this.damperNoise = 1;
-    this.pedalNoise = 0.8;
     this.held = new Set();
 
     // The hand-drawn velocity curves, shared with the editors in the UI: one
@@ -237,15 +230,6 @@ export class Engine {
   }
 
   /** The pedal's own long reverb: the room's geometry, a much longer decay. */
-  rebuildPedalVerb() {
-    const { buf } = renderIR(this.ctx,
-      { ...this.roomOpts, rt60: Math.max(0.3, this.pedalTailSec), tailDampHz: 2600 },
-      this.irRef ?? undefined);
-    this.pedalConv.buffer = buf;
-  }
-
-  setPedalTail(sec) { this.pedalTailSec = sec; this.rebuildPedalVerb(); }
-
   /** The soundboard's own long, dark impulse -- the body, not the room. */
   rebuildSoundboard() {
     const { buf } = renderIR(this.ctx,
@@ -269,7 +253,7 @@ export class Engine {
   /**
    * Solo the sympathetic resonance: mute every direct path -- the struck
    * notes, their release and damper samples, the mechanical noise and the
-   * pedal's own reverb -- and leave the resonance voices and the soundboard
+   * samples -- and leave the resonance voices and the soundboard
    * sounding. It is a monitoring switch for setting this section up by ear,
    * not a setting: nothing persists it, so the instrument always starts unsoloed.
    *
@@ -287,12 +271,11 @@ export class Engine {
     };
     for (const strip of this.strips.values()) ramp(strip.direct);
     ramp(this.noiseSolo);
-    ramp(this.pedalSolo);
   }
 
   /** The last node before the destination -- what a recorder should tap. */
   outputNode() { return this.limiterOn ? this.limiter : this.eq.out; }
-  setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); this.rebuildPedalVerb(); this.rebuildSoundboard(); }
+  setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); this.rebuildSoundboard(); }
 
   /**
    * Where in the buffer to start this note, and how long to wait first.
@@ -571,39 +554,6 @@ export class Engine {
   }
 
   /**
-   * The pedal action, with its own attack curve and a long reverberant tail.
-   *
-   * Unlike a key thud, this drives the whole undamped frame, which rings on for
-   * seconds -- so the short recording is sent both to the ordinary mechanical
-   * bus (dry plus the room) AND to a dedicated several-second reverb, and its
-   * rise is shaped by its own `pedalAttack` curve rather than the release
-   * samples'.
-   */
-  pedalShot(buf, gain, when) {
-    if (!buf || gain <= 1e-4) return;
-    const ctx = this.ctx, now = when ?? ctx.currentTime;
-    const total = buf.duration;
-    const s = ctx.createBufferSource();
-    s.buffer = buf;
-    const g = ctx.createGain();
-    const a = this.env.pedalAttack;
-    const aDur = Math.min(Math.max(0, a.ms) / 1000, total * 0.5);
-    if (aDur > 0.0005) {
-      g.gain.setValueAtTime(1e-5, now);
-      g.gain.setValueCurveAtTime(a.shape.curve(0, gain), now, aDur);
-    } else {
-      g.gain.setValueAtTime(gain, now);
-    }
-    s.connect(g);
-    g.connect(this.noise);        // the direct thud: dry plus the room
-    g.connect(this.pedalConv);    // and its long reverberant tail
-    s.start(now);
-    s.stop(now + total + 0.02);
-    this.oneShots.add(s);
-    s.onended = () => this.oneShots.delete(s);
-  }
-
-  /**
    * The key coming back up: a real, quiet, per-key recorded thud.
    *
    * By default this does NOT fade with how long the key was held, because the
@@ -653,12 +603,6 @@ export class Engine {
     const was = this.pedal;
     const now = when ?? this.ctx.currentTime;
     this.pedal = Math.max(0, Math.min(1, v));
-    if (this.pedalNoise > 0 && (was < UNDAMP) !== (this.pedal < UNDAMP)) {
-      const set = this.pedal >= UNDAMP ? this.lib.m.pedal.down : this.lib.m.pedal.up;
-      const d = set[Math.random() < 0.5 ? 0 : 1] ?? set[0];
-      const buf = this.lib.aux(d, `p${d?.file}`, 3);
-      if (buf) this.pedalShot(buf, d.gain * this.db(this.pedal >= UNDAMP ? 'pedalDown' : 'pedalUp') * this.pedalNoise, now);
-    }
     // Coming off the pedal drops every damper that no key is holding. A whole
     // frame of dampers landing at once is an audible event on a real piano, so
     // the loudest few get their damper sound -- but only a few, because twenty
