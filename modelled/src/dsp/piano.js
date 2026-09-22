@@ -20,7 +20,7 @@ import { buildScale, DEFAULT_SCALE } from './scale.js';
 import { Offsets, NO_OFFSETS } from './offsets.js';
 import { compileString } from './design.js';
 import { WaveguideString } from './string.js';
-import { makeHammerPulse, makeKnock } from './hammer.js';
+import { makeHammerPulse, makeKnock, partialPower } from './hammer.js';
 import { Soundboard } from './soundboard.js';
 import { Body } from './body.js';
 import { Room } from './room.js';
@@ -30,9 +30,10 @@ import { Room } from './room.js';
 const softclip = Math.tanh;
 
 const ZONES = 16;             // soundboard regions across the compass
-// Bridge drive below which an idle undamped string is not worth ticking.
-// About 60 dB under what a note played in that zone puts there.
-const SYMPATHY_FLOOR = 1e-6;
+// An idle undamped string is ticked only while its zone's drive is within
+// this ratio (-60 dB) of the loudest zone's, and above an absolute floor.
+const SYMPATHY_REL = 1e-3;
+const SYMPATHY_FLOOR = 1e-7;
 
 // The parameters that are baked into a string's loop filters, and so need a
 // recompile when they move. Everything else is read at the strike or sits
@@ -287,11 +288,12 @@ export class Piano {
    */
   refreshActive() {
     const zl = this.zoneLevel;
+    let floor = SYMPATHY_FLOOR;
+    if (zl) for (let z = 0; z < ZONES; z++) floor = Math.max(floor, zl[z] * SYMPATHY_REL);
     this.active = this.strings.filter((s) => {
-      if (s.active || s.damperClosed < 0.999) return true;
-      if (s.damperTarget >= 0.5) return false;
-      if (s.note.hasDamper) return true;
-      return s.energy > 1e-12 || (zl && zl[s.zone] > SYMPATHY_FLOOR);
+      if (s.active) return true;
+      if (s.note.hasDamper) return s.damperClosed < 0.999 || s.damperTarget < 0.5;
+      return s.energy > 1e-12 || (zl && zl[s.zone] > floor);
     });
     zl && zl.fill(0);
     const seen = new Set();
@@ -299,10 +301,25 @@ export class Piano {
     this.activeNotes = [...seen];
   }
 
-  noteOn(midi, velocity) {
+  /**
+   * Strike a key. `velocity` is 0..1 and sets the hammer's speed, as always.
+   *
+   * `shape` is the velocity curves' say in it, both optional:
+   *   hardness  added to the note's felt hardness for this strike only -- the
+   *             same exponent the voicing curve uses, so +0.1 here is +0.1 there
+   *   levelDb   where this strike should land, in dB below a full-velocity
+   *             strike of the same note. The hammer still hits at `velocity`,
+   *             so the timbre is the one that speed makes; only the level is
+   *             moved, by comparing this blow's power at the string's partials
+   *             with a full-velocity blow's through the same felt.
+   */
+  noteOn(midi, velocity, shape = {}) {
     const note = this.notes[midi - 21];
     if (!note) return;
     note.held = true;
+    const dh = shape.hardness ?? 0;
+    const massK = Math.pow(10, -0.35 * dh), feltK = Math.pow(10, 2 * dh);
+    let level = null;       // pulse scale, worked out on the first string struck
     for (const s of note.voices) {
       s.setDamper(false);
       // Una corda shifts the action so the hammer misses the outer string, which
@@ -315,18 +332,27 @@ export class Piano {
       // on them with slightly different force.
       const st = s.tuning;
       const speed = 2 * (st.spec?.lengthM ?? note.spec.lengthM) * s.coeffs.f0;
-      const pulse = makeHammerPulse(this.fs, s.coeffs.f0, velocity * (st.hammerForceScale ?? 1), {
+      const hammer = {
         Z: note.Z,
         strings: note.count,
-        mass: note.hammerMass * (st.hammerMassScale ?? 1),
-        K: note.feltK * this.feltKScale,
+        mass: note.hammerMass * massK * (st.hammerMassScale ?? 1),
+        K: note.feltK * feltK * this.feltKScale,
         p: this.feltP ?? note.feltP,
         feltEps: this.feltEps ?? note.feltEps,
         feltTauUs: this.feltTauUs,
         widthSamples: this.hammerWidth * (note.hammerWidthM ?? 0) * this.fs / Math.max(speed, 1),
         strikeDelay: s.coeffs.strikeDelay,
         gain: note.gain * (st.drive ?? 1),
-      });
+      };
+      const pulse = makeHammerPulse(this.fs, s.coeffs.f0, velocity * (st.hammerForceScale ?? 1), hammer);
+      if (shape.levelDb != null) {
+        if (level === null) {
+          const ref = partialPower(makeHammerPulse(this.fs, s.coeffs.f0, st.hammerForceScale ?? 1, hammer), s.coeffs.f0, this.fs);
+          const got = partialPower(pulse, s.coeffs.f0, this.fs);
+          level = got > 0 ? Math.pow(10, shape.levelDb / 20) * Math.sqrt(ref / got) : 0;
+        }
+        for (let i = 0; i < pulse.length; i++) pulse[i] *= level;
+      }
       // A fresh strike re-arms the detuning; the pull starts over from it.
       s.lock = 1;
       const skew = Math.round(this.fs * s.tuning.contactOffsetUs * this.strikeOffsetScale * 1e-6);

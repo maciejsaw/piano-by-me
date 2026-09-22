@@ -49,6 +49,8 @@ the silent hold and it stops.
 | **Dampers** | lossy terminations that ramp, not gates; the top of the compass (above E6) has none, as on the C5 |
 | **Bridge** | 16 soundboard zones with a spread kernel, so coupling depends on register |
 | **Pedals** | sustain, una corda (hammer misses the outer string, which then rings sympathetically) |
+| **Velocity** | two drawn curves: volume (dB below a full-velocity strike, normalised by the pulse's power at the string's partials so hammer speed keeps only the timbre) and a per-strike felt-hardness offset |
+| **Output EQ** | the sampled piano's four-band EQ, after the room |
 | **Body** | plate radiation efficiency, case as baffle, enclosed air as analytic box modes from real case dimensions, one lid reflection |
 
 ### Coupling
