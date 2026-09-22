@@ -29,6 +29,13 @@ main>div{display:contents}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
 .panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+.panel h3.sub{font-size:11px;color:var(--ink);font-weight:600;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+.meter{flex:1;position:relative;height:10px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.meter div{position:absolute;top:0;bottom:0;left:0}
+.meter .lvl{background:var(--accent2);opacity:.7}
+.meter .gr{left:auto;right:0;background:#e08a6a}
+.exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
+.exp-h{font-size:11px;color:var(--dim);margin:0 0 6px}
 #kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
 #kbInner{position:relative;height:150px}
 .wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
@@ -249,18 +256,74 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     </div>
 
     <div class="panel" style="order:8">
-      <h2>Room</h2>
-      <div class="row"><label>room level</label><input type="range" id="wet" min="0" max="1.2" step="0.01" value="0.34"><output id="wetV"></output></div>
-      <div class="row"><label>size</label><input type="range" id="size" min="0.4" max="2" step="0.01" value="1"><output id="sizeV"></output></div>
-      <div class="row"><label>reverb time</label><input type="range" id="rt60" min="0.3" max="4" step="0.01" value="1.35"><output id="rt60V"></output></div>
-      <div class="row"><label>absorption</label><input type="range" id="absorb" min="0.05" max="0.6" step="0.01" value="0.26"><output id="absorbV"></output></div>
-      <div class="row"><label>where you stand</label><input type="range" id="dist" min="0.35" max="0.95" step="0.01" value="0.72"><output id="distV"></output></div>
-      <div class="hint">Not a captured impulse response — an image-source model of a shoebox for the early
-        reflections (real path lengths off real surfaces, stereo from the geometry) and a dense,
-        frequency-damped noise field for the diffuse tail, rendered to an impulse and convolved. The tail is
-        noise rather than a feedback delay network on purpose: a handful of short delay lines rings like a
-        spring, and noise has no period to ring at. The controls are geometry, because an IR library cannot
-        move you across the room.</div>
+      <h2>Reverb</h2>
+      <div class="row"><label>dry</label><input type="range" id="dry" min="0" max="1.2" step="0.01" value="0.81"><output id="dryV"></output></div>
+      <div class="hint">The one dry path, shared by both reverbs. At zero you hear only the reverbs (and the
+        soundboard, which has its own level under Sympathetic resonance).</div>
+
+      <h3 class="sub">1 · Early reflections — the modelled piano's room</h3>
+      <div class="row"><label>early reflections</label><button id="fdnBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="row"><label>level</label><input type="range" id="fdnWet" min="0" max="1.2" step="0.01" value="0.86"><output id="fdnWetV"></output></div>
+      <div class="exp">
+      <div class="exp-h">Early reflections send expander — peaks in, quiet parts less</div>
+      <div class="row"><label>ratio</label><input type="range" id="bExpRatio" min="1" max="6" step="0.05" value="1.2"><output id="bExpRatioV"></output></div>
+      <div class="row"><label>threshold</label><input type="range" id="bExpThr" min="-70" max="0" step="0.5" value="-8.5"><output id="bExpThrV"></output></div>
+      <div class="row"><label>attack</label><input type="range" id="bExpAtt" min="0.1" max="100" step="0.1" value="2.1"><output id="bExpAttV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="bExpRel" min="10" max="2000" step="5" value="70"><output id="bExpRelV"></output></div>
+      <div class="row"><label>send now</label><div class="meter"><div id="bExpLevel" class="lvl"></div><div id="bExpGr" class="gr"></div></div><output id="bExpGrV"></output></div>
+      <div class="hint">This reverb's own expander, on what it hears, not on what you hear. Below the
+        threshold the send falls away <b>ratio</b> times faster than the note does — at 2:1, a passage 10 dB
+        under the threshold reaches the reverb 20 dB down — so attacks and loud chords fill it and soft
+        playing and the long tails of notes stay drier. Ratio 1 is off. <b>Attack</b> is how fast the send
+        opens when the level rises — short lets a note's front in, longer keeps the hammer out and lets only
+        the bloom in. <b>Release</b> is how fast it closes as the level falls — short cuts the send off with
+        each note's decay, long lets it follow a phrase rather than a note. The meter shows the send level
+        (the bar) and how far it is being pulled down right now (the red part).</div>
+      </div>
+      <div class="row"><label>reflections</label><input type="range" id="fdnEr" min="0" max="2" step="0.01" value="0.8"><output id="fdnErV"></output></div>
+      <div class="row"><label>short tail</label><input type="range" id="fdnTail" min="0" max="2" step="0.01" value="0.12"><output id="fdnTailV"></output></div>
+      <div class="row"><label>room width</label><input type="range" id="fdnW" min="2.5" max="20" step="0.1" value="20"><output id="fdnWV"></output></div>
+      <div class="row"><label>room depth</label><input type="range" id="fdnD" min="2.5" max="30" step="0.1" value="29.1"><output id="fdnDV"></output></div>
+      <div class="row"><label>room height</label><input type="range" id="fdnH" min="2.2" max="12" step="0.1" value="10.8"><output id="fdnHV"></output></div>
+      <div class="row"><label>absorption</label><input type="range" id="fdnAbs" min="0.02" max="0.8" step="0.005" value="0.28"><output id="fdnAbsV"></output></div>
+      <div class="row"><label>predelay</label><input type="range" id="fdnPre" min="0" max="80" step="0.5" value="15"><output id="fdnPreV"></output></div>
+      <div class="row"><label>tail damping</label><input type="range" id="fdnDamp" min="600" max="12000" step="50" value="9250"><output id="fdnDampV"></output></div>
+      <div class="row"><label>listener back</label><input type="range" id="fdnPos" min="0.15" max="0.95" step="0.01" value="0.63"><output id="fdnPosV"></output></div>
+      <div class="hint">The modelled piano's room, run once on an impulse and convolved: image-source early
+        reflections — real paths off real surfaces, the source mirrored in each wall, stereo from the two
+        ears' distances to every image — which is what places the piano in a room. Its own feedback-delay
+        tail is held at 0.3 s and only knits the reflections together; the long tail is the hall's.</div>
+
+      <h3 class="sub">2 · Hall — the long tail</h3>
+      <div class="row"><label>hall</label><button id="roomBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="row"><label>level</label><input type="range" id="wet" min="0" max="1.2" step="0.01" value="0.06"><output id="wetV"></output></div>
+      <div class="exp">
+      <div class="exp-h">Hall send expander — peaks in, quiet parts less</div>
+      <div class="row"><label>ratio</label><input type="range" id="aExpRatio" min="1" max="6" step="0.05" value="1.4"><output id="aExpRatioV"></output></div>
+      <div class="row"><label>threshold</label><input type="range" id="aExpThr" min="-70" max="0" step="0.5" value="-4"><output id="aExpThrV"></output></div>
+      <div class="row"><label>attack</label><input type="range" id="aExpAtt" min="0.1" max="100" step="0.1" value="18.2"><output id="aExpAttV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="aExpRel" min="10" max="2000" step="5" value="180"><output id="aExpRelV"></output></div>
+      <div class="row"><label>send now</label><div class="meter"><div id="aExpLevel" class="lvl"></div><div id="aExpGr" class="gr"></div></div><output id="aExpGrV"></output></div>
+      <div class="hint">The hall's own expander — the same controls as the early reflections' one, set
+        independently, so one can take only the attacks while the other takes everything.</div>
+      </div>
+      <div class="row"><label>impulse</label><button id="hallIrBtn" style="flex:1">synthetic — load an IR file…</button><output></output></div>
+      <input type="file" id="hallIrFile" accept=".wav,.aif,.aiff,.flac,.ogg,.mp3,audio/*" hidden>
+      <div class="row"><label>reverb time</label><input type="range" id="rt60" min="0.5" max="6" step="0.01" value="2.08"><output id="rt60V"></output></div>
+      <div class="row"><label>bass</label><input type="range" id="hallBass" min="0.7" max="2" step="0.01" value="1.25"><output id="hallBassV"></output></div>
+      <div class="row"><label>treble</label><input type="range" id="hallTreble" min="0.2" max="1" step="0.01" value="0.5"><output id="hallTrebleV"></output></div>
+      <div class="row"><label>predelay</label><input type="range" id="hallPre" min="0" max="100" step="0.5" value="26"><output id="hallPreV"></output></div>
+      <div class="row"><label>build-up</label><input type="range" id="hallBuild" min="10" max="300" step="1" value="59"><output id="hallBuildV"></output></div>
+      <div class="hint">A late tail built the way a real one behaves, not a captured IR. <b>Reverb time</b> is
+        the RT60 of the mids; every frequency then decays at its own rate — <b>bass</b> and <b>treble</b> are
+        the RT at 125 Hz and 8 kHz as multiples of it, and the air takes more above that — which is what
+        stops a synthetic tail sounding like hiss fading out. The tail starts sparse, separate arrivals
+        thickening into a continuum over the <b>build-up</b>, and rises over the same time, rather than
+        switching on as a wash. <b>Impulse</b> loads a captured hall instead (any audio file the browser can
+        decode; kept in this browser, levelled to match); the shaping controls then apply only to the
+        synthetic hall. Click it again to go back.</div>
+      <div class="hint">Both reverbs hang off the one send, and each has its own level, expander and switch.
+        A reverb that is off stops convolving.</div>
     </div>
 
     <div class="panel" style="order:5">

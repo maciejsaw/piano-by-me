@@ -239,7 +239,11 @@ sampled/src/
   resonance.js   sympathetic resonance
   bezier.js      the envelope shapes, and their editor
   envelopes.js   the five envelopes and the hold-time law
-  room.js        the modelled room, rendered to an impulse
+  fdn-room.js    reverb 1: the modelled piano's room, early reflections
+  hall.js        reverb 2: the hall's late tail, shaped per frequency
+  ir-store.js    a loaded hall IR, kept in IndexedDB
+  room.js        the soundboard's long, dark impulse
+  expander-worklet.js  the downward expander on each reverb send
   curves.js      per-key parameters and the drawable editor
   keyboard.js    the keyboard widget
   main.js        MIDI, UI, wiring
@@ -472,29 +476,59 @@ running, and the bypass is a real bypass rather than a flat curve.
 For a single note that is wrong, the per-key **Level trim** is the right
 control; this one is for the instrument.
 
-### The room
+### The reverbs
 
-Not a captured impulse response: this runs the **same room the modelled variant
-uses** — `src/dsp/room.js`, an image-source model of a shoebox for the early
-reflections and an eight-line feedback delay network for the tail — against an
-impulse for a couple of seconds, and hands the result to a `ConvolverNode`.
+Two, on one send, in the order sound meets them, each with its own level,
+expander and on/off switch. The dry level is one slider above both, since there
+is only one dry path. Both are rendered to an impulse response and handed to a
+`ConvolverNode`, so the convolution runs in native code at a cost that does not
+depend on how the response was made.
 
-That is the right division of labour in a browser. The room's parameters are
-geometry, and geometry is exactly what a captured IR cannot give back: moving
-the listener in an IR library means finding another IR. Here it means a redraw
-costing a few milliseconds, after which the convolution runs in native code at a
-cost that does not depend on how complicated the room is.
+1. **Early reflections** (`fdn-room.js`): the **same room the modelled variant
+   uses** — `src/dsp/room.js`, image-source reflections off a shoebox, stereo
+   from the two ears' distances to every image — run against an impulse. These
+   are what tell the ear the size of the room and where the piano sits in it,
+   and they have to be discrete: a reverb that starts with a wash gives a piano
+   the distant sound of a plate. Its own feedback-delay tail is fixed at an RT60
+   of 0.3 s and only knits the reflections together.
+2. **Hall** (`hall.js`): the long late tail, and no reflections of its own. It is
+   noise shaped the way a real hall's tail behaves:
+   - *every frequency decays at its own rate*: the noise goes through a
+     short-time Fourier transform and each bin is scaled by its own
+     exponential, from a mid RT60 with **bass** and **treble** multiples at
+     125 Hz and 8 kHz, and more air loss above. An octave filterbank was tried
+     first and measured wrong — the slow low bands' skirts carried the treble on
+     (a 1.1 s target at 8 kHz came out at 1.6 s); per bin it measures 1.28 s,
+     most of that the measuring filter's own leakage.
+   - *echo density grows*: the excitation starts as sparse velvet noise and
+     thickens into Gaussian noise over the **build-up**, and the level rises
+     over the same time, instead of a wash switching on.
+   - *the two ears are uncorrelated*, as they are in a diffuse field.
 
-The early part earns its keep. A reverb that starts with a wash gives a piano
-the distant, characterless sound of a plate; the first few dozen arrivals are
-what tell the ear the size and shape of the room, and those come from real path
-lengths off real surfaces, with the two ears at different distances from every
-one of them.
+   **Impulse** loads a captured IR file instead. The file stays in this browser
+   (IndexedDB) and is levelled to the synthetic hall's energy, so switching
+   does not jump in level. No captured hall is bundled: the good free ones —
+   Aalto's Pori concert hall set, Queen Mary's Isophonics set — are licensed
+   non-commercial only, and OpenAIR is offline, so the choice of IR is left
+   to the player rather than committed here.
 
-The IR is normalised against the energy of the *first* room rendered, not its
-own, so opening the room up genuinely gives you more reverb. Normalising each IR
-to itself — which is what `ConvolverNode.normalize` does — would take that
-straight back out and leave the geometry controls affecting only the colour.
+A reverb that is switched off has its gate ramped shut and its send cut, so it
+stops convolving rather than convolving into a closed gain.
+
+Each reverb is fed through its own **send expander** — a downward expander on
+what that reverb hears, never on the dry sound — with its own ratio, threshold,
+attack and release, so one can take only the attacks while the other takes
+everything. Below its threshold the send falls away `ratio` times faster than
+the note, so attacks and loud chords fill the space while soft playing and the
+long decays of notes stay drier, instead of every note's whole tail piling into
+a wash. Ratio 1 is off. It is stereo-linked peak detection in an AudioWorklet;
+the panel shows the send level and the live reduction so the threshold can be
+set against real playing.
+
+Each IR is normalised against a fixed reference energy, not its own, so a
+bigger room or a longer hall genuinely gives you more reverb. Normalising each
+IR to itself — which is what `ConvolverNode.normalize` does — would take that
+straight back out and leave the controls affecting only the colour.
 
 ### Sympathetic resonance
 
