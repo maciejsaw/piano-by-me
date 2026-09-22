@@ -107,7 +107,9 @@ export function plan(curves, lib, midi, vel, extraBias = 0, velCurve = null, vel
   const target = base + curves.at('trim', midi);
   const already = rel[got.layer] ?? 0;
   return {
-    buf: got.buf,
+    key: got.key,
+    frames: got.frames,
+    dur: got.entry.dur,
     layer: got.layer,
     exact: got.layer === want,
     // Where this recording's attack front sits, in ms into the file (written

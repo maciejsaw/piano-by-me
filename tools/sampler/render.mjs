@@ -101,8 +101,8 @@ const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
     if (entry) { wanted.add(lib.key(e.note, layer)); lib.want(entry.file, lib.key(e.note, layer), 20); }
   }
   const deadline = Date.now() + 120000;
-  while (Date.now() < deadline && [...wanted].some((k) => !lib.cache.has(k))) await wait(200);
-  const missing = [...wanted].filter((k) => !lib.cache.has(k)).length;
+  while (Date.now() < deadline && [...wanted].some((k) => !lib.has(k))) await wait(200);
+  const missing = [...wanted].filter((k) => !lib.has(k)).length;
 
   // --- the recorder -------------------------------------------------------
   await ctx.audioWorklet.addModule('/tools/sampler/recorder-worklet.js');
@@ -153,8 +153,6 @@ const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
         else if (e.type === 'noteOff') engine.noteOff(e.note, e.vel || 64, at);
         else if (e.type === 'cc') {
           if (e.cc === 64) engine.setPedal(e.value / 127, at);
-          else if (e.cc === 66) engine.setSostenuto(e.value >= 64);
-          else if (e.cc === 67) engine.setUnaCorda(e.value / 127);
         }
       }
       if (now > seconds + tail) { clearInterval(timer); resolve(); }

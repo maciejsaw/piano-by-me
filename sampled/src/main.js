@@ -31,22 +31,38 @@ const down = new Set(), silent = new Set();
 const layerHits = new Map();
 
 // ------------------------------------------------------------------ start --
-async function start() {
+async function start(install = false) {
   $('startBtn').disabled = true;
+  $('installChk').disabled = true;
+  $('uninstallBtn').disabled = true;
   $('startBtn').textContent = 'loading…';
   ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
   await ctx.resume();
 
-  lib = new Library(ctx, './samples', { budgetMb: +$('budget').value });
+  lib = new Library(ctx, './samples');
   try { await lib.loadManifest(); }
   catch (e) {
     $('startBtn').disabled = false;
+    $('installChk').disabled = false;
+    $('uninstallBtn').disabled = false;
     $('startBtn').textContent = 'Start audio';
     $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b><br>
       Run <code>node tools/sampler/fetch.mjs</code> then <code>node tools/sampler/build.mjs</code>.`;
     return;
   }
   lib.onprogress = updateLoad;
+  // The note samples stream: a worker holds them as Opus and decodes each one
+  // as it plays, into an AudioWorklet voice. See stream.js.
+  await lib.startStreaming();
+  lib.streamer.onerror = (msg) => {
+    lastStreamError = msg;
+    $('installV').textContent = msg;
+    // Without Opus decoding there is no piano at all, so say so out loud.
+    if (/cannot decode/.test(msg)) alert(`Piano Model X: ${msg}`);
+  };
+  // Ticked on the start screen: install first, and bring the player up only
+  // once every sample is on disk -- so it never runs from memory meanwhile.
+  if (install) await runInstall();
 
   engine = new Engine(ctx, lib, curves, envelopes);
   restore();
@@ -58,7 +74,7 @@ async function start() {
   lib.startWarm(LOW, HIGH);
   // Handles for the console and for tools/sampler/browser-test.mjs. Everything
   // the UI can do is a method on one of these.
-  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSostenuto, setUna, setSoloRes, toggleSilent, pickLayer, levelDb, ui: true };
+  window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSoloRes, toggleSilent, pickLayer, levelDb, ui: true };
   $('overlay').style.display = 'none';
   // The resonance tick has to keep running; the painting does not. Offline
   // rendering turns the UI off, because repainting 88 keys every 40 ms is
@@ -176,7 +192,7 @@ function paintLayerMap() {
       const layer = layers[r];
       if (!n.layers?.[layer]) continue;
       const y = (rows - 1 - r) * rh;
-      const resident = lib.cache?.has(lib.key(m, layer));
+      const resident = lib.has(lib.key(m, layer));
       g.fillStyle = resident ? (black ? '#332b19' : '#3e3422') : (black ? '#1d1a12' : '#242019');
       g.fillRect(x + 0.5, y + 0.5, Math.max(1, bw - 1), Math.max(1, rh - 1));
     }
@@ -255,8 +271,6 @@ function onMidi(e) {
     // Continuous, not a switch: a half-pedalled CC 64 is a real technique and
     // most controllers send the whole range.
     if (d1 === 64) setPedal(d2 / 127);
-    if (d1 === 66) setSostenuto(d2 >= 64);
-    if (d1 === 67) setUna(d2 / 127);
     if (d1 === 123) engine.panic();
   }
 }
@@ -275,8 +289,6 @@ function setSoloRes(on) {
   $('resSoloBtn').textContent = on ? 'solo ▮' : 'solo';
 }
 
-function setSostenuto(on) { engine.setSostenuto(on); $('sostBtn').classList.toggle('on', on); }
-function setUna(v) { engine.setUnaCorda(v); $('unaBtn').classList.toggle('on', v >= 0.5); }
 
 // -------------------------------------------------------- computer keyboard --
 const MAP = { z: 0, s: 1, x: 2, d: 3, c: 4, v: 5, g: 6, b: 7, h: 8, n: 9, j: 10, m: 11,
@@ -395,8 +407,6 @@ function buildUI() {
   bind('relRR', (v) => { engine.relRoundRobin = v; }, (v) => '±' + v.toFixed(0) + ' ms');
   bind('relDelay', (v) => { engine.releaseDelay = v; }, (v) => v.toFixed(0) + ' ms');
   bind('ped', setPedal, (v) => (v * 100).toFixed(0) + '%');
-  bind('una', setUna, (v) => (v * 100).toFixed(0) + '%');
-  bind('budget', (v) => { if (lib) lib.budget = v * 1048576; }, (v) => v.toFixed(0) + ' MB');
 
   const envMs = (id, env) => bind(id, (v) => { env.ms = v; save(); }, (v) => v.toFixed(0) + ' ms');
   envMs('naMs', envelopes.noteAttack);
@@ -439,8 +449,6 @@ function buildUI() {
   // from collectSettings(), so it never survives a reload or an export.
   $('resSoloBtn').onclick = () => setSoloRes(!engine.soloRes);
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
-  $('sostBtn').onclick = () => setSostenuto(!engine.sostenuto.size);
-  $('unaBtn').onclick = () => setUna(engine.unaCorda >= 0.5 ? 0 : 1);
   $('panicBtn').onclick = () => {
     engine.panic(); down.clear(); silent.clear();
     for (let m = LOW; m <= HIGH; m++) paint(m);
@@ -777,9 +785,128 @@ function updateLoad() {
   $('statKeys').textContent = `${lib.keysReady()}/88`;
   $('statMem').textContent = `${(lib.bytes / 1048576).toFixed(0)} MB`;
   $('loadBar').style.width = `${Math.min(100, lib.loaded / total * 100)}%`;
+  const s = lib.streamer;
+  if (s) {
+    if (!/cannot|stopped/.test($('installV').textContent)) {
+      $('installV').textContent = `${s.installed}/${total} on disk${s.underruns ? ` · ${s.underruns} underruns` : ''}`;
+    }
+  }
 }
 
-$('startBtn').onclick = () => start().catch((e) => {
+/**
+ * The install, full screen, before anything plays.
+ *
+ * Resolves when every sample is on disk, or when the player chooses to skip
+ * the rest (what is done stays done, and the rest plays from memory).
+ */
+let lastStreamError = '';
+function runInstall() {
+  const s = lib.streamer, total = lib.noteTotal;
+  $('startView').hidden = true;
+  $('installView').hidden = false;
+  lastStreamError = '';
+  lib.install();
+  return new Promise((resolve) => {
+    let seen = false, t0 = 0, n0 = 0;
+    const finish = () => { clearInterval(timer); resolve(); };
+    const fmt = (sec) => sec < 60 ? `${Math.max(1, Math.round(sec))} s` : `${Math.round(sec / 60)} min`;
+    const tick = () => {
+      const done = Math.min(total, s.installed);
+      $('instFill').style.width = `${(done / total * 100).toFixed(1)}%`;
+      if (done >= total) { $('instStat').textContent = 'done'; finish(); return; }
+      if (s.installing && !seen) { seen = true; t0 = performance.now(); n0 = done; }
+      const stopped = (seen && !s.installing) || (!s.installing && lastStreamError);
+      if (stopped) {
+        $('instStat').textContent = `${done} of ${total} samples on disk. `
+          + (lastStreamError || `${total - done} could not be installed.`);
+        $('instRetry').hidden = false;
+        $('instSkip').textContent = 'Play without finishing';
+        return;
+      }
+      let eta = '';
+      const el = (performance.now() - t0) / 1000;
+      if (seen && el > 3 && done > n0) eta = ` · about ${fmt((total - done) / ((done - n0) / el))} left`;
+      $('instStat').textContent = `${done} of ${total} samples · ${(done / total * 100).toFixed(0)}%${eta}`;
+    };
+    const timer = setInterval(tick, 250);
+    tick();
+    $('instSkip').onclick = () => { s.stopInstall(); finish(); };
+    $('instRetry').onclick = () => {
+      seen = false; lastStreamError = '';
+      $('instRetry').hidden = true; $('instSkip').textContent = 'Skip and play now';
+      lib.install();
+    };
+  });
+}
+
+const startFailed = (e) => {
+  $('startView').hidden = false; $('installView').hidden = true;
   $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b>`;
   $('startBtn').disabled = false; $('startBtn').textContent = 'Start audio';
-});
+  $('installChk').disabled = false; $('uninstallBtn').disabled = false;
+};
+// The box is only honoured while it is showing: hidden means already
+// installed, or nowhere to put it.
+$('startBtn').onclick = () => start(!$('installOffer').hidden && $('installChk').checked).catch(startFailed);
+
+/**
+ * The disk install, on the start screen: a box (ticked by default) while it is
+ * not complete, and an uninstall button while anything is on disk. What is on
+ * disk is read straight from the install's own files (stream-worker.js keeps
+ * them), so this is right even after the browser has cleared site data.
+ */
+async function pcmDirs() {
+  const root = await navigator.storage.getDirectory();
+  const out = [];
+  for await (const [name, h] of root.entries()) {
+    if (name.startsWith('piano-pcm-') && h.kind === 'directory') out.push([name, h]);
+  }
+  return { root, dirs: out };
+}
+
+async function offerInstall() {
+  const offer = $('installOffer'), un = $('uninstallBtn');
+  let total = 0, done = 0, bytes = 0;
+  try {
+    const m = await (await fetch('./samples/manifest.json')).json();
+    for (const n of Object.values(m.notes)) total += Object.keys(n.layers).length;
+  } catch { offer.hidden = true; return; }
+  try {
+    for (const [, dir] of (await pcmDirs()).dirs) {
+      const f = await dir.getFileHandle('installed.json').catch(() => null);
+      if (f) done = Math.max(done, JSON.parse(await (await f.getFile()).text()).length);
+      for await (const [, h] of dir.entries()) if (h.kind === 'file') bytes += (await h.getFile()).size;
+    }
+  } catch { offer.hidden = true; un.hidden = true; return; }   // no OPFS: nothing to offer
+
+  const gb = (b) => (b / 1e9).toFixed(1);
+  un.hidden = bytes === 0;
+  un.textContent = `Uninstall samples from disk (${gb(bytes)} GB)`;
+
+  if (done >= total) { offer.hidden = true; return; }
+  // Room for the rest? The whole install is 16-bit stereo at 48 kHz: ~2.6 GB.
+  const full = 2.6e9, need = full * (1 - done / total) + 0.2e9;
+  try {
+    const { quota = Infinity, usage = 0 } = await navigator.storage.estimate();
+    if (quota - usage < need) { offer.hidden = true; return; }
+  } catch { /* no estimate: offer anyway */ }
+  $('installLbl').textContent = done > 0
+    ? `Finish downloading samples to disk for better performance — ${done} of ${total} done, about ${gb(need)} GB more on your disk`
+    : `Download samples to disk for better performance — takes about ${gb(full)} GB on your disk`;
+  offer.hidden = false;
+}
+
+$('uninstallBtn').onclick = async () => {
+  if (!confirm('Remove the piano samples from this browser\'s storage?\n\nNotes will be decoded while you play instead, until you install again.')) return;
+  const un = $('uninstallBtn');
+  un.disabled = true; un.textContent = 'uninstalling…';
+  try {
+    const { root, dirs } = await pcmDirs();
+    for (const [name] of dirs) await root.removeEntry(name, { recursive: true });
+  } catch (e) {
+    alert(`Could not uninstall: ${e.message}\n\nIf the piano is open in another tab, close it and try again.`);
+  }
+  un.disabled = false;
+  await offerInstall();
+};
+offerInstall();

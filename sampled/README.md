@@ -588,10 +588,8 @@ it followed.
 
 The sustain pedal is **continuous, not a switch**: CC 64 is read across its whole
 range, and half-pedalling shortens a note without stopping it, interpolated
-geometrically between the damper time and a free string. Sostenuto (CC 66)
-captures what is held. Una corda (CC 67) drops the level *and* reaches for a
-gentler recording two layers down — the "softer" part is the one a filter cannot
-fake.
+geometrically between the damper time and a free string. It is the only
+pedal: there is no sostenuto or una corda.
 
 A limiter sits on the output as a seatbelt, not a sound: ten fortissimo notes
 under a held pedal measures −3 dBFS RMS with it bypassed, which is a real
