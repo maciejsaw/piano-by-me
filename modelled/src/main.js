@@ -10,6 +10,10 @@ import { derive, noteName } from './dsp/physics.js';
 import { Offsets } from './dsp/offsets.js';
 import { createEditor } from './param-editor.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
+import { volumeMap, hardnessMap, createVelMapEditor } from './velocity.js';
+// The sampled piano's output EQ, unchanged: the same four bands on the same
+// kind of master bus.
+import { Eq, BANDS } from '../../sampled/src/eq.js';
 
 const $ = (id) => document.getElementById(id);
 const LOW = 21, HIGH = 108;
@@ -22,6 +26,15 @@ const down = new Set(), silent = new Set();
 let editor = null;
 // False until the saved session is back, so a half-restored state is never stored.
 let uiReady = false;
+// Velocity curves. They live here, not on the audio thread: a strike is
+// posted with what they say about it, so the audio side never sees a curve.
+const velVolume = volumeMap(), velHardness = hardnessMap();
+let lastVel = null, lastVelAt = 0;
+// The output EQ. `eqView` runs on an offline context from the start so the
+// curve can be drawn and edited before there is any audio; `eqLive` is its
+// twin in the real graph, built when audio starts from whatever eqView holds.
+const eqView = new Eq(new OfflineAudioContext(1, 128, 48000));
+let eqLive = null;
 
 // Flat string index, matching the order Piano builds them in.
 const baseIndex = new Map();
@@ -52,7 +65,10 @@ async function start() {
       $('statLoad').textContent = (m.load * 100).toFixed(0) + '%';
     }
   };
-  node.connect(ctx.destination);
+  eqLive = new Eq(ctx);
+  eqLive.fromJSON(eqView.toJSON());
+  node.connect(eqLive.in);
+  eqLive.out.connect(ctx.destination);
   // Offsets first: they recompile every string, which would undo a per-note
   // edit that went in ahead of them.
   if (!edits.empty) post({ type: 'offsets', state: edits.toJSON() });
@@ -65,7 +81,12 @@ const post = (m) => node && node.port.postMessage(m);
 function noteOn(midi, vel) {
   if (midi < LOW || midi > HIGH) return;
   down.add(midi); paintKey(midi);
-  post({ type: 'noteOn', midi, velocity: vel });
+  const v127 = Math.max(1, Math.min(127, vel * 127));
+  const shape = { hardness: velHardness.at(v127) };
+  if (velVolume.enabled) shape.levelDb = velVolume.at(v127);
+  post({ type: 'noteOn', midi, velocity: vel, shape });
+  lastVel = v127; lastVelAt = performance.now();
+  flashVel();
 }
 function noteOff(midi) {
   down.delete(midi); paintKey(midi);
@@ -446,6 +467,8 @@ function collectSettings() {
     toggles: { body: bodyOn(), room: $('roomBtn').classList.contains('on') },
     offsets: edits.toJSON(),
     notes: noteEdits,
+    eq: eqView.toJSON(),
+    velocity: { volume: velVolume.toJSON(), hardness: velHardness.toJSON() },
   };
 }
 
@@ -466,6 +489,13 @@ function applySettings(o) {
   const t = o.toggles ?? {};
   if (t.body != null && bodyOn() !== t.body) $('bodyBtn').click();
   if (t.room != null && $('roomBtn').classList.contains('on') !== t.room) $('roomBtn').click();
+  // EQ and velocity curves: a file from before they existed goes back to flat.
+  eqView.fromJSON(o.eq ?? { enabled: true, bands: BANDS.map((b) => [b.freq, b.q, b.gain]) });
+  eqLive?.fromJSON(eqView.toJSON());
+  syncEqUi();
+  velVolume.reset(); velVolume.enabled = false; velVolume.fromJSON(o.velocity?.volume);
+  velHardness.reset(); velHardness.fromJSON(o.velocity?.hardness);
+  syncVelUi();
   edits.load(o.offsets ?? {});
   editor.sync(); pushOffsets(edits.toJSON());
   // Notes: rebuild from the curves, then lay the file's edits over them, so a
@@ -515,6 +545,126 @@ document.addEventListener('input', (e) => {
   const el = e.target;
   if (el instanceof HTMLInputElement && el.type === 'range' && el.id && !NOT_SETTINGS.has(el.id)) save();
 });
+
+// --------------------------------------------------------------- velocity -
+const velVolEditor = createVelMapEditor($('velVolCanvas'), velVolume, {
+  grid: [-12, -24, -36, -48, -60], label: (d) => `${d} dB`, zero: 0,
+  markVel: () => (performance.now() - lastVelAt < 900 ? lastVel : null),
+  onChange: () => save(),
+});
+const velHardEditor = createVelMapEditor($('velHardCanvas'), velHardness, {
+  grid: [0.5, -0.5], label: (y) => (y > 0 ? '+' : '') + y.toFixed(1), zero: 0,
+  markVel: () => (performance.now() - lastVelAt < 900 ? lastVel : null),
+  onChange: () => { showHardness(); save(); },
+});
+function showHardness() {
+  const p = velHardness.points;
+  const flat = p.every((q) => Math.abs(q.y) < 1e-3);
+  $('velHardV').textContent = flat ? 'flat — voicing as fitted'
+    : `${fmtH(velHardness.at(1))} at pp … ${fmtH(velHardness.at(127))} at fff`;
+}
+const fmtH = (y) => (y >= 0 ? '+' : '') + y.toFixed(2);
+function syncVelUi() {
+  $('velVolBtn').classList.toggle('on', velVolume.enabled);
+  $('velVolBtn').textContent = velVolume.enabled ? 'on — hand-drawn volume curve' : 'off — level from hammer speed';
+  velVolEditor.draw(); velHardEditor.draw(); showHardness();
+}
+// The last-hit marker fades out on its own, so redraw a little after a strike.
+let velFlashTimer = 0;
+function flashVel() {
+  velVolEditor.draw(); velHardEditor.draw();
+  clearTimeout(velFlashTimer);
+  velFlashTimer = setTimeout(() => { velVolEditor.draw(); velHardEditor.draw(); }, 950);
+}
+$('velVolBtn').onclick = () => { velVolume.enabled = !velVolume.enabled; syncVelUi(); save(); };
+$('velVolReset').onclick = () => { velVolume.reset(); syncVelUi(); save(); };
+$('velHardReset').onclick = () => { velHardness.reset(); syncVelUi(); save(); };
+addEventListener('resize', () => { velVolEditor.draw(); velHardEditor.draw(); drawEq(); });
+
+// --------------------------------------------------------------------- EQ --
+const EQ_FREQS = (() => { const f = new Float32Array(160); for (let i = 0; i < 160; i++) f[i] = 20 * Math.pow(1000, i / 159); return f; })();
+const eqs = () => (eqLive ? [eqView, eqLive] : [eqView]);
+
+function drawEq() {
+  const c = $('eqCanvas'), g = c.getContext('2d');
+  const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
+  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  const yOf = (db) => h / 2 - (db / 18) * (h / 2 - 4);
+  g.strokeStyle = '#2b261d';
+  for (const db of [-12, -6, 6, 12]) { g.beginPath(); g.moveTo(0, yOf(db)); g.lineTo(w, yOf(db)); g.stroke(); }
+  g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+  for (const f of [100, 1000, 10000]) {
+    const x = Math.log(f / 20) / Math.log(1000) * w;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+    g.fillStyle = '#6d6458'; g.textAlign = 'left';
+    g.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 3, h - 3);
+  }
+  g.strokeStyle = '#4a4134'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
+  const resp = eqView.response(EQ_FREQS);
+  g.strokeStyle = eqView.enabled ? '#d9a441' : '#4a4134';
+  g.lineWidth = 2 * devicePixelRatio;
+  g.beginPath();
+  for (let i = 0; i < EQ_FREQS.length; i++) {
+    const x = i / (EQ_FREQS.length - 1) * w;
+    const y = Math.max(1, Math.min(h - 1, yOf(resp[i])));
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke();
+}
+
+const eqRows = [];
+function buildEq() {
+  const root = $('eqBands');
+  root.innerHTML = '';
+  BANDS.forEach((b, i) => {
+    const row = document.createElement('div');
+    const qCtl = b.hasQ ? `<input type="range" class="q" min="0.3" max="4" step="0.05" value="${b.q}" title="Q">` : '';
+    row.innerHTML = `<div class="eqband"><label title="${b.type}">${b.label}</label>
+      <input type="range" class="f" min="${Math.log(b.fMin)}" max="${Math.log(b.fMax)}" step="0.001" value="${Math.log(b.freq)}" title="frequency">
+      <input type="range" class="g" min="-15" max="15" step="0.1" value="${b.gain}" title="gain">
+      ${qCtl}<output></output></div>`;
+    root.appendChild(row);
+    const f = row.querySelector('.f'), gg = row.querySelector('.g'), q = row.querySelector('.q');
+    const show = () => {
+      const hz = Math.exp(+f.value);
+      row.querySelector('output').textContent =
+        `${hz < 1000 ? hz.toFixed(0) : (hz / 1000).toFixed(2) + 'k'} ${(+gg.value >= 0 ? '+' : '')}${(+gg.value).toFixed(1)}`;
+    };
+    const apply = () => {
+      for (const eq of eqs()) {
+        eq.set(i, 'freq', Math.exp(+f.value));
+        eq.set(i, 'gain', +gg.value);
+        if (q) eq.set(i, 'q', +q.value);
+      }
+      show(); drawEq(); save();
+    };
+    f.oninput = gg.oninput = apply;
+    if (q) q.oninput = apply;
+    eqRows.push({ f, g: gg, q, show });
+    show();
+  });
+  $('eqBtn').onclick = () => {
+    const on = !eqView.enabled;
+    for (const eq of eqs()) eq.setEnabled(on);
+    syncEqUi();
+    save();
+  };
+}
+/** Put the band sliders and the bypass button where eqView says. */
+function syncEqUi() {
+  eqView.filters.forEach((flt, i) => {
+    const r = eqRows[i]; if (!r) return;
+    r.f.value = Math.log(flt.frequency.value);
+    r.g.value = flt.gain.value;
+    if (r.q) r.q.value = flt.Q.value;
+    r.show();
+  });
+  $('eqBtn').classList.toggle('on', eqView.enabled);
+  $('eqBtn').textContent = eqView.enabled ? 'enabled' : 'bypassed';
+  drawEq();
+}
+buildEq();
+syncVelUi();
 
 wireMenu();
 // Restore the last session, else the shipped defaults. The editor's old

@@ -61,6 +61,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-hint{color:var(--dim);font-size:10px;margin-top:3px}
 #peBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 #peBar .stat{margin-left:auto}
+/* ---- velocity curves, EQ ---- */
+.velc{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px;cursor:crosshair;touch-action:none}
+#eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
+h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
+.eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
+.eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
+.eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
+.eqband output{flex:0 0 84px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
 #overlay div{text-align:center;max-width:460px}
 #overlay p{color:var(--dim);margin:14px 0}
@@ -120,6 +128,33 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="12.5" step="0.01" value="1.0"><output id="gainV"></output></div>
       <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
       <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Velocity response</h2>
+      <h3>Volume</h3>
+      <div class="row"><label>custom volume curve</label><button id="velVolBtn" style="flex:1">off — level from hammer speed</button><button id="velVolReset">reset</button></div>
+      <canvas id="velVolCanvas" class="velc" height="300"></canvas>
+      <div class="hint" style="margin:0 0 14px">Off, a note is as loud as its hammer speed makes it — the physics.
+        On, it lands where this curve says, in dB below a full-velocity strike of the same key, and the hammer
+        speed only decides the timbre. The default is the physics' own curve, so switching it on changes nothing
+        until you move a point. <b>Click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove;
+        pull the far-left point to the bottom for a true pianissimo. The blue line is the last note you struck.</div>
+      <h3>Hammer hardness</h3>
+      <div class="row"><label>hardness</label><output id="velHardV" style="flex:1;text-align:left"></output><button id="velHardReset">reset</button></div>
+      <canvas id="velHardCanvas" class="velc" height="300"></canvas>
+      <div class="hint">Added to the felt's hardness for each strike, in the same units as the <b>Felt hardness</b>
+        voicing curve below (+0.1 here is +0.1 there). Up is harder felt: a shorter contact, a brighter and
+        louder note. Flat at zero is the voicing as fitted; drawing it up toward the right makes loud playing
+        brighter than hammer speed alone does, down toward the left softens pianissimo.</div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>Output EQ — after everything, including the room</h2>
+      <canvas id="eqCanvas" height="220"></canvas>
+      <div id="eqBands"></div>
+      <div class="row"><label>EQ</label><button id="eqBtn" class="on" style="flex:1">enabled</button><output></output></div>
+      <div class="hint">Shelves at the ends, two bells in the middle: body around 300 Hz where a piano
+        gets boxy, presence around 3 kHz where the hammer lives. The curve is drawn from the filters'
+        own frequency response, so what is on screen is what is running.</div>
     </div>
     <div class="panel" style="margin-top:14px">
       <h2>Case &amp; body — everything downstream of the bridge</h2>

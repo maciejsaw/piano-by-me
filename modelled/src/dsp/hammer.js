@@ -152,6 +152,29 @@ export function makeHammerPulse(fs, f0, velocity, opts = {}) {
 }
 
 /**
+ * How much of a pulse lands on the string's partials: the summed power of its
+ * spectrum at f0, 2 f0, 3 f0 ..., one Goertzel per partial.
+ *
+ * This, not the pulse's total energy, is what tracks how loud the note comes
+ * out. A soft blow in the treble is a contact several times longer than the
+ * string's period, so most of its energy sits below the fundamental and never
+ * becomes sound; total energy overstates such a note by 20-30 dB, the partial
+ * sum by about 5. Capped at `maxPartials` so a bass note costs the same as a
+ * treble one -- the low partials carry the level anyway.
+ */
+export function partialPower(pulse, f0, fs, maxPartials = 48) {
+  let e = 0;
+  const top = Math.min(maxPartials, Math.floor((0.45 * fs) / f0));
+  for (let k = 1; k <= top; k++) {
+    const c = 2 * Math.cos((2 * Math.PI * k * f0) / fs);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < pulse.length; i++) { const s0 = pulse[i] + c * s1 - s2; s2 = s1; s1 = s0; }
+    e += s1 * s1 + s2 * s2 - c * s1 * s2;
+  }
+  return e;
+}
+
+/**
  * Smear the injection over the contact patch -- and let the patch GROW as the
  * felt sinks in.
  *

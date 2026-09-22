@@ -25,7 +25,7 @@ class PianoProcessor extends AudioWorkletProcessor {
   handle(m) {
     const p = this.piano;
     switch (m.type) {
-      case 'noteOn':      p.noteOn(m.midi, m.velocity); break;
+      case 'noteOn':      p.noteOn(m.midi, m.velocity, m.shape); break;
       case 'noteOff':     p.noteOff(m.midi); break;
       case 'sustain':     p.setSustain(m.on); break;
       case 'unaCorda':    p.setUnaCorda(m.on); break;
