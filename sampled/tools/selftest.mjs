@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fs = 48000;
-const body = JSON.parse(readFileSync(join(REPO, 'fitted', 'salamander-body.json'), 'utf8')).curve;
+const body = JSON.parse(readFileSync(join(REPO, 'modelled', 'fitted', 'salamander-body.json'), 'utf8')).curve;
 
 /**
  * The H1 transfer-function estimate between two signals.

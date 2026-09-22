@@ -5,191 +5,42 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Piano Model X</title>
 <style>
-:root{
-  --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
-  --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc;
-  --wound:#b5762f; --plain:#7f8fa6;
-}
+:root{--bg:#12100e;--panel:#1b1815;--line:#3a332a;--ink:#ece5da;--dim:#9a8f80;--accent:#d9a441}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-h1{font-size:14px;margin:0 14px 0 0;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
-button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
-button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
-button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
-select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
-.stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
-main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
-@media(max-width:1000px){main{grid-template-columns:1fr}}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
-.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
-#kb{position:relative;height:150px;user-select:none;overflow-x:auto;white-space:nowrap}
-#kbInner{position:relative;height:150px}
-.wk{position:absolute;top:0;height:150px;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
-.wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
-.wk.dn{background:linear-gradient(#c9a35c,#a9863f)}
-.bk{position:absolute;top:0;height:95px;background:linear-gradient(#3a342c,#15120e);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
-.bk.sel{background:linear-gradient(#7a5e28,#3d2f14)}
-.bk.dn{background:linear-gradient(#b8933f,#6d5522)}
-.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
-.row{display:flex;align-items:center;gap:8px;margin:5px 0}
-.row label{flex:0 0 116px;color:var(--dim);font-size:11px}
-.row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
-.row output{flex:0 0 74px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
-table{width:100%;border-collapse:collapse;font-size:11px}
-td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim)}
-td:last-child{text-align:right;font-variant-numeric:tabular-nums}
-.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700}
-.tag.w{background:var(--wound);color:#1a1409} .tag.p{background:var(--plain);color:#0d1116}
-.strings{display:flex;gap:6px;margin:8px 0}
-.strings button{flex:1;padding:4px;font-size:11px}
-.hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
-kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
-/* ---- parameter editor ---- */
-.pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
-.pe-group:first-child{margin-top:0}
-.pe-row{margin:2px 0}
-.pe-head{display:flex;align-items:center;gap:8px}
-.pe-head label{flex:0 0 150px;color:var(--dim);font-size:11px;cursor:help}
-.pe-slider{flex:1;min-width:90px;accent-color:var(--accent)}
-.pe-out{flex:0 0 220px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums;color:var(--ink)}
-.pe-zoom{padding:2px;font-size:10px;max-width:92px}
-.pe-head button{padding:2px 8px;font-size:10px}
-.pe-canvas-wrap{margin:6px 0 10px 150px}
-.pe-canvas-wrap canvas{background:#1b1815;border:1px solid var(--line);border-radius:4px;width:792px;max-width:100%;height:96px;touch-action:none;cursor:crosshair;display:block}
-.pe-hint{color:var(--dim);font-size:10px;margin-top:3px}
-#peBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-#peBar .stat{margin-left:auto}
-#overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
-#overlay div{text-align:center;max-width:460px}
-#overlay p{color:var(--dim);margin:14px 0}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+main{max-width:760px;width:100%}
+h1{font-size:20px;margin:0 0 4px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);text-align:center}
+.sub{color:var(--dim);text-align:center;margin:0 0 28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;color:inherit;text-decoration:none}
+a.card:hover,a.card:focus-visible{border-color:var(--accent);outline:none}
+a.card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+a.card p{color:var(--dim);margin:0}
+kbd{border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px}
 </style>
 </head>
 <body>
-<div id="overlay"><div>
-  <h1 style="font-size:20px;margin-bottom:6px">Piano Model X</h1>
-  <p>A physically modelled piano: every string is an individual waveguide with its own
-     geometry, tension and losses, and they all meet at a shared bridge — so unison
-     beating and sympathetic resonance happen on their own rather than being effects.</p>
-  <button class="primary" id="startBtn">Start audio</button>
-  <p style="font-size:11px">Connect a MIDI keyboard before or after starting. No MIDI? Play with the
-     computer keyboard (<kbd>z</kbd>…<kbd>m</kbd>, <kbd>q</kbd>…<kbd>u</kbd>) or click the keys.
-     <kbd>space</kbd> is the sustain pedal.</p>
-</div></div>
-
-<header>
-  <h1>Piano Model X</h1>
-  <select id="midiSel"><option>no MIDI</option></select>
-  <button id="sustainBtn">sustain</button>
-  <button id="unaBtn">una corda</button>
-  <button id="panicBtn">panic</button>
-  <span class="stat">strings <b id="statStrings">–</b></span>
-  <span class="stat">ringing <b id="statActive">–</b></span>
-  <span class="stat">dsp load <b id="statLoad">–</b></span>
-</header>
-
 <main>
-  <div>
-    <div class="panel">
-      <h2>Keyboard — click a key to inspect, shift-click to hold silently</h2>
-      <div id="kb"><div id="kbInner"></div></div>
-      <div class="hint">
-        <b>Hear the sympathetic resonance:</b> shift-click <b>C4</b> to hold it silently
-        (its dampers lift but no hammer strikes), then play <b>C3</b> hard and release.
-        C4 keeps ringing — driven entirely through the bridge.
-      </div>
-    </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Instrument</h2>
-      <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2.5" step="0.01" value="1.0"><output id="gainV"></output></div>
-      <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
-      <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
-    </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Case &amp; body — everything downstream of the bridge</h2>
-      <div class="row"><label>body</label><button id="bodyBtn" class="on" style="flex:1">enabled</button><output></output></div>
-      <div class="row"><label>case width</label><input type="range" id="cw" min="0.8" max="2.0" step="0.01" value="1.45"><output id="cwV"></output></div>
-      <div class="row"><label>case length</label><input type="range" id="cl" min="1.0" max="3.0" step="0.01" value="2.00"><output id="clV"></output></div>
-      <div class="row"><label>cavity depth</label><input type="range" id="cd" min="0.08" max="0.60" step="0.005" value="0.26"><output id="cdV"></output></div>
-      <div class="row"><label>cavity amount</label><input type="range" id="cmix" min="0" max="0.6" step="0.005" value="0.18"><output id="cmixV"></output></div>
-      <div class="row"><label>cavity damping</label><input type="range" id="cq" min="4" max="80" step="1" value="26"><output id="cqV"></output></div>
-      <div class="row"><label>lid reflection</label><input type="range" id="lid" min="0" max="0.8" step="0.01" value="0.28"><output id="lidV"></output></div>
-      <div class="hint">The string model stops at the bridge. This is the rest: plate radiation
-        efficiency, the case as a baffle, the enclosed air as real box modes computed from these
-        dimensions, and one lid reflection. Measured against a real grand, a model with no body is
-        about 22&nbsp;dB bass-heavy and treble-shy — the single largest error in the instrument.
-        Because this sits downstream of every coupling path, making it linear costs nothing:
-        sympathetic resonance is unaffected.</div>
-    </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Room — stereo, early reflections and tail kept separate</h2>
-      <div class="row"><label>room</label><button id="roomBtn" class="on" style="flex:1">enabled</button><output></output></div>
-      <div class="row"><label>amount</label><input type="range" id="rMix" min="0" max="0.8" step="0.005" value="0.26"><output id="rMixV"></output></div>
-      <div class="row"><label>early reflections</label><input type="range" id="rEr" min="0" max="2" step="0.01" value="1"><output id="rErV"></output></div>
-      <div class="row"><label>tail</label><input type="range" id="rTail" min="0" max="2" step="0.01" value="1"><output id="rTailV"></output></div>
-      <div class="row"><label>RT60</label><input type="range" id="rRt" min="0.3" max="4" step="0.01" value="1.25"><output id="rRtV"></output></div>
-      <div class="row"><label>room width</label><input type="range" id="rW" min="2.5" max="20" step="0.1" value="6.5"><output id="rWV"></output></div>
-      <div class="row"><label>room depth</label><input type="range" id="rD" min="2.5" max="30" step="0.1" value="8.5"><output id="rDV"></output></div>
-      <div class="row"><label>room height</label><input type="range" id="rH" min="2.2" max="12" step="0.1" value="3.6"><output id="rHV"></output></div>
-      <div class="row"><label>absorption</label><input type="range" id="rAbs" min="0.02" max="0.8" step="0.005" value="0.28"><output id="rAbsV"></output></div>
-      <div class="row"><label>predelay</label><input type="range" id="rPre" min="0" max="80" step="0.5" value="14"><output id="rPreV"></output></div>
-      <div class="row"><label>tail damping</label><input type="range" id="rDamp" min="600" max="12000" step="50" value="3200"><output id="rDampV"></output></div>
-      <div class="row"><label>listener back</label><input type="range" id="rPos" min="0.15" max="0.95" step="0.01" value="0.72"><output id="rPosV"></output></div>
-      <div class="hint">Two parts, because the ear uses them for different things. The early reflections
-        are real paths off real surfaces — the source mirrored in each wall, arrival time from the
-        distance, level from the inverse of it, absorption from how many surfaces the path touched —
-        and they are what tell you the size of the room and where you are standing in it. The tail is
-        a feedback delay network, because by then the reflections are too dense to be worth counting.
-        Left and right differ because the two ears are at different distances from every image, not
-        because anything was widened. The room is NOT in the mono path the fitting tools use: a room
-        in front of a measurement fits the instrument to the room.</div>
-    </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Parameter editor — slider is a global offset, chart is per key</h2>
-      <div id="peBar">
-        <button id="peSave">save</button>
-        <button id="peLoad">load</button>
-        <button id="peExport">export</button>
-        <button id="peImport">import</button>
-        <button id="peResetAll">reset all</button>
-        <span class="stat">edited <b id="peCount">0</b></span>
-      </div>
-      <div id="peRoot"></div>
-      <div class="hint">Centre is the fitted curve, always — every number here is a DEPARTURE from
-        what the fitting tools measured, never a replacement for it, so there is a defined way back
-        from any edit. Precision zooms the slider and the chart together; the stored offset is
-        absolute, so drawing finely on one note cannot rescale what was drawn coarsely before.
-        Offsets are in octaves of the value for rates, levels and durations — the ear hears those
-        as ratios, and a linear knob on a decay time is not symmetric about its centre.</div>
-    </div>
-    <div class="panel" style="margin-top:14px">
-      <h2>Coupling</h2>
-      <div class="hint">Coupling is expressed as the fraction of each string's own loss that goes
-        into the bridge instead of into internal damping — so it can never destabilise, and the
-        decay time you ask for stays the decay time you get. Unison coupling drives beating and
-        double decay; bridge coupling drives the sympathetic halo.</div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <h2>String inspector — <span id="noteName">C4</span></h2>
-    <table id="physTable"></table>
-    <div class="hint" style="margin:10px 0 2px">Note geometry — changing these re-derives tension and inharmonicity.</div>
-    <div class="row"><label>speaking length</label><input type="range" id="len" min="0.04" max="2.0" step="0.001"><output id="lenV"></output></div>
-    <div class="row"><label>core wire ⌀</label><input type="range" id="core" min="0.6" max="1.6" step="0.005"><output id="coreV"></output></div>
-    <div class="row"><label>wrap ⌀</label><input type="range" id="wrap" min="0" max="4" step="0.01"><output id="wrapV"></output></div>
-    <div class="strings" id="stringSel"></div>
-    <div class="row"><label>detune</label><input type="range" id="det" min="-12" max="12" step="0.05"><output id="detV"></output></div>
-    <div class="row"><label>T60 @ f0</label><input type="range" id="t60l" min="0.3" max="45" step="0.1"><output id="t60lV"></output></div>
-    <div class="row"><label>T60 @ 5 kHz</label><input type="range" id="t60h" min="0.05" max="6" step="0.01"><output id="t60hV"></output></div>
-    <div class="row"><label>strike position</label><input type="range" id="strike" min="0.02" max="0.33" step="0.001"><output id="strikeV"></output></div>
-    <div class="row"><label>bridge coupling</label><input type="range" id="cpl" min="0" max="2" step="0.01"><output id="cplV"></output></div>
-    <div class="hint">Strike position is a fraction of the speaking length; it notches out every
-      partial with a node there (1/8 kills the 8th). That notch is why measured partials 8–9
-      nearly vanish — the physics, not a bug.</div>
+  <h1>Piano Model X</h1>
+  <p class="sub">Pick a piano. Press <kbd>1</kbd> or <kbd>2</kbd>.</p>
+  <div class="grid">
+    <a class="card" href="modelled/">
+      <h2>1 · Modelled</h2>
+      <p>Physically modelled: every string is its own waveguide, all meeting at a shared bridge.
+         Unison beating and sympathetic resonance fall out of the physics.</p>
+    </a>
+    <a class="card" href="sampled/">
+      <h2>2 · Sampled</h2>
+      <p>A recorded Yamaha C5 (Salamander), repitched onto the fitted scale, with
+         release samples, resonance and room.</p>
+    </a>
   </div>
 </main>
-<script type="module" src="./src/main.js"></script>
+<script>
+addEventListener('keydown', (e) => {
+  if (e.key === '1') location.href = 'modelled/';
+  if (e.key === '2') location.href = 'sampled/';
+});
+</script>
 </body>
 </html>

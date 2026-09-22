@@ -2,8 +2,11 @@
 // loads in a real browser (ES module imports and all) and produces audio.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, PORT: '8137' }, stdio: 'ignore' });
+const SERVE = fileURLToPath(new URL('../../tools/serve.mjs', import.meta.url));
+
+const server = spawn(process.execPath, [SERVE], { env: { ...process.env, PORT: '8137' }, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 700));
 
 const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -12,14 +15,14 @@ const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
-await page.goto('http://localhost:8137/', { waitUntil: 'networkidle' });
+await page.goto('http://localhost:8137/modelled/', { waitUntil: 'networkidle' });
 
 const result = await page.evaluate(async () => {
   // A REALTIME context, because that is what playing actually uses and because
   // port messages are not reliably delivered during offline rendering.
   const ctx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' });
   await ctx.resume();
-  await ctx.audioWorklet.addModule('/src/worklet.js');     // <- ES imports inside a worklet
+  await ctx.audioWorklet.addModule('/modelled/src/worklet.js');     // <- ES imports inside a worklet
   const node = new AudioWorkletNode(ctx, 'piano-processor', {
     numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1],
     processorOptions: { quality: 16 },

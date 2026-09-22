@@ -48,7 +48,7 @@ async function start(install = false) {
     $('uninstallBtn').disabled = false;
     $('startBtn').textContent = 'Start audio';
     $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b><br>
-      Run <code>node tools/sampler/fetch.mjs</code> then <code>node tools/sampler/build.mjs</code>.`;
+      Run <code>node sampled/tools/fetch.mjs</code> then <code>node sampled/tools/build.mjs</code>.`;
     return;
   }
   lib.onprogress = updateLoad;
@@ -74,7 +74,7 @@ async function start(install = false) {
   // Enough to play with before the rest arrives: the mezzo-forte layer, from
   // the middle of the keyboard outwards.
   lib.startWarm(LOW, HIGH);
-  // Handles for the console and for tools/sampler/browser-test.mjs. Everything
+  // Handles for the console and for sampled/tools/browser-test.mjs. Everything
   // the UI can do is a method on one of these.
   window.piano = { ctx, lib, engine, curves, envelopes, noteOn, noteOff, setPedal, setSoloRes, toggleSilent, pickLayer, levelDb, ui: true };
   $('overlay').style.display = 'none';

@@ -113,7 +113,7 @@ export function plan(curves, lib, midi, vel, extraBias = 0, velCurve = null, vel
     layer: got.layer,
     exact: got.layer === want,
     // Where this recording's attack front sits, in ms into the file (written
-    // by tools/sampler/align.mjs). The engine lines these up; see startAt().
+    // by sampled/tools/align.mjs). The engine lines these up; see startAt().
     t0: got.entry.t0,
     // gain restores the recording's true level, then moves it to where the
     // curve asked for it

@@ -1,7 +1,7 @@
 // The modelled piano's room, rendered to an impulse response and convolved.
 //
 // This is the same Room the physical model runs sample by sample in its
-// worklet (src/dsp/room.js): an image-source shoebox for the early
+// worklet (modelled/src/dsp/room.js): an image-source shoebox for the early
 // reflections, stereo from the two ears' distances to every image, and an
 // eight-line Hadamard feedback delay network for the tail, damped per loop so
 // the top dies first. It is linear and time-invariant, so it HAS an impulse
@@ -13,7 +13,7 @@
 // It is used for the EARLY part: its reflections are what place the piano
 // in a room, and its own tail is held short (RT60 0.3 s) so that the long
 // tail is left to the hall (hall.js).
-import { Room } from '../../src/dsp/room.js';
+import { Room } from '../../modelled/src/dsp/room.js';
 
 export const FDN_DEFAULTS = {
   width: 6.5, depth: 8.5, height: 3.6,

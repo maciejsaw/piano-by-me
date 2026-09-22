@@ -22,7 +22,7 @@ export const nearestRoot = (midi, roots) =>
  * Pitch ratio from source to target.
  *
  * `cents` is the instrument's own stretch -- the Railsback curve fitted from
- * this library in fitted/salamander-scale.json, -22 cents at A0 rising to +21
+ * this library in modelled/fitted/salamander-scale.json, -22 cents at A0 rising to +21
  * at C8. Taking the DIFFERENCE of the curve at the two keys, rather than
  * forcing the target onto it absolutely, is what keeps a repitched key in tune
  * with the recording it came from: the root samples are never touched, so any

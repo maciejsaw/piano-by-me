@@ -33,7 +33,7 @@
 // in an IR library means finding another IR; here it is a redraw that costs a
 // few milliseconds, after which the convolution's cost does not depend on how
 // complicated the room was.
-import { imageSources } from '../../src/dsp/room.js';
+import { imageSources } from '../../modelled/src/dsp/room.js';
 
 const C_AIR = 343;
 

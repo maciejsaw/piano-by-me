@@ -22,7 +22,7 @@
 //     (see the argument in the main README). So the correction is one static
 //     filter, not a per-frame one, and per-frame estimation would only be
 //     adding variance to a quantity that does not vary.
-//   the body is already measured.  fitted/salamander-body.json is the response
+//   the body is already measured.  modelled/fitted/salamander-body.json is the response
 //     of everything downstream of the bridge, fitted from THIS library by the
 //     physical model in the other half of this repo. That matters more than it
 //     sounds: from a single note you cannot separate the body's spectrum from
@@ -32,7 +32,7 @@
 //
 // Measured against a synthetic instrument with a known body, this halves the
 // spectral error of the shifted note relative to plain resampling, at every
-// point in the compass, and never does worse -- see tools/sampler/selftest.mjs.
+// point in the compass, and never does worse -- see sampled/tools/selftest.mjs.
 // A per-frame true-envelope correction was tried first and was WORSE than
 // doing nothing above C4: with partials 500 Hz apart there are too few of them
 // to estimate an envelope from, and the estimator's own noise is larger than

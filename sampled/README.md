@@ -12,7 +12,7 @@ a geometric room, Bézier envelopes on every join, and sympathetic resonance
 that accumulates while the pedal is down.
 
 ```bash
-npm start                 # -> http://localhost:8080/sampled/
+npm start                 # from the repo root -> http://localhost:8080/sampled/
 ```
 
 **The rendered library is committed**, all 1704 files of it — 88 keys x 16
@@ -56,7 +56,7 @@ implementation is neither.
 argument is in the main README). So the correction is one static filter, and a
 per-frame estimate would only add variance to a quantity that does not vary.
 
-**The body is already measured.** `fitted/salamander-body.json` is the response
+**The body is already measured.** `modelled/fitted/salamander-body.json` is the response
 of everything downstream of the bridge, fitted from *this library* by the
 physical model in the other half of this repo. That matters more than it
 sounds: from a single note you cannot separate the body's spectrum from the
@@ -111,14 +111,14 @@ sample across, it is not.
 ## The build pipeline
 
 ```
-tools/sampler/fetch.mjs          download and unpack the recordings
-tools/sampler/build.mjs          the orchestrator (a worker per core)
-tools/sampler/worker.mjs         one recording -> the three keys it becomes
-tools/sampler/selftest.mjs       does the repitch do what it claims?
-tools/sampler/verify.mjs         decode the built library and measure it
-tools/sampler/browser-test.mjs   does it play, in a real browser?
+sampled/tools/fetch.mjs          download and unpack the recordings
+sampled/tools/build.mjs          the orchestrator (a worker per core)
+sampled/tools/worker.mjs         one recording -> the three keys it becomes
+sampled/tools/selftest.mjs       does the repitch do what it claims?
+sampled/tools/verify.mjs         decode the built library and measure it
+sampled/tools/browser-test.mjs   does it play, in a real browser?
 
-tools/sampler/lib/
+sampled/tools/lib/
   fft.mjs        radix-2, tables cached per size
   resample.mjs   128-tap Kaiser sinc, 4096 phases
   repitch.mjs    resample + the body correction
@@ -150,7 +150,7 @@ Trimming at a threshold lines up where each file stops being silence. It does
 **not** line up where the note arrives, and those are not the same measurement:
 a hard blow on a short treble string is at full level a few milliseconds in,
 while a soft one on a long bass string takes tens of milliseconds to climb.
-Measured across this library (`tools/sampler/align.mjs`), the attack front —
+Measured across this library (`sampled/tools/align.mjs`), the attack front —
 the moment the 2 ms envelope first reaches 20 dB under the peak of the attack —
 sits anywhere from **5 ms to 59 ms** into the file, median 12.7. Played as
 recorded, the keyboard does not feel even under the hand, and the unevenness is
@@ -485,7 +485,7 @@ is only one dry path. Both are rendered to an impulse response and handed to a
 depend on how the response was made.
 
 1. **Early reflections** (`fdn-room.js`): the **same room the modelled variant
-   uses** — `src/dsp/room.js`, image-source reflections off a shoebox, stereo
+   uses** — `modelled/src/dsp/room.js`, image-source reflections off a shoebox, stereo
    from the two ears' distances to every image — run against an impulse. These
    are what tell the ear the size of the room and where the piano sits in it,
    and they have to be discrete: a reverb that starts with a wash gives a piano
@@ -642,7 +642,7 @@ npm run sampled:test       # does it play, in a real browser?
 And to hear it play something:
 
 ```bash
-npm run sampled:render -- performance.mid --seconds 30 --out renders/out.wav
+npm run sampled:render -- performance.mid --seconds 30 --out sampled/renders/out.wav
 ```
 
 **Neither of them tests physics, and that is the point.** A sampled instrument
@@ -717,7 +717,7 @@ because it passed.
 
 ## Rendering a performance
 
-`tools/sampler/render.mjs` plays a MIDI file through the instrument and records
+`sampled/tools/render.mjs` plays a MIDI file through the instrument and records
 the result. It drives the real player in a real browser rather than
 reimplementing it offline, which is the only way to be sure that what comes out
 is what a listener would hear — the same voice allocation, the same convolver,
@@ -732,7 +732,7 @@ load — half the events in the first render arrived late, the worst by 10.6 ms 
 whereas the audio clock is good to a sample. With a 60 ms lookahead scheduler
 handing the engine exact times, it is 0 of 738.
 
-`renders/chopin-raindrop-sampled.wav` is thirty seconds of Chopin's Prelude
+`sampled/renders/chopin-raindrop-sampled.wav` is thirty seconds of Chopin's Prelude
 Op. 28 No. 15 rendered this way. The MIDI is a real competition performance
 from [MAESTRO v3](https://magenta.tensorflow.org/datasets/maestro) (CC BY-NC-SA
 4.0) — captured from a Disklavier's own key and pedal motion, not sequenced —
