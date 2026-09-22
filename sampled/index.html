@@ -113,20 +113,40 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
 #overlay p{color:var(--dim);margin:14px 0}
+.installOpt{display:flex;gap:8px;align-items:flex-start;justify-content:center;text-align:left;margin:0 auto 14px;max-width:420px;font-size:12px;color:var(--dim);cursor:pointer}
+.installOpt input{margin-top:2px}
+.installOpt[hidden]{display:none}
+.instBar{height:8px;width:360px;max-width:100%;margin:20px auto 0;background:var(--panel2);border-radius:4px;overflow:hidden}
+#instFill{height:100%;width:0;background:var(--accent);transition:width .25s}
+#uninstallBtn{margin-top:12px;font-size:11px;padding:4px 10px;background:none;color:var(--dim)}
 </style>
 </head>
 <body>
-<div id="overlay"><div>
+<div id="overlay"><div id="startView">
   <h1 style="font-size:20px;margin-bottom:6px">Piano Model X — Sampled</h1>
   <p>A Yamaha C5, recorded. One dedicated sample per key per velocity layer — 88 × 16,
      repitched off the Salamander library with the instrument's own body response held
      still — played by an engine with per-key velocity response, stereo spread, a
      geometric room, and sympathetic resonance that accumulates while the pedal is down.</p>
+  <label id="installOffer" class="installOpt">
+    <input type="checkbox" id="installChk" checked>
+    <span id="installLbl">Download samples to disk for better performance — takes about 2.6 GB on your disk</span>
+  </label>
   <button class="primary" id="startBtn">Start audio</button>
+  <div><button id="uninstallBtn" class="small" hidden></button></div>
   <p id="loadMsg" style="font-size:11px">The library streams as you play: the first notes are
      ready in a few seconds, the rest arrives behind you. Connect a MIDI keyboard before or
      after starting, or play with <kbd>z</kbd>…<kbd>m</kbd> / <kbd>q</kbd>…<kbd>u</kbd>.
      <kbd>space</kbd> is the sustain pedal.</p>
+</div><div id="installView" hidden>
+  <h1 style="font-size:20px;margin-bottom:6px">Installing the piano</h1>
+  <p>Downloading every sample and decoding it to this browser's storage, once. The piano
+     starts when it is done. Please wait — if you close the tab it continues from here
+     next time.</p>
+  <div class="instBar"><div id="instFill"></div></div>
+  <p id="instStat" style="font-size:12px">starting…</p>
+  <button id="instRetry" hidden>Retry</button>
+  <button id="instSkip" style="font-size:11px;padding:4px 10px;background:none;color:var(--dim)">Skip and play now</button>
 </div></div>
 
 <header>
@@ -378,15 +398,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <div class="panel" style="order:9">
       <h2>Mechanics</h2>
       <div class="row"><label>MIDI input</label><select id="midiSel" style="flex:1;max-width:none"><option>no MIDI</option></select><output></output></div>
-      <div class="row"><label>pedals</label><span class="btnrow"><button id="pedalBtn">sustain</button><button id="sostBtn">sostenuto</button><button id="unaBtn">una corda</button></span><output></output></div>
+      <div class="row"><label>pedals</label><span class="btnrow"><button id="pedalBtn">sustain</button></span><output></output></div>
       <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
-      <div class="row"><label>una corda</label><input type="range" id="una" min="0" max="1" step="0.01" value="0"><output id="unaV"></output></div>
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
       <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
       <div class="row"><label>release start trim</label><input type="range" id="relTrim" min="0" max="200" step="1" value="0"><output id="relTrimV"></output></div>
       <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
       <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
-      <div class="row"><label>memory budget</label><input type="range" id="budget" min="128" max="1536" step="32" value="640"><output id="budgetV"></output></div>
+      <div class="row"><label>disk install</label><output id="installV" style="flex:1"></output></div>
       <div class="row"><label>align sample starts</label><span class="btnrow"><button id="alignBtn" class="on">on</button></span><output id="alignV"></output></div>
       <div class="row"><label>output limiter</label><button id="limBtn" class="on" style="flex:1">on</button><output></output></div>
       <div class="hint">The sustain pedal is continuous, not a switch: half-pedalling shortens a note without

@@ -38,6 +38,9 @@
 // because the recording of it is. With it, the accumulator alone decides the
 // level, and the recording only supplies the timbre.
 
+import { StreamSource } from './stream.js';
+import { RATE } from './ogg.js';
+
 const SEMI = Math.pow(2, 1 / 12);
 
 /** Inharmonicity across the compass: 1.2e-4 at A0 to 2.5e-2 at C8, log-linear. */
@@ -738,7 +741,6 @@ export class Resonance {
       // only needs to be quick once the voice is up and following the
       // accumulator.
       v.lvl.gain.setTargetAtTime(g, now, now < v.rise ? 0.12 : 0.045);
-      v.target = g;                         // remembered, so a damper fall starts from it
     }
   }
 
@@ -773,13 +775,13 @@ export class Resonance {
     const ctx = this.ctx, now = ctx.currentTime;
     // Start past the knock. What is wanted is the string ringing, not the
     // sound of a hammer that never happened.
-    const offset = Math.min(0.03, got.buf.duration * 0.1);
+    const len = got.frames / RATE;
+    const offset = Math.min(0.03, len * 0.1);
     // The TRUE remaining length of the recording, so the release tail lands
     // exactly on the buffer's end rather than after it (which would be a click).
-    const dur = Math.max(0.05, got.buf.duration - offset);
+    const dur = Math.max(0.05, len - offset);
 
-    const src = ctx.createBufferSource();
-    src.buffer = got.buf;
+    const src = new StreamSource(this.lib.streamer, got.key, got.frames);
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
 
     const comp = ctx.createGain();
@@ -806,13 +808,20 @@ export class Resonance {
       rel.gain.setTargetAtTime(1e-4, fadeAt, relT / 4);
     }
 
-    src.connect(comp).connect(lp).connect(lvl).connect(rel);
-    rel.connect(this.strip(midi));
+    // The damper. Sits at exactly 1 and nothing touches it until stop(), which
+    // runs its fall from that known 1 -- never from wherever lvl's running
+    // setTargetAtTime happens to be. So stop() has nothing to cancel or read
+    // back, and a stop that reaches the audio thread late just starts late.
+    const off = ctx.createGain();
+    off.gain.value = 1;
+
+    src.connect(comp).connect(lp).connect(lvl).connect(rel).connect(off);
+    off.connect(this.strip(midi));
     // Feed the soundboard in parallel, so the body goes on ringing after the
     // string itself has been damped.
-    if (this.sbSend) rel.connect(this.sbSend);
+    if (this.sbSend) off.connect(this.sbSend);
     src.start(now, offset);
-    const v = { src, comp, lp, lvl, rel, target: 0, unit: got.entry.gain, until: now + dur,
+    const v = { src, comp, lp, lvl, rel, off, unit: got.entry.gain, until: now + dur,
       rise: now + 0.3 };
     src.onended = () => {
       // The recording runs out. Do NOT start another: re-triggering the sample
@@ -838,12 +847,11 @@ export class Resonance {
     const now = this.ctx.currentTime + this.lookahead;
     const shape = this.env?.noteRelease.shape;
     v.src.onended = null;
-    // Freeze the gain at the value it ACTUALLY has right now, not at v.target.
-    // tick() drives lvl with setTargetAtTime -- an exponential still on its way
-    // to target and, by design, never quite there -- so starting the fade from
-    // target steps the gain, which is a click, panned to wherever this key sits
-    // on the soundboard. cancelAndHold holds the running curve exactly where it
-    // is; `from` is then read back from the param rather than assumed.
+    // Only `off` moves. It is at rest at 1, so every curve here starts from a
+    // value known exactly; lvl is left where tick() last sent it, and the two
+    // multiply. A start time already past is clamped to the present by the
+    // audio thread and the curve's first value is the 1 the gain already has,
+    // so a late stop is a late fade, not a step.
     // Schedule the fade, but NEVER let a scheduling error skip the src.stop()
     // below: an unstopped source is removed from this.voices with onended
     // nulled, so nothing ever cleans it up -- it plays its multi-second buffer
@@ -851,20 +859,16 @@ export class Resonance {
     // orphaned at a pedal-off is what ran the tab out of memory.
     let stopAt = now + 0.35;
     try {
-      if (v.lvl.gain.cancelAndHoldAtTime) v.lvl.gain.cancelAndHoldAtTime(now);
-      else { v.lvl.gain.cancelScheduledValues(now); v.lvl.gain.setValueAtTime(Math.max(1e-5, v.target), now); }
-      const from = Math.max(1e-5, v.lvl.gain.value);
-
+      const g = v.off.gain;
       if (damped) {
         // Two stages, scattered slightly in time so the frame does not land as one
         // click. First a quick duck to a fraction of the level -- the damper
         // touching -- then a slow fall the rest of the way, the string ringing on
-        // under the damper while the soundboard reverb carries the body. The held
-        // value carries flat across the jitter, so the curve at t0 starts from it.
+        // under the damper while the soundboard reverb carries the body.
         const jitter = Math.random() * this.pedalOffJitter;
         const t0 = now + jitter;
         const duck = Math.max(0.02, 0.09 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60));
-        const drop = Math.max(1e-5, from * Math.min(1, Math.max(0, this.pedalOffDrop)));
+        const drop = Math.max(1e-5, Math.min(1, Math.max(0, this.pedalOffDrop)));
         const fall = Math.max(0.05, this.pedalOffFall);
         // A gap between the two curves. setValueCurveAtTime rounds its END up to
         // the next 128-sample render quantum (~2.7 ms at 48 kHz), so a second
@@ -873,18 +877,20 @@ export class Resonance {
         // flat at `drop` across it, so it stays continuous and click-free.
         const GAP = 0.006;
         if (shape) {
-          v.lvl.gain.setValueCurveAtTime(shape.curve(from, drop), t0, duck);
-          v.lvl.gain.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck + GAP, fall);
+          g.setValueCurveAtTime(shape.curve(1, drop), t0, duck);
+          g.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck + GAP, fall);
         } else {
-          v.lvl.gain.linearRampToValueAtTime(drop, t0 + duck);
-          v.lvl.gain.linearRampToValueAtTime(0, t0 + duck + GAP + fall);
+          g.setValueAtTime(1, t0);
+          g.linearRampToValueAtTime(drop, t0 + duck);
+          g.setValueAtTime(drop, t0 + duck + GAP);
+          g.linearRampToValueAtTime(0, t0 + duck + GAP + fall);
         }
         stopAt = t0 + duck + GAP + fall + 0.03;
       } else {
         // An undamped-region leak below threshold: just a short fade.
         const fall = 0.25;
-        if (shape) v.lvl.gain.setValueCurveAtTime(shape.curve(from, 0), now, fall);
-        else v.lvl.gain.linearRampToValueAtTime(0, now + fall);
+        if (shape) g.setValueCurveAtTime(shape.curve(1, 0), now, fall);
+        else { g.setValueAtTime(1, now); g.linearRampToValueAtTime(0, now + fall); }
         stopAt = now + fall + 0.03;
       }
     } catch { /* fall through: the source is still stopped below */ }

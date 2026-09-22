@@ -20,6 +20,7 @@ import { Resonance } from './resonance.js';
 import { renderIR, DEFAULTS as ROOM_DEFAULTS } from './room.js';
 import { Envelopes } from './envelopes.js';
 import { Eq } from './eq.js';
+import { StreamSource } from './stream.js';
 
 const MAX_VOICES = 64;
 
@@ -137,9 +138,7 @@ export class Engine {
     this.voices = new Map();        // midi -> [voice]
     this.down = new Set();
     this.silent = new Set();
-    this.sostenuto = new Set();
     this.pedal = 0;                 // 0..1, continuous: half-pedal is real
-    this.unaCorda = 0;
     this.spread = 0;            // no artificial spread by default -- just the swap
     this.width = 1;
     this.perspective = 1;           // +1 player's view (bass left), -1 audience
@@ -155,6 +154,16 @@ export class Engine {
     // play the identical file and machine-gun. Both in milliseconds.
     this.relStartTrim = 0;
     this.relRoundRobin = 3;
+    // A trimmed sample starts in the middle of its own sound, so the cut needs
+    // a fade -- and that fade has to be IN THE AUDIO, not on a GainNode. A gain
+    // curve runs on the context clock; a source that starts late (the key-up
+    // reached the audio thread after its time, under GC or a busy main thread)
+    // still starts at its offset, but the curve has already moved on, so the
+    // sound comes in at full level. Untrimmed, the file starts in silence and
+    // that lateness is inaudible; trimmed 100 ms into the thud, it is a click.
+    // A raised cosine this long is written into a copy of the trimmed buffer,
+    // so it plays wherever the audio actually starts.
+    this.relTrimFade = 0.006;
     // How long, in ms, to hold the damper OFF the string after the key is
     // released before letting it fall. The recorded release sample's audible
     // thud arrives a hair after the key actually leaves, so damping the note at
@@ -302,7 +311,7 @@ export class Engine {
     const want = align + this.curves.at('startTrim', midi) / 1000;
     // Never skip so far in that the note is a fragment: half the recording is
     // far past anything alignment needs and is a guard against a bad manifest.
-    const offset = Math.max(0, Math.min(want, p.buf.duration * 0.5));
+    const offset = Math.max(0, Math.min(want, p.dur * 0.5));
     return { offset, delay: Math.max(0, Math.min(0.25, -want)) };
   }
 
@@ -321,11 +330,7 @@ export class Engine {
     if (midi < this.lo || midi > this.hi) return;
     const ctx = this.ctx, now = this.time(when);
 
-    // Una corda: the hammer misses a string, so it is quieter AND softer. In a
-    // sampler the "softer" has to come from reaching for a gentler recording,
-    // which is the one thing a filter cannot fake.
-    const soft = this.unaCorda > 0.5;
-    const p = plan(this.curves, this.lib, midi, vel, soft ? -2 : 0, this.velCurve, this.velLayer);
+    const p = plan(this.curves, this.lib, midi, vel, 0, this.velCurve, this.velLayer);
     if (!p) {
       // Nothing of this key is resident yet. The KEY is still down -- the
       // damper is off it, it belongs in the sympathetic set, and letting it
@@ -345,20 +350,27 @@ export class Engine {
     // ringing: the old voice is left to sound and the new one overlaps it.
     // prune() caps total polyphony, so a fast repeated note cannot run away.
     const willRing = this.pedal >= UNDAMP || midi > this.topDamped
-      || this.sostenuto.has(midi) || this.silent.has(midi);
+      || this.silent.has(midi);
     if (!willRing) this.kill(midi, 0.008, now);
-    const src = ctx.createBufferSource();
-    src.buffer = p.buf;
+    // A streamed sample: its head is already decoded, the rest is decoded by
+    // the stream worker as it plays. Used exactly like a buffer source.
+    const src = new StreamSource(this.lib.streamer, p.key, p.frames);
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
 
-    // Two gains, not one. `lvl` is the velocity's level and never moves again;
-    // `env` is the attack and the damper fall. Keeping them apart means the
-    // release curve always runs from a value this code knows exactly, rather
-    // than from whatever a GainNode reports mid-automation -- which browsers
-    // do not agree about.
+    // Three gains in a row, each with one job. `lvl` is the velocity's level
+    // and never moves again; `att` runs the attack and nothing else; `rel` sits
+    // at exactly 1 until the damper falls, then runs 1 -> 0. The release never
+    // has to cancel a running curve or work out where one has got to: it
+    // always starts from the static 1 it is sitting at. So a note-off that
+    // reaches the audio thread late -- scheduled for a time already past --
+    // is clamped to the present and simply starts the same smooth fall a few
+    // milliseconds later, instead of jumping to a guessed value. No step, no
+    // click, however loaded the main thread is.
     const lvl = ctx.createGain();
-    lvl.gain.value = p.gain * (soft ? Math.pow(10, -2.5 / 20) : 1);
-    const env = ctx.createGain();
+    lvl.gain.value = p.gain;
+    const att = ctx.createGain();
+    const rel = ctx.createGain();
+    rel.gain.value = 1;
     // Alignment first: everything below is timed from when the note actually
     // starts, which is a few milliseconds after `now` for a recording whose
     // attack front is early.
@@ -369,23 +381,22 @@ export class Engine {
     // Starting a recording partway in starts it at a level, not at silence,
     // which is a click. The alignment cuts at the -20 dB point of the attack,
     // so the step is real but small: a fade of a millisecond and a half covers
-    // it and is far too short to be heard as an attack of its own. A note
-    // attack the player has actually dialled in is longer than this and wins.
-    const fade = at.offset > 0.001 ? 0.0015 : 0;
+    // it and is far too short to be heard as an attack of its own. It is done
+    // by the voice itself, on the samples it actually plays first, so a start
+    // that reaches the audio thread late still fades in (see relTrimFade).
+    const fade = at.offset > 0 ? 0.0015 : 0;
     if (aDur > 0.0005) {
-      env.gain.setValueAtTime(1e-5, t0);
-      env.gain.setValueCurveAtTime(a.shape.curve(0, 1), t0, aDur);
-    } else if (fade > 0) {
-      env.gain.setValueAtTime(0, t0);
-      env.gain.linearRampToValueAtTime(1, t0 + fade);
+      att.gain.setValueAtTime(1e-5, t0);
+      att.gain.setValueCurveAtTime(a.shape.curve(0, 1), t0, aDur);
     } else {
-      env.gain.value = 1;
+      att.gain.value = 1;
     }
-    src.connect(lvl).connect(env).connect(this.strips.get(midi).direct);
-    src.start(t0, at.offset);
+    src.connect(lvl).connect(att).connect(rel).connect(this.strips.get(midi).direct);
+    src.start(t0, at.offset, fade);
 
-    const v = { src, g: lvl, env, midi, layer: p.layer, vel, started: now,
-      att: aDur > 0.0005 ? { start: t0, dur: aDur, shape: a.shape } : null, rel: null,
+    // `rel` on the voice is the release gain; `releasing` says whether it has
+    // been set going.
+    const v = { src, g: lvl, att, rel, releasing: false, midi, layer: p.layer, vel, started: now,
       key: this.lib.key(midi, p.layer) };
     src.onended = () => this.forget(v);
     let list = this.voices.get(midi);
@@ -402,7 +413,7 @@ export class Engine {
   noteOff(midi, relVel = 64, when) {
     if (!this.down.delete(midi)) return;
     const now = this.time(when);
-    const damped = midi <= this.topDamped && !this.sostenuto.has(midi) && !this.silent.has(midi);
+    const damped = midi <= this.topDamped && !this.silent.has(midi);
     // Read the voice BEFORE killing it: kill() empties the map, and asking
     // afterwards silently handed every damper sound a velocity of 64.
     const first = this.voices.get(midi)?.[0];
@@ -415,8 +426,8 @@ export class Engine {
     // and the pedal coming up would then find nothing left to damp. That was a
     // bug: released notes under a held pedal ignored the pedal lift entirely.
     // Does a damper actually land on this string now? Only if the key has a
-    // damper AND nothing is holding it off -- the sustain pedal, sostenuto, or
-    // a silent hold. With the pedal down the string rings on untouched.
+    // damper AND nothing is holding it off -- the sustain pedal or a silent
+    // hold. With the pedal down the string rings on untouched.
     const stringDamped = damped && this.pedal < UNDAMP;
     if (stringDamped) {
       // The note keeps ringing for `releaseDelay` ms after the key leaves, so
@@ -455,44 +466,28 @@ export class Engine {
   }
 
   /**
-   * Where a voice's envelope is right now, worked out rather than read.
+   * Damper fall: the shape is the Bezier, the duration is the caller's.
    *
-   * GainNode.value during a scheduled curve is not something to rely on, and
-   * a release that starts from the wrong value is a step -- audible on every
-   * key lift. All three states are closed-form, so there is no need to ask.
+   * Only the voice's release gain moves, and it is always at rest at 1 when
+   * this runs, so the fall is always the same 1 -> 0 curve. The attack gain is
+   * left alone -- if the note is still rising the two just multiply. The
+   * damper sound is started at the same `when` by the caller, so the note
+   * fading out and the thud fading in stay in step.
    */
-  envValueAt(v, t) {
-    if (v.rel) {
-      const u = (t - v.rel.start) / v.rel.dur;
-      if (u >= 1) return 0;
-      return v.rel.from * (1 - v.rel.shape.at(Math.max(0, u)));
-    }
-    if (v.att) {
-      const u = (t - v.att.start) / v.att.dur;
-      if (u < 1) return v.att.shape.at(Math.max(0, u));
-    }
-    return 1;
-  }
-
-  /** Damper fall: the shape is the Bezier, the duration is the caller's. */
   kill(midi, fall, when) {
     const list = this.voices.get(midi);
     if (!list) return;
     const now = this.time(when);
-    const shape = this.env.noteRelease.shape;
+    const curve = this.env.noteRelease.shape.curve(1, 0);
+    const dur = Math.max(0.006, fall);
     for (const v of list) {
-      const from = Math.max(1e-5, this.envValueAt(v, now));
-      const dur = Math.max(0.006, fall);
-      // Hold, not cancel, where the browser can. cancelScheduledValues also
-      // removes a curve that is still RUNNING at `now` and snaps the gain back
-      // to its value before that curve -- 1e-5 for a note in its attack -- for
-      // the lookahead window until the release takes over. That is a dropout.
-      if (v.env.gain.cancelAndHoldAtTime) v.env.gain.cancelAndHoldAtTime(now);
-      else v.env.gain.cancelScheduledValues(now);
-      v.env.gain.setValueAtTime(from, now);
-      v.env.gain.setValueCurveAtTime(shape.curve(from, 0), now, dur);
-      v.rel = { start: now, dur, from, shape };
-      v.att = null;
+      if (v.releasing) continue;
+      v.releasing = true;
+      // A start time already in the past is clamped to the present by the
+      // audio thread, and the curve's first value is the 1 the gain is
+      // already at -- so a late call starts late, it does not jump.
+      try { v.rel.gain.setValueCurveAtTime(curve, now, dur); }
+      catch { v.rel.gain.setTargetAtTime(0, now, dur / 4); }
       try { v.src.stop(now + dur + 0.03); } catch { /* already stopped */ }
     }
     this.voices.delete(midi);
@@ -522,6 +517,24 @@ export class Engine {
 
   // --------------------------------------------------------- mechanical bits -
   /**
+   * `buf` from `offset` seconds on, with a raised-cosine fade-in written into
+   * its first `relTrimFade` seconds. A fresh buffer per play: these samples
+   * are a fraction of a second to two seconds long, and the copy is a memcpy.
+   */
+  cutWithFade(buf, offset) {
+    const from = Math.round(offset * buf.sampleRate);
+    const n = buf.length - from;
+    const out = this.ctx.createBuffer(buf.numberOfChannels, n, buf.sampleRate);
+    const f = Math.min(Math.round(this.relTrimFade * buf.sampleRate), n >> 2);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = out.getChannelData(c);
+      d.set(buf.getChannelData(c).subarray(from));
+      for (let i = 0; i < f; i++) d[i] *= 0.5 - 0.5 * Math.cos(Math.PI * i / f);
+    }
+    return out;
+  }
+
+  /**
    * A release sample, with its own attack and release shapes.
    *
    * The attack is not cosmetic: these play ON TOP of a note that is still
@@ -540,7 +553,9 @@ export class Engine {
     offset = Math.max(0, Math.min(offset, buf.duration * 0.5));
     const total = (buf.duration - offset) / rate;
     const s = ctx.createBufferSource();
-    s.buffer = buf;
+    // Trimmed: play a copy that starts at the cut and fades in there, rather
+    // than the original from an offset (see relTrimFade).
+    s.buffer = offset > 0 ? this.cutWithFade(buf, offset) : buf;
     s.playbackRate.value = rate;
     const g = ctx.createGain();
 
@@ -563,7 +578,7 @@ export class Engine {
       if (dur > 0.001) g.gain.setValueCurveAtTime(this.env.relRelease.shape.curve(gain, 0), at, dur);
     }
     s.connect(g).connect(dest);
-    s.start(now, offset);
+    s.start(now);
     s.stop(now + total + 0.02);
     // Tracked so panic() can stop them. A two-second damper thud outliving a
     // panic is not a crisis, but it does make every measurement taken just
@@ -629,7 +644,7 @@ export class Engine {
     if (was >= UNDAMP && this.pedal < UNDAMP) {
       const landed = [];
       for (let m = this.lo; m <= this.topDamped; m++) {
-        if (this.down.has(m) || this.sostenuto.has(m) || this.silent.has(m)) continue;
+        if (this.down.has(m) || this.silent.has(m)) continue;
         const v = this.voices.get(m)?.[0];
         if (!v) continue;
         landed.push({ m, v });
@@ -643,13 +658,6 @@ export class Engine {
     this.updateUndamped();
   }
 
-  setSostenuto(on) {
-    this.sostenuto = on ? new Set([...this.down].filter((m) => m <= this.topDamped)) : new Set();
-    this.updateUndamped();
-  }
-
-  setUnaCorda(v) { this.unaCorda = v; }
-
   /**
    * Which strings are free to ring.
    *
@@ -662,7 +670,6 @@ export class Engine {
     for (let m = this.topDamped + 1; m <= this.hi; m++) u.add(m);
     for (const m of this.down) u.add(m);
     for (const m of this.silent) u.add(m);
-    for (const m of this.sostenuto) u.add(m);
     if (this.pedal >= UNDAMP) for (let m = this.lo; m <= this.topDamped; m++) u.add(m);
     this.undamped = u;
     this.res.setUndamped(u);
@@ -679,7 +686,7 @@ export class Engine {
     for (const s of this.oneShots) { try { s.stop(); } catch { /* already done */ } }
     this.oneShots.clear();
     for (const m of [...this.voices.keys()]) this.kill(m, 0.04);
-    this.down.clear(); this.silent.clear(); this.sostenuto.clear();
+    this.down.clear(); this.silent.clear();
     this.res.allOff();
     this.updateUndamped();
   }
@@ -701,7 +708,7 @@ export class Engine {
     const now = this.ctx.currentTime, out = [];
     for (const [midi, list] of this.voices) {
       for (const v of list) {
-        if (v.rel) continue;
+        if (v.releasing) continue;
         out.push({ midi, vel: v.vel, t: now - v.started });
       }
     }

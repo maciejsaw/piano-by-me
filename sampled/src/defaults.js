@@ -536,13 +536,11 @@ export const DEFAULT_SETTINGS = {
     "hoSec": "8",
     "hoFloor": "-26",
     "hoKey": "0",
-    "una": "0",
     "relNoise": "0.67",
     "dampNoise": "1.22",
     "relTrim": "99",
     "relRR": "7",
-    "relDelay": "1",
-    "budget": "1120"
+    "relDelay": "1"
   },
   "eqBands": [
     {
