@@ -14,6 +14,10 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // $CHROMIUM, then whatever Playwright brought, then a browser the machine
 // already has. Sandboxes and CI images often ship a Chromium whose build
@@ -22,7 +26,7 @@ import { existsSync } from 'node:fs';
 const CHROME = [process.env.CHROMIUM, '/opt/pw-browsers/chromium'].find((p) => p && existsSync(p));
 
 const PORT = process.env.PORT || '8138';
-const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, PORT }, stdio: 'ignore' });
+const server = spawn(process.execPath, [join(REPO, 'tools', 'serve.mjs')], { env: { ...process.env, PORT }, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 700));
 
 const browser = await chromium.launch({

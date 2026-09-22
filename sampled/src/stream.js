@@ -70,7 +70,7 @@ export class Streamer {
       this.installed = d.installed.length;
     } else if (d.type === 'heads') {
       this.headsBundle = d.bundle;
-      if (!d.bundle) console.info('sampled: no heads bundle -- run `node tools/sampler/heads.mjs` for a faster start');
+      if (!d.bundle) console.info('sampled: no heads bundle -- run `node sampled/tools/heads.mjs` for a faster start');
     } else if (d.type === 'calibrated') {
       this.decoderTrims = d.decoderTrims;
     } else if (d.type === 'error') {

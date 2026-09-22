@@ -1,6 +1,6 @@
 // Fetch the Salamander recordings.
 //
-//   node tools/sampler/fetch.mjs [--dir DIR] [--keep-archive]
+//   node sampled/tools/fetch.mjs [--dir DIR] [--keep-archive]
 //
 // 1.26 GB of 48 kHz / 24-bit WAV, which expands to about 1.9 GB. The 44.1/16
 // and FLAC editions of the same library are smaller, but this one needs no
@@ -24,7 +24,7 @@ const dest = join(dir, 'salamander-src');
 
 if (existsSync(join(dest, '48khz24bit'))) {
   console.log(`  already there: ${dest}`);
-  console.log(`  ${readdirSync(join(dest, '48khz24bit')).length} files\n  next: node tools/sampler/build.mjs --src ${join(dest, '48khz24bit')}\n`);
+  console.log(`  ${readdirSync(join(dest, '48khz24bit')).length} files\n  next: node sampled/tools/build.mjs --src ${join(dest, '48khz24bit')}\n`);
   process.exit(0);
 }
 mkdirSync(dir, { recursive: true });
@@ -61,5 +61,5 @@ if (!keep) unlinkSync(archive);
 
 console.log(`\n  ${dest}`);
 console.log(`  ${readdirSync(join(dest, '48khz24bit')).length} recordings`);
-console.log(`\n  next: node tools/sampler/build.mjs --src ${join(dest, '48khz24bit')}\n`);
+console.log(`\n  next: node sampled/tools/build.mjs --src ${join(dest, '48khz24bit')}\n`);
 console.log('  Salamander Grand Piano V3 by Alexander Holm, CC-BY 3.0.');

@@ -1,6 +1,6 @@
 // Build the per-key sample library.
 //
-//   node tools/sampler/build.mjs [--src DIR] [--out DIR] [options]
+//   node sampled/tools/build.mjs [--src DIR] [--out DIR] [options]
 //
 // In:  thirty recordings of a Yamaha C5, every third semitone, sixteen
 //      velocity layers each, plus key-release noise, damper-release string
@@ -127,11 +127,11 @@ function retune(targets, root, srcHz, cents) {
 async function main() {
   const o = args(process.argv);
   const ffmpeg = await findFfmpeg();
-  if (!existsSync(o.src)) throw new Error(`no such source dir: ${o.src}\n  run tools/sampler/fetch.mjs first`);
+  if (!existsSync(o.src)) throw new Error(`no such source dir: ${o.src}\n  run sampled/tools/fetch.mjs first`);
   mkdirSync(o.out, { recursive: true });
 
-  const body = JSON.parse(readFileSync(join(REPO, 'fitted', 'salamander-body.json'), 'utf8')).curve;
-  const scale = JSON.parse(readFileSync(join(REPO, 'fitted', 'salamander-scale.json'), 'utf8'));
+  const body = JSON.parse(readFileSync(join(REPO, 'modelled', 'fitted', 'salamander-body.json'), 'utf8')).curve;
+  const scale = JSON.parse(readFileSync(join(REPO, 'modelled', 'fitted', 'salamander-scale.json'), 'utf8'));
   const cents = o.tune === 'none' ? null : centsTable(scale);
   const layers = chooseLayers(o.layers);
   const keep = (m) => !o.only || o.only.includes(m);
@@ -162,7 +162,7 @@ async function main() {
   if (o.extras) {
     // Keys 89 and up have no dampers on a C5, so they have no damper-release
     // sound to record -- which is also why Salamander's harm* recordings stop
-    // at D#6. (fitted/salamander-scale.json has a lowestDamped field, but it
+    // at D#6. (modelled/fitted/salamander-scale.json has a lowestDamped field, but it
     // belongs to the physical model's own damper layout and is not this.)
     const harmPlan = planNotes(HARM_ROOTS, cents, { lo: LOW, hi: HIGHEST_DAMPED });
     for (const [root, targets] of harmPlan) {

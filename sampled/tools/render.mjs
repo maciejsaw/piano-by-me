@@ -1,6 +1,6 @@
 // Play a MIDI performance through the sampled piano and record the result.
 //
-//   node tools/sampler/render.mjs <file.mid> [--from 0] [--seconds 30] [--out x.wav]
+//   node sampled/tools/render.mjs <file.mid> [--from 0] [--seconds 30] [--out x.wav]
 //
 // It drives the real instrument in a real browser rather than reimplementing
 // it offline, which is the only way to be sure that what comes out is what a
@@ -14,21 +14,24 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseMidi, slice } from './lib/midi.mjs';
 import { writeWav24 } from './lib/wav.mjs';
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const midiPath = argv.find((a) => !a.startsWith('--') && argv[argv.indexOf(a) - 1]?.startsWith('--') !== true);
 if (!midiPath) {
-  console.log('\n  usage: node tools/sampler/render.mjs <file.mid> [--from S] [--seconds N] [--out FILE]\n');
+  console.log('\n  usage: node sampled/tools/render.mjs <file.mid> [--from S] [--seconds N] [--out FILE]\n');
   process.exit(1);
 }
 const from = +arg('--from', 'auto');
 const seconds = +arg('--seconds', 30);
 const tail = +arg('--tail', 4);
-const out = arg('--out', join('renders', basename(midiPath).replace(/\.midi?$/i, '') + '-sampled.wav'));
+const out = arg('--out', join(REPO, 'sampled', 'renders', basename(midiPath).replace(/\.midi?$/i, '') + '-sampled.wav'));
 // For telling apart what the instrument does from what the effects on top of
 // it do. `--bare` is the sampler and nothing else.
 const opts = {
@@ -57,7 +60,7 @@ console.log(`  resonance ${opts.resonance ? 'on' : 'OFF'}   room ${opts.room ? '
 
 // ------------------------------------------------------------------ browser --
 const CHROME = [process.env.CHROMIUM, '/opt/pw-browsers/chromium'].find((p) => p && existsSync(p));
-const server = spawn(process.execPath, ['tools/serve.mjs'], { env: { ...process.env, PORT }, stdio: 'ignore' });
+const server = spawn(process.execPath, [join(REPO, 'tools', 'serve.mjs')], { env: { ...process.env, PORT }, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 700));
 const browser = await chromium.launch({
   args: ['--autoplay-policy=no-user-gesture-required', '--disable-features=AudioServiceOutOfProcess'],
@@ -105,7 +108,7 @@ const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
   const missing = [...wanted].filter((k) => !lib.has(k)).length;
 
   // --- the recorder -------------------------------------------------------
-  await ctx.audioWorklet.addModule('/tools/sampler/recorder-worklet.js');
+  await ctx.audioWorklet.addModule('/sampled/tools/recorder-worklet.js');
   const rec = new AudioWorkletNode(ctx, 'recorder', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
   const chunks = [];
   let done = false;

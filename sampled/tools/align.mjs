@@ -14,8 +14,8 @@
 // re-encoding means this is reversible, costs no quality, and can be re-run
 // against a library that is already built and committed.
 //
-//   node tools/sampler/align.mjs            measure and write the manifest
-//   node tools/sampler/align.mjs --dry      measure and report, write nothing
+//   node sampled/tools/align.mjs            measure and write the manifest
+//   node sampled/tools/align.mjs --dry      measure and report, write nothing
 //
 // The engine reads `t0` and `alignMs` (the target the keys are aligned to);
 // with neither present it plays every sample from its own start, as before.

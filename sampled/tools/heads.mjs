@@ -1,6 +1,6 @@
 // Cut the head of every note sample into one small bundle.
 //
-//   node tools/sampler/heads.mjs            (after build.mjs)
+//   node sampled/tools/heads.mjs            (after build.mjs)
 //
 // The player streams: a key is playable once the first quarter second of its
 // recording is decoded and in memory, because the rest is decoded while that
@@ -19,7 +19,7 @@
 //   heads.json   { headFrames, entries: { key: [offset, length, channels, preskip, total] } }
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { demux, packHead, RATE } from '../../sampled/src/ogg.js';
+import { demux, packHead, RATE } from '../src/ogg.js';
 
 const DIR = process.argv[2] ?? 'sampled/samples';
 const HEAD_MS = 250;

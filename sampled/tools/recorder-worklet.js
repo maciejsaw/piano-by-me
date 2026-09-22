@@ -1,6 +1,6 @@
 // Captures whatever is connected to it and posts it to the main thread.
 //
-// Not part of the instrument -- tools/sampler/render.mjs loads it to record a
+// Not part of the instrument -- sampled/tools/render.mjs loads it to record a
 // performance. It has one silent output, connected to the destination, purely
 // so the graph has a reason to pull it: a node with nothing downstream is not
 // guaranteed to be processed at all.

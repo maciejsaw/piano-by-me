@@ -3,7 +3,7 @@
 // The browser will decode Opus for us (WebCodecs AudioDecoder), but it wants
 // bare Opus packets, not an Ogg file -- so this is the demuxer. It is used in
 // two places: the stream worker, on every file it holds in memory, and
-// tools/sampler/heads.mjs, which cuts the first packets of every sample into
+// sampled/tools/heads.mjs, which cuts the first packets of every sample into
 // the small bundle that makes each key playable before its file has arrived.
 //
 // A demuxed file is the packets laid end to end in one buffer, plus an index.

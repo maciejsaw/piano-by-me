@@ -1,6 +1,6 @@
 // Check the built library -- by DECODING it, not by reading the manifest.
 //
-//   node tools/sampler/verify.mjs [--dir DIR] [--full]
+//   node sampled/tools/verify.mjs [--dir DIR] [--full]
 //
 // The manifest records what the builder believed. This decodes the Opus files
 // the browser will actually be handed and measures them, so anything the codec

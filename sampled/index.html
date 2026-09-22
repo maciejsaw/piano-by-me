@@ -157,7 +157,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 </div></div>
 
 <header>
-  <h1>Sampled</h1>
+  <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Sampled</a></h1>
   <button id="panicBtn">panic</button>
   <span class="stat">voices <b id="statVoices">–</b></span>
   <span class="stat">ringing <b id="statRes">–</b></span>
@@ -476,7 +476,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         scaled by how long the key was held — a string ringing for four seconds has less left in it to stop.
         The limiter is a seatbelt, not a sound: it is doing nothing until eighty-eight undamped strings would
         have run out of headroom. <b>Align sample starts</b> lines up the attack of all 1408 recordings:
-        each one was measured (<code>tools/sampler/align.mjs</code>) for how far into the file its attack front
+        each one was measured (<code>sampled/tools/align.mjs</code>) for how far into the file its attack front
         actually is, and it runs from <b>5 ms to 59 ms</b> across this library — the build trims each head at a
         level threshold, which lines up where silence ends, not where the note arrives. With this on, a late
         recording is started further in and an early one is held back by the difference, so every key's attack

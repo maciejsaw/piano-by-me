@@ -52,7 +52,7 @@ const partial = (f0, B, n) => f0 * n * Math.sqrt(1 + B * n * n);
  * The AFTERSOUND decay rate of a note, in dB/s, fitted from its decay curve.
  *
  * `edr` in the manifest is the EARLY decay rate -- a least squares fit over
- * the first 20 dB (tools/sampler/lib/analysis.mjs), which on a piano is the
+ * the first 20 dB (sampled/tools/lib/analysis.mjs), which on a piano is the
  * prompt sound: the fast first slope of a famously double-sloped decay. Using
  * it as the leak constant of an accumulator that is supposed to hold a halo up
  * is why the halo used to vanish. It reads 63 dB/s at C6 -- a time constant of
