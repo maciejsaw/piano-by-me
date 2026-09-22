@@ -43,7 +43,8 @@ export const DEFAULT_SCALE = {
     // low at 6 s. These land it within 1 dB from 1 s to 6 s.
     t60Low:   [[21, 68], [36, 47], [48, 29], [60, 20], [72, 11], [84, 4.7], [96, 2.5], [108, 1.6]],
     t60High:  [[21, 4.0], [36, 3.2], [48, 2.3], [60, 1.7], [72, 1.1], [84, 0.63], [96, 0.40], [108, 0.29]],
-    t60Damped:[[21, 0.30], [48, 0.18], [72, 0.10], [108, 0.06]],
+    // Hand-voiced: x2^-0.2295 on the fitted figures (0.30 / 0.18 / 0.10 / 0.06).
+    t60Damped:[[21, 0.2559], [48, 0.1535], [72, 0.0853], [108, 0.0512]],
     strikePos:[[21, 0.125], [36, 0.122], [60, 0.115], [84, 0.10], [108, 0.085]],
     // Felt hardness, solved per note so contact duration lands on the curve
     // real hammers measure -- 4.5 ms at A0 falling to 0.5 ms at C8, with C4
@@ -194,7 +195,8 @@ export const DEFAULT_SCALE = {
     // Fractional difference in speaking length between the outer strings of a
     // unison and the centre one, from the offset of the bridge pins. Small, but
     // it is what gives each string its own inharmonicity.
-    lengthSpread: [[21, 0.0015], [48, 0.0030], [108, 0.0050]],
+    // Hand-voiced: x2^0.368 on 0.0015 / 0.0030 / 0.0050.
+    lengthSpread: [[21, 0.001936], [48, 0.003872], [108, 0.006453]],
     // Fractional spread in wire gauge across a unison: drawing tolerance.
     gaugeSpread:  [[21, 0.004], [48, 0.008], [108, 0.010]],
     // Fractional spread in where the hammer meets each string, from the strings
@@ -203,8 +205,12 @@ export const DEFAULT_SCALE = {
     // Fractional difference in how hard the hammer drives each string.
     levelSpread:  [[21, 0.03], [48, 0.06], [108, 0.08]],
   },
-  // Lowest notes on a grand have no dampers at all.
-  lowestDamped: 29,
+  // Every bass note on a grand is damped; it is the top of the compass --
+  // above E6 on the C5, where the strings die on their own within a couple of
+  // seconds -- that has no dampers. (This used to be read the other way round,
+  // which left everything below F1 ringing for as long as its T60 allowed.)
+  lowestDamped: 21,
+  highestDamped: 88,
 };
 
 export const lerpTable = (table, midi) => {
@@ -419,7 +425,7 @@ export function buildScale(scale = DEFAULT_SCALE, edits = NO_OFFSETS) {
       // String wave impedance: what the hammer actually pushes against.
       Z: Math.sqrt(phys.T * phys.mu),
       gain: V('gain'),
-      hasDamper: midi >= scale.lowestDamped,
+      hasDamper: midi >= scale.lowestDamped && midi <= (scale.highestDamped ?? 108),
     });
   }
   return { scale, notes };

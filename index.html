@@ -24,22 +24,22 @@ kbd{border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px}
   <h1>Piano Model X</h1>
   <p class="sub">Pick a piano. Press <kbd>1</kbd> or <kbd>2</kbd>.</p>
   <div class="grid">
-    <a class="card" href="modelled/">
-      <h2>1 · Modelled</h2>
-      <p>Physically modelled: every string is its own waveguide, all meeting at a shared bridge.
-         Unison beating and sympathetic resonance fall out of the physics.</p>
-    </a>
     <a class="card" href="sampled/">
-      <h2>2 · Sampled</h2>
+      <h2>1 · Classic grand piano</h2>
       <p>A recorded Yamaha C5 (Salamander), repitched onto the fitted scale, with
          release samples, resonance and room.</p>
+    </a>
+    <a class="card" href="modelled/">
+      <h2>2 · Electric clavinet</h2>
+      <p>Physically modelled: every string is its own waveguide, all meeting at a shared bridge.
+         Unison beating and sympathetic resonance fall out of the physics.</p>
     </a>
   </div>
 </main>
 <script>
 addEventListener('keydown', (e) => {
-  if (e.key === '1') location.href = 'modelled/';
-  if (e.key === '2') location.href = 'sampled/';
+  if (e.key === '1') location.href = 'sampled/';
+  if (e.key === '2') location.href = 'modelled/';
 });
 </script>
 </body>

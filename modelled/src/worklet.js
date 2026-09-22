@@ -13,8 +13,9 @@ class PianoProcessor extends AudioWorkletProcessor {
       quality: o.quality ?? 16,
       unisonCoupling: o.unisonCoupling ?? 0.55,
       bridgeCoupling: o.bridgeCoupling ?? 0.30,
+      body: o.body, room: o.room,
     });
-    this.gain = 1;
+    this.gain = o.gain ?? 1;
     this.frames = 0;
     this.load = 0;
     this.port.onmessage = (e) => this.handle(e.data);
