@@ -1,13 +1,20 @@
 {
   "name": "piano-model-x",
   "version": "0.1.0",
-  "description": "Physically modelled piano: per-string waveguides on a shared bridge",
+  "description": "A piano two ways: physically modelled (modelled/) and sampled (sampled/)",
   "scripts": {
     "start": "node tools/serve.mjs",
-    "verify": "node tools/verify.mjs",
-    "bench": "node tools/bench.mjs",
-    "test:browser": "node tools/browser-test.mjs",
-    "render": "node tools/render.mjs"
+    "verify": "cd modelled && node tools/verify.mjs",
+    "bench": "cd modelled && node tools/bench.mjs",
+    "test:browser": "cd modelled && node tools/browser-test.mjs",
+    "render": "cd modelled && node tools/render.mjs",
+    "sampled:fetch": "node sampled/tools/fetch.mjs",
+    "sampled:build": "node sampled/tools/build.mjs",
+    "sampled:align": "node sampled/tools/align.mjs",
+    "sampled:selftest": "node sampled/tools/selftest.mjs",
+    "sampled:verify": "node sampled/tools/verify.mjs",
+    "sampled:test": "node sampled/tools/browser-test.mjs",
+    "sampled:render": "node sampled/tools/render.mjs"
   },
   "repository": {
     "type": "git",
@@ -21,6 +28,7 @@
   },
   "homepage": "https://github.com/maciejsaw/piano-model-x#readme",
   "devDependencies": {
+    "ffmpeg-static": "^5.2.0",
     "playwright": "^1.63.0"
   },
   "type": "module"
