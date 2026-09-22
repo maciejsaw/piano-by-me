@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Classic grand piano</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2312100e'/%3E%3Crect x='2' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='5' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='8' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='11' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='3.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3Crect x='9.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
+  --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc; --res:#7fbf7f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+h1{font-size:14px;margin:0 14px 0 0;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
+button.primary:disabled{opacity:.55;cursor:default}
+button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
+select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
+code{background:var(--panel2);padding:1px 5px;border-radius:3px}
+.stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
+/* One column. The wrappers become display:contents so every panel is a direct
+   flex item of main and can be ordered independently of the markup. */
+main{padding:14px;max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:0}
+main>div{display:contents}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
+.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+.panel h3.sub{font-size:11px;color:var(--ink);font-weight:600;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+.meter{flex:1;position:relative;height:10px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.meter div{position:absolute;top:0;bottom:0;left:0}
+.meter .lvl{background:var(--accent2);opacity:.7}
+.meter .gr{left:auto;right:0;background:#e08a6a}
+.exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
+.exp-h{font-size:11px;color:var(--dim);margin:0 0 6px}
+#kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
+#kbInner{position:relative;height:150px}
+.wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
+.wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
+.wk.res{background:linear-gradient(#dff0df,#a8d4a8)}
+.wk.sil{background:linear-gradient(#cfe0f5,#9dbbdd)}
+.wk.dn{background:linear-gradient(#c9a35c,#a9863f)}
+.bk{position:absolute;top:0;background:linear-gradient(#3a342c,#15120e);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
+.bk.sel{background:linear-gradient(#7a5e28,#3d2f14)}
+.bk.res{background:linear-gradient(#3c5c3c,#1b2b1b)}
+.bk.sil{background:linear-gradient(#2c4260,#16212f)}
+.bk.dn{background:linear-gradient(#b8933f,#6d5522)}
+.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
+.row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.row label{flex:0 0 126px;color:var(--dim);font-size:11px}
+.row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
+.btnrow{flex:1;display:flex;gap:6px;min-width:0}
+.btnrow button{flex:1;padding:6px 4px}
+.row output{flex:0 0 118px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim);width:38%}
+.hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
+kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
+#velCanvas{width:100%;height:120px;border:1px solid var(--line);border-radius:4px;display:block}
+#velCurveCanvas,#velLayerCanvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px;cursor:crosshair;touch-action:none}
+#eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
+#resMap{width:100%;height:75px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
+#resCurveCanvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px;cursor:crosshair;touch-action:none}
+#layerMap{width:100%;height:180px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px}
+.eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
+.eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
+.eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
+.eqband output{flex:0 0 84px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#velTable td:last-child{text-align:right}
+.envgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media(max-width:1100px){.envgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.envgrid{grid-template-columns:1fr}}
+.env.wide{grid-column:1/-1}
+.env h3{font-size:11px;color:var(--ink);margin:0 0 6px;display:flex;align-items:center;gap:6px;font-weight:600}
+.env h3 span{margin-left:auto;display:flex;gap:4px}
+.env h3 button{padding:1px 6px;font-size:10px}
+.env canvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;touch-action:none;cursor:grab}
+.env p{color:var(--dim);font-size:10px;line-height:1.6;margin:6px 0 0}
+.env .row label{flex:0 0 86px}
+.env .row output{flex:0 0 74px}
+#loadWrap{height:3px;background:#2a251e;border-radius:2px;overflow:hidden;flex:0 0 130px}
+#loadBar{height:100%;width:0;background:var(--accent);transition:width .3s}
+.pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pe-group:first-child{margin-top:0}
+.pe-row{display:grid;grid-template-columns:242px minmax(0,1fr);gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #241f18}
+.pe-ctl{min-width:0}
+.pe-ctl>label{display:block;color:var(--ink);font-size:11px;cursor:help;margin-bottom:3px}
+.pe-head{display:flex;align-items:center;gap:6px}
+.pe-slider{flex:1;min-width:60px;accent-color:var(--accent)}
+.pe-zoom{padding:1px;font-size:10px;flex:0 0 62px}
+.pe-out{display:flex;justify-content:space-between;gap:6px;font-size:11px;font-variant-numeric:tabular-nums;margin-top:3px}
+.pe-off{color:var(--accent)} .pe-abs{color:var(--dim)}
+.pe-btns{display:flex;gap:4px;margin-top:4px}
+.pe-btns button{padding:1px 7px;font-size:10px}
+.pe-canvas-wrap{min-width:0}
+.pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
+.pe-canvas-wrap canvas.pe-keys{height:72px;cursor:pointer}
+.sel-bar{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:12px}
+.sel-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);flex-wrap:wrap}
+.sel-head b{color:var(--accent);font-weight:600}
+.sel-actions{margin-left:auto;display:flex;gap:4px}
+.sel-actions button{padding:2px 7px;font-size:10px}
+.sel-map{width:100%;height:34px;display:block;margin:6px 0 4px;border:1px solid var(--line);border-radius:4px;touch-action:none;cursor:ew-resize}
+.sel-foot{display:flex;align-items:center;gap:8px}
+.sel-foot label{flex:0 0 70px;color:var(--dim);font-size:11px;cursor:help}
+.sel-foot input[type=range]{flex:1;accent-color:var(--accent)}
+.sel-foot output{flex:0 0 66px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums}
+.pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
+.sel-bar{position:sticky;top:52px;z-index:5;box-shadow:0 6px 10px -6px #000}
+.sel-actions button[data-reset]{border-color:#5a4433}
+#menuWrap{position:relative;margin-left:auto}
+#menuBtn{font-size:18px;line-height:1;padding:4px 10px}
+#menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
+#menu.open{display:flex;flex-direction:column;gap:4px}
+#menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px}
+#menu button:hover{background:var(--panel2);border:none}
+#overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+#overlay div{text-align:center;max-width:540px}
+#overlay p{color:var(--dim);margin:14px 0}
+.installOpt{display:flex;gap:8px;align-items:flex-start;justify-content:center;text-align:left;margin:0 auto 14px;max-width:420px;font-size:12px;color:var(--dim);cursor:pointer}
+.installOpt input{margin-top:2px}
+.installOpt[hidden]{display:none}
+.instBar{height:8px;width:360px;max-width:100%;margin:20px auto 0;background:var(--panel2);border-radius:4px;overflow:hidden}
+#instFill{height:100%;width:0;background:var(--accent);transition:width .25s}
+#uninstallBtn{margin-top:12px;font-size:11px;padding:4px 10px;background:none;color:var(--dim)}
+</style>
+</head>
+<body>
+<div id="overlay"><div id="startView">
+  <h1 style="font-size:20px;margin-bottom:6px">Classic grand piano</h1>
+  <p>A Yamaha C5, recorded. One dedicated sample per key per velocity layer — 88 × 16,
+     repitched off the Salamander library with the instrument's own body response held
+     still — played by an engine with per-key velocity response, stereo spread, a
+     geometric room, and sympathetic resonance that accumulates while the pedal is down.</p>
+  <label id="installOffer" class="installOpt">
+    <input type="checkbox" id="installChk" checked>
+    <span id="installLbl">Download samples to disk for better performance — takes about 2.6 GB on your disk</span>
+  </label>
+  <button class="primary" id="startBtn">Start audio</button>
+  <div><button id="uninstallBtn" class="small" hidden></button></div>
+  <p id="loadMsg" style="font-size:11px">The library streams as you play: the first notes are
+     ready in a few seconds, the rest arrives behind you. Connect a MIDI keyboard before or
+     after starting, or play with <kbd>z</kbd>…<kbd>m</kbd> / <kbd>q</kbd>…<kbd>u</kbd>.
+     <kbd>space</kbd> is the sustain pedal.</p>
+</div><div id="installView" hidden>
+  <h1 style="font-size:20px;margin-bottom:6px">Installing the piano</h1>
+  <p>Downloading every sample and decoding it to this browser's storage, once. The piano
+     starts when it is done. Please wait — if you close the tab it continues from here
+     next time.</p>
+  <div class="instBar"><div id="instFill"></div></div>
+  <p id="instStat" style="font-size:12px">starting…</p>
+  <button id="instRetry" hidden>Retry</button>
+  <button id="instSkip" style="font-size:11px;padding:4px 10px;background:none;color:var(--dim)">Skip and play now</button>
+</div></div>
+
+<header>
+  <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Classic grand piano</a></h1>
+  <button id="panicBtn">panic</button>
+  <span class="stat">voices <b id="statVoices">–</b></span>
+  <span class="stat">ringing <b id="statRes">–</b></span>
+  <span class="stat">undamped <b id="statUndamped">–</b></span>
+  <span class="stat">keys ready <b id="statKeys">–</b></span>
+  <span class="stat">loaded <b id="statLoad">–</b></span>
+  <div id="loadWrap"><div id="loadBar"></div></div>
+  <span class="stat">resident <b id="statMem">–</b></span>
+  <div id="menuWrap">
+    <button id="menuBtn" title="More" aria-label="More">⋯</button>
+    <div id="menu">
+      <button id="exportBtn">Export settings…</button>
+      <button id="importBtn">Import settings…</button>
+      <button id="resetAllBtn">Reset everything</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
+</header>
+
+<main>
+  <div>
+    <div class="panel" style="order:1">
+      <h2>Keyboard — click to play (hit high on the key for more velocity), shift-click to lift its dampers silently</h2>
+      <div id="kb"><div id="kbInner"></div></div>
+      <div class="hint">
+        <b>Hear the sympathetic resonance:</b> shift-click <b>C4</b>, <b>E4</b> and <b>G4</b> to raise their
+        dampers without striking them — they turn blue — then play <b>C2</b> hard. The chord answers on its own,
+        and it answers louder the harder you hit. Now hold the sustain pedal and play the same note repeatedly:
+        the resonance <b>piles up</b>, because each strike adds to an energy accumulator that only leaks away at
+        each string's own measured decay rate. Lift the pedal and every damper falls at once.
+      </div>
+    </div>
+
+    <div class="panel" style="order:3">
+      <h2>Velocity response — <span id="noteName">C4</span></h2>
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Velocity → layer</h3>
+      <canvas id="velLayerCanvas" height="300"></canvas>
+      <div class="hint" style="margin-bottom:14px">Map which of the 16 recorded layers each velocity plays:
+        <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove. This replaces the single
+        layer-bias knob — because the whole range is drawable, every layer stays reachable. The blue dot is the
+        last note you struck, on the layer it landed on. Where the line is <b>flat</b>, a wide band of velocities
+        all play the same layer (and stay near its native level); where it is <b>steep</b>, the layer changes
+        quickly. Per-key <b>Layer bias</b> still nudges this for one key.</div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Volume</h3>
+      <div class="row"><label>custom volume curve</label><button id="velCurveBtn" style="flex:1">off — native layer levels</button><output></output></div>
+      <canvas id="velCurveCanvas" height="300"></canvas>
+      <div class="hint" style="margin-bottom:12px">By default (<b>off</b>) each layer plays at its own <b>recorded
+        level</b>, with the level ramped smoothly between neighbouring layers so crossing a boundary changes the
+        timbre but not the loudness — no abrupt jumps. Turn this <b>on</b> to override that with a hand-drawn
+        velocity→level curve: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove,
+        pull the far-left point to <b>silent</b> for a true pianissimo. Per-key <b>Level trim</b> always applies.</div>
+      <canvas id="velCanvas" height="240"></canvas>
+      <div class="hint" id="velHint"></div>
+      <table id="velTable"></table>
+      <table id="noteTable" style="margin-top:8px"></table>
+      <div class="hint">Level comes from the curve; timbre comes from which of the sixteen recordings the
+        velocity reaches for. They are separate on purpose — changing the curve never changes the tone,
+        and changing the layer bias never changes the level. Both are per key: draw them on the right.</div>
+    </div>
+
+    <div class="panel" style="order:3">
+      <h2>Sample map — every key × velocity layer, lit as it plays</h2>
+      <canvas id="layerMap" height="360"></canvas>
+      <div class="hint">The grid is the whole library: <b>88 keys</b> across, the <b>16 velocity layers</b>
+        up (softest at the bottom, loudest at the top). A cell is <b>brighter</b> when that exact
+        recording is resident in memory and dim when it has not been streamed in yet. When you play,
+        the cell for the note and the layer its velocity reached for <b>lights gold</b> — so you can see
+        which of the sixteen recordings is actually sounding — and fades once the key comes up.</div>
+    </div>
+
+    <div class="panel" style="order:6">
+      <h2>Output &amp; stereo</h2>
+      <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2" step="0.01" value="0.45"><output id="gainV"></output></div>
+      <div class="row"><label>stereo spread</label><input type="range" id="spread" min="-1" max="1" step="0.01" value="0"><output id="spreadV"></output></div>
+      <div class="row"><label>stereo width</label><input type="range" id="width" min="0" max="2" step="0.01" value="1"><output id="widthV"></output></div>
+      <div class="row"><label>perspective</label><button id="persBtn" style="flex:1">player's view</button><output></output></div>
+      <div class="hint">The Salamander recordings are reversed — a key on the right of the keyboard sits on the
+        left of the stereo image — so left and right are <b>swapped first</b>, for every key and its release,
+        damper and sympathetic-resonance sounds alike. After that, <b>spread</b> at 0 leaves each key at its
+        own corrected position; move it right to push the treble further right and the bass further left, or
+        left to mirror the whole keyboard. <b>Width</b> rotates each key's own stereo image rather than panning
+        it, so a spread key does not collapse to one side.</div>
+    </div>
+
+    <div class="panel" style="order:7">
+      <h2>Output EQ — after everything, including the room</h2>
+      <canvas id="eqCanvas" height="220"></canvas>
+      <div id="eqBands"></div>
+      <div class="row"><label>EQ</label><button id="eqBtn" class="on" style="flex:1">enabled</button><output></output></div>
+      <div class="hint">Shelves at the ends, two bells in the middle: body around 300 Hz where a piano
+        gets boxy, presence around 3 kHz where the hammer lives. The curve is drawn from the filters'
+        own response, so what is on screen is what is running. It sits before the limiter, so a boost
+        cannot sneak past it, and after the room, so it is the last word on tone — use the per-key
+        <b>Level trim</b> for a single note that is wrong, not this.</div>
+    </div>
+
+    <div class="panel" style="order:8">
+      <h2>Reverb</h2>
+      <div class="row"><label>dry</label><input type="range" id="dry" min="0" max="1.2" step="0.01" value="0.81"><output id="dryV"></output></div>
+      <div class="hint">The one dry path, shared by both reverbs. At zero you hear only the reverbs (and the
+        soundboard, which has its own level under Sympathetic resonance).</div>
+
+      <h3 class="sub">1 · Early reflections — the modelled piano's room</h3>
+      <div class="row"><label>early reflections</label><button id="fdnBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="row"><label>level</label><input type="range" id="fdnWet" min="0" max="1.2" step="0.01" value="0.86"><output id="fdnWetV"></output></div>
+      <div class="exp">
+      <div class="exp-h">Early reflections send expander — peaks in, quiet parts less</div>
+      <div class="row"><label>ratio</label><input type="range" id="bExpRatio" min="1" max="6" step="0.05" value="1.2"><output id="bExpRatioV"></output></div>
+      <div class="row"><label>threshold</label><input type="range" id="bExpThr" min="-70" max="0" step="0.5" value="-8.5"><output id="bExpThrV"></output></div>
+      <div class="row"><label>attack</label><input type="range" id="bExpAtt" min="0.1" max="100" step="0.1" value="2.1"><output id="bExpAttV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="bExpRel" min="10" max="2000" step="5" value="70"><output id="bExpRelV"></output></div>
+      <div class="row"><label>send now</label><div class="meter"><div id="bExpLevel" class="lvl"></div><div id="bExpGr" class="gr"></div></div><output id="bExpGrV"></output></div>
+      <div class="hint">This reverb's own expander, on what it hears, not on what you hear. Below the
+        threshold the send falls away <b>ratio</b> times faster than the note does — at 2:1, a passage 10 dB
+        under the threshold reaches the reverb 20 dB down — so attacks and loud chords fill it and soft
+        playing and the long tails of notes stay drier. Ratio 1 is off. <b>Attack</b> is how fast the send
+        opens when the level rises — short lets a note's front in, longer keeps the hammer out and lets only
+        the bloom in. <b>Release</b> is how fast it closes as the level falls — short cuts the send off with
+        each note's decay, long lets it follow a phrase rather than a note. The meter shows the send level
+        (the bar) and how far it is being pulled down right now (the red part).</div>
+      </div>
+      <div class="row"><label>reflections</label><input type="range" id="fdnEr" min="0" max="2" step="0.01" value="0.8"><output id="fdnErV"></output></div>
+      <div class="row"><label>short tail</label><input type="range" id="fdnTail" min="0" max="2" step="0.01" value="0.12"><output id="fdnTailV"></output></div>
+      <div class="row"><label>room width</label><input type="range" id="fdnW" min="2.5" max="20" step="0.1" value="20"><output id="fdnWV"></output></div>
+      <div class="row"><label>room depth</label><input type="range" id="fdnD" min="2.5" max="30" step="0.1" value="29.1"><output id="fdnDV"></output></div>
+      <div class="row"><label>room height</label><input type="range" id="fdnH" min="2.2" max="12" step="0.1" value="10.8"><output id="fdnHV"></output></div>
+      <div class="row"><label>absorption</label><input type="range" id="fdnAbs" min="0.02" max="0.8" step="0.005" value="0.28"><output id="fdnAbsV"></output></div>
+      <div class="row"><label>predelay</label><input type="range" id="fdnPre" min="0" max="80" step="0.5" value="15"><output id="fdnPreV"></output></div>
+      <div class="row"><label>tail damping</label><input type="range" id="fdnDamp" min="600" max="12000" step="50" value="9250"><output id="fdnDampV"></output></div>
+      <div class="row"><label>listener back</label><input type="range" id="fdnPos" min="0.15" max="0.95" step="0.01" value="0.63"><output id="fdnPosV"></output></div>
+      <div class="hint">The modelled piano's room, run once on an impulse and convolved: image-source early
+        reflections — real paths off real surfaces, the source mirrored in each wall, stereo from the two
+        ears' distances to every image — which is what places the piano in a room. Its own feedback-delay
+        tail is held at 0.3 s and only knits the reflections together; the long tail is the hall's.</div>
+
+      <h3 class="sub">2 · Hall — the long tail</h3>
+      <div class="row"><label>hall</label><button id="roomBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="row"><label>level</label><input type="range" id="wet" min="0" max="1.2" step="0.01" value="0.06"><output id="wetV"></output></div>
+      <div class="exp">
+      <div class="exp-h">Hall send expander — peaks in, quiet parts less</div>
+      <div class="row"><label>ratio</label><input type="range" id="aExpRatio" min="1" max="6" step="0.05" value="1.4"><output id="aExpRatioV"></output></div>
+      <div class="row"><label>threshold</label><input type="range" id="aExpThr" min="-70" max="0" step="0.5" value="-4"><output id="aExpThrV"></output></div>
+      <div class="row"><label>attack</label><input type="range" id="aExpAtt" min="0.1" max="100" step="0.1" value="18.2"><output id="aExpAttV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="aExpRel" min="10" max="2000" step="5" value="180"><output id="aExpRelV"></output></div>
+      <div class="row"><label>send now</label><div class="meter"><div id="aExpLevel" class="lvl"></div><div id="aExpGr" class="gr"></div></div><output id="aExpGrV"></output></div>
+      <div class="hint">The hall's own expander — the same controls as the early reflections' one, set
+        independently, so one can take only the attacks while the other takes everything.</div>
+      </div>
+      <div class="row"><label>impulse</label><button id="hallIrBtn" style="flex:1">synthetic — load an IR file…</button><output></output></div>
+      <input type="file" id="hallIrFile" accept=".wav,.aif,.aiff,.flac,.ogg,.mp3,audio/*" hidden>
+      <div class="row"><label>reverb time</label><input type="range" id="rt60" min="0.5" max="6" step="0.01" value="2.08"><output id="rt60V"></output></div>
+      <div class="row"><label>bass</label><input type="range" id="hallBass" min="0.7" max="2" step="0.01" value="1.25"><output id="hallBassV"></output></div>
+      <div class="row"><label>treble</label><input type="range" id="hallTreble" min="0.2" max="1" step="0.01" value="0.5"><output id="hallTrebleV"></output></div>
+      <div class="row"><label>predelay</label><input type="range" id="hallPre" min="0" max="100" step="0.5" value="26"><output id="hallPreV"></output></div>
+      <div class="row"><label>build-up</label><input type="range" id="hallBuild" min="10" max="300" step="1" value="59"><output id="hallBuildV"></output></div>
+      <div class="hint">A late tail built the way a real one behaves, not a captured IR. <b>Reverb time</b> is
+        the RT60 of the mids; every frequency then decays at its own rate — <b>bass</b> and <b>treble</b> are
+        the RT at 125 Hz and 8 kHz as multiples of it, and the air takes more above that — which is what
+        stops a synthetic tail sounding like hiss fading out. The tail starts sparse, separate arrivals
+        thickening into a continuum over the <b>build-up</b>, and rises over the same time, rather than
+        switching on as a wash. <b>Impulse</b> loads a captured hall instead (any audio file the browser can
+        decode; kept in this browser, levelled to match); the shaping controls then apply only to the
+        synthetic hall. Click it again to go back.</div>
+      <div class="hint">Both reverbs hang off the one send, and each has its own level, expander and switch.
+        A reverb that is off stops convolving.</div>
+    </div>
+
+    <div class="panel" style="order:5">
+      <h2>Sympathetic resonance</h2>
+      <canvas id="resMap" height="150"></canvas>
+      <div class="hint" style="margin:0 0 10px">
+        <b>Gold bars</b> are the energy sitting in each string — every strike adds to them and they leak
+        away at that string's own measured decay rate. <b>Bright gold</b> is the ones loud enough to have
+        been given a voice; dim gold is energy that is there but below the threshold or outside the voice
+        limit. The <b>lit background</b> is every string whose damper is off, which is what the pedal
+        actually does. <b>Blue</b> is what you are holding down.
+        Press the pedal and play: the background lights up, then the bars build where the partials agree.
+      </div>
+      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Resonance level per key</h3>
+      <canvas id="resCurveCanvas" height="300"></canvas>
+      <div class="row"><label>this curve</label><span class="btnrow"><button id="resCurveResetBtn">flatten to 0 dB</button></span><output id="resCurveV"></output></div>
+      <div class="hint" style="margin-bottom:12px">How strongly each string answers, in dB on top of the
+        <b>amount</b> above: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove,
+        pull a point to the bottom to stop those strings answering at all. It ships <b>flat</b>, doing nothing.
+        The point of it is the right-hand end: the top strings of a piano have <b>no dampers</b> (the green
+        line is where they stop), so they are free to answer everything you play whether the pedal is down
+        or not, and go on ringing after the rest of the instrument has been stopped. Taking them down here
+        quietens them <i>and</i> shortens them — a string given less energy drops under the voice threshold
+        sooner — which is the difference between this and turning the whole resonance down.</div>
+      <div class="row"><label>resonance</label><span class="btnrow"><button id="resBtn" class="on">on</button><button id="resSoloBtn">solo</button></span><output></output></div>
+      <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="3.2" step="0.005" value="0.15"><output id="resAmtV"></output></div>
+      <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
+      <div class="row"><label>sustained drive</label><input type="range" id="resSustain" min="0" max="3" step="0.05" value="1"><output id="resSustainV"></output></div>
+      <div class="row"><label>ring length</label><input type="range" id="resRing" min="0.2" max="4" step="0.05" value="1"><output id="resRingV"></output></div>
+      <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
+      <div class="row"><label>near/far</label><input type="range" id="resProx" min="-8" max="8" step="0.25" value="0"><output id="resProxV"></output></div>
+      <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
+      <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="48" step="1" value="16"><output id="resMaxV"></output></div>
+      <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
+      <div class="row"><label>soundboard level</label><input type="range" id="sbAmt" min="0" max="2" step="0.01" value="0.5"><output id="sbAmtV"></output></div>
+      <div class="row"><label>soundboard tail</label><input type="range" id="sbTail" min="0.5" max="8" step="0.1" value="4.5"><output id="sbTailV"></output></div>
+      <div class="row"><label>self resonance</label><input type="range" id="resSelf" min="0" max="1" step="0.01" value="0"><output id="resSelfV"></output></div>
+      <div class="row"><label>pedal-up bleed</label><input type="range" id="resDamped" min="0" max="0.5" step="0.005" value="0.12"><output id="resDampedV"></output></div>
+      <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
+      <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
+      <div class="hint"><b>Near/far</b> tilts which strings answer by how far they are from the note played.
+        Partial coincidence on its own has no sense of distance — a C5 drives the C2 three octaves below it
+        about as readily as the C4 under it, because it is matching a partial and a partial does not care
+        where its string is. A real bridge does: its near end moves most, and what answers a note loudest is
+        mostly its neighbours. Positive is dB per octave of separation taken off the far strings; negative
+        does the reverse and blooms the far ones. Each note's total drive is held constant as you sweep it,
+        so it moves the resonance around the keyboard rather than turning it up.
+        <br><br>It does two things, because there are two separate questions. It decides how much energy
+        each string is <i>given</i> — and it also decides which of the ringing strings are actually
+        <i>heard</i>. There are always far more strings ringing than there are voices to play them with
+        (<b>max voices</b>), and they used to be ranked on accumulated energy alone, so a distant string
+        carrying a large deposit from something played several seconds ago would hold a voice while a string
+        right under the hand, freshly driven but quieter, never got one. The ranking is now biased by
+        distance to the nearest note sounding, on the same dB-per-octave scale. It only orders the queue:
+        no string is made quieter or pushed under the threshold by it.</div>
+      <div class="hint"><b>Sustained drive</b> is what keeps a halo alive under a long note: a struck string
+        goes on pushing the bridge for as long as it rings, so it holds every string coupled to it at a level
+        instead of just kicking them once at the attack, and the halo decays with the music rather than on
+        its own schedule. At 0 only the strikes count, which is where this used to be — hold a chord and
+        the resonance disappears out from under it. <b>Ring length</b> scales the
+        aftersound decay measured from the recordings, which is how long a string keeps answering once it
+        has been driven.</div>
+      <div class="hint">Which strings answer is decided by partial coincidence, with each string's real
+        inharmonicity and the bandwidth implied by its measured decay — so a fifth answers strongly and a
+        tritone barely. <b>Selectivity</b> widens that bandwidth: at 1× it is physical and almost nothing
+        resonates unless it is in tune to a cent, which is why every instrument that does this has to open
+        it up. <b>Build with velocity</b> is the exponent on velocity: 2 is the energy a hammer delivers.
+        <b>Soundboard</b> feeds all of this into a long, dark reverb, so lifting the pedal does not cut the
+        resonance dead: lifting it <b>ducks</b> the resonance down to <b>pedal-off drop</b> at once — the dampers
+        touching — then lets it fall the rest of the way slowly over <b>pedal-off fall</b>, scattered slightly in
+        time so the frame does not land as one click, while the body goes on ringing for the <b>soundboard
+        tail</b>, the way a whole piano keeps sounding for a few seconds after the dampers land.
+        <b>Pedal-up bleed</b> is how much a <b>damped</b> string still answers: a damper never fully stills a
+        string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
+        no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
+        free strings resonate, as before.
+        <b>Self resonance</b> lets the struck string answer itself: a note is never one string but a unison of
+        two or three plus the duplex behind the bridge, and part of what follows the knock is the rest of
+        them coming up through the bridge. Here that is the softest layer of the <i>same</i> key fed into the
+        same accumulator, so it blooms just behind the attack and sustains under it until the damper lands —
+        100% drives it as hard as a perfectly coupled string would be. At zero the diagonal is empty, as before.
+        <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds &mdash;
+        and leaves only the sympathetic voices and the soundboard, which is the one way to
+        hear what this section is actually contributing while you set it. It is a monitoring switch, not a
+        setting: it is never saved, and the instrument always comes up unsoloed.</div>
+    </div>
+
+    <div class="panel" style="order:4">
+      <h2>Envelopes — drag the two handles on each curve · shapes are global, their timings are per key where it matters</h2>
+      <div class="envgrid">
+        <div class="env">
+          <h3>Note attack<span id="naPreset"></span></h3>
+          <canvas id="naCanvas" height="220"></canvas>
+          <div class="row"><label>time</label><input type="range" id="naMs" min="0" max="400" step="1" value="0"><output id="naMsV"></output></div>
+          <p>Zero by default and doing nothing — the recording already has a hammer in it. Raise it to take
+             the knock off the front of a note.</p>
+        </div>
+        <div class="env">
+          <h3>Damper fall<span id="nrPreset"></span></h3>
+          <canvas id="nrCanvas" height="220"></canvas>
+          <div class="hint" style="margin:6px 0 0">Duration is per key — the <b>Damper fall</b> parameter above.
+             This is the shape, and it is what decides whether a released chord sounds stopped or swallowed.
+             The same shape stops a sympathetic voice, because it is the same damper.</div>
+        </div>
+        <div class="env">
+          <h3>Release sample attack<span id="raPreset"></span></h3>
+          <canvas id="raCanvas" height="220"></canvas>
+          <div class="row"><label>time</label><input type="range" id="raMs" min="0" max="120" step="1" value="4"><output id="raMsV"></output></div>
+          <p>Release samples start on top of a note that is still sounding, so switching one on at full level
+             is a click in the middle of a decaying chord.</p>
+        </div>
+        <div class="env">
+          <h3>Release sample release<span id="rrPreset"></span></h3>
+          <canvas id="rrCanvas" height="220"></canvas>
+          <div class="row"><label>time</label><input type="range" id="rrMs" min="0" max="1500" step="10" value="240"><output id="rrMsV"></output></div>
+          <p>Applied at the tail of the release sample, so it lands rather than stops.</p>
+        </div>
+        <div class="env wide">
+          <h3>Release level against how long the key was held<span id="hoPreset"></span></h3>
+          <canvas id="hoCanvas" height="220"></canvas>
+          <div class="row"><label>over</label><input type="range" id="hoSec" min="0.5" max="24" step="0.5" value="8"><output id="hoSecV"></output></div>
+          <div class="row"><label>down to</label><input type="range" id="hoFloor" min="-60" max="0" step="1" value="-26"><output id="hoFloorV"></output></div>
+          <div class="row"><label>key noise follows</label><input type="range" id="hoKey" min="0" max="1" step="0.01" value="0"><output id="hoKeyV"></output></div>
+          <p>The damper-release sound is the sound of a damper <b>stopping</b> something, so it depends on how
+             much is left to stop — and a string four seconds into its decay has very little. The dashed blue
+             line is <b id="hoNote">C4</b>'s own decay, measured at build time: trace it and the law is
+             physically right for that key. Salamander's SFZ does this as a flat dB per second; a real decay
+             is not a straight line, and the first second matters far more than the eighth.
+             The key-up thud does not follow by default — a key comes up the same way however long it was
+             down — but the last slider is there if you disagree.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="order:9">
+      <h2>Mechanics</h2>
+      <div class="row"><label>MIDI input</label><select id="midiSel" style="flex:1;max-width:none"><option>no MIDI</option></select><output></output></div>
+      <div class="row"><label>pedals</label><span class="btnrow"><button id="pedalBtn">sustain</button></span><output></output></div>
+      <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
+      <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
+      <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
+      <div class="row"><label>release start trim</label><input type="range" id="relTrim" min="0" max="200" step="1" value="0"><output id="relTrimV"></output></div>
+      <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
+      <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
+      <div class="row"><label>disk install</label><output id="installV" style="flex:1"></output></div>
+      <div class="row"><label>align sample starts</label><span class="btnrow"><button id="alignBtn" class="on">on</button></span><output id="alignV"></output></div>
+      <div class="row"><label>output limiter</label><button id="limBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="hint">The sustain pedal is continuous, not a switch: half-pedalling shortens a note without
+        stopping it, and CC 64 is read across its whole range. The damper-fall sound is picked by velocity and
+        scaled by how long the key was held — a string ringing for four seconds has less left in it to stop.
+        The limiter is a seatbelt, not a sound: it is doing nothing until eighty-eight undamped strings would
+        have run out of headroom. <b>Align sample starts</b> lines up the attack of all 1408 recordings:
+        each one was measured (<code>sampled/tools/align.mjs</code>) for how far into the file its attack front
+        actually is, and it runs from <b>5 ms to 59 ms</b> across this library — the build trims each head at a
+        level threshold, which lines up where silence ends, not where the note arrives. With this on, a late
+        recording is started further in and an early one is held back by the difference, so every key's attack
+        lands the same distance after the key goes down and the keyboard feels even. Nothing is re-cut: it is
+        an offset at playback, and <b>Sample start</b> in the Parameters panel nudges one key or one range on
+        top of it. <b>Release start trim</b> shaves a fixed few ms off the front of every
+        release and damper sample; <b>round-robin</b> adds a random few ms on top of that per play, so the same
+        key let go twice does not replay the identical file and machine-gun. <b>Release delay</b> holds the
+        note a millisecond past the key-up so its damper falls in step with the release sample, not a hair
+        ahead of it. There is <b>no pedal-action sample</b>: Salamander's two pedal recordings are a mechanism
+        being worked, with a room and a frame ringing in them that are not this room or this frame, and what
+        they stand in for — the whole undamped frame lighting up as the pedal goes down — is something this
+        engine does properly, string by string, under <b>Sympathetic resonance</b>. They are not loaded.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel" style="order:2">
+      <h2>Parameters — pick the keys once, then edit; the chart is a preview</h2>
+      <div id="editor"></div>
+      <div class="hint">Every slider moves whatever the strip at the top has selected — the whole
+        instrument, a range you dragged, or one key — so there is one place where the question
+        "which keys?" is answered. The three tiers add: a range edit is a departure from the global
+        value, a key edit a departure from that, and zero always means "as shipped".
+        A range is <b>feathered</b> at its edges, so raising the top octave and a half does not make
+        one key suddenly different; set the edge fade to zero when you do want a hard edge, the way
+        a real piano has one at the bass break.
+        The charts on the right are <b>previews, not editors</b> — the gold line is the
+        <b>total</b> across all three tiers, which is where a cliff shows up, and the caption names
+        the biggest jump between neighbouring keys. Clicking one selects that key to edit.
+        <b>smooth</b> rounds off the per-key layer only, so a deliberate single-key fix survives it
+        unless you ask. Edits are stored in this browser and reload with the page.
+        <br><br>Everything not in this list is one value for the instrument, because it is a property of the
+        instrument rather than of a key: master, stereo spread and perspective, room, resonance, the envelope
+        <i>shapes</i>, the EQ, and the mechanical noise levels. A Bézier shape cannot be a per-key offset —
+        there is no meaningful "twenty percent of a curve" to add — but its <i>duration</i> can be, and the
+        damper fall's already is: the shape is global, the time it takes is the <b>Damper fall</b> parameter here.</div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
