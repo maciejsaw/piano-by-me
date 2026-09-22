@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Piano Model X</title>
+<title>Electric clavinet</title>
 <style>
 :root{
   --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
@@ -64,11 +64,17 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 #overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
 #overlay div{text-align:center;max-width:460px}
 #overlay p{color:var(--dim);margin:14px 0}
+#menuWrap{position:relative;margin-left:auto}
+#menuBtn{font-size:18px;line-height:1;padding:4px 10px}
+#menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
+#menu.open{display:flex;flex-direction:column;gap:4px}
+#menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px}
+#menu button:hover{background:var(--panel2);border:none}
 </style>
 </head>
 <body>
 <div id="overlay"><div>
-  <h1 style="font-size:20px;margin-bottom:6px">Piano Model X</h1>
+  <h1 style="font-size:20px;margin-bottom:6px">Electric clavinet</h1>
   <p>A physically modelled piano: every string is an individual waveguide with its own
      geometry, tension and losses, and they all meet at a shared bridge — so unison
      beating and sympathetic resonance happen on their own rather than being effects.</p>
@@ -79,7 +85,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 </div></div>
 
 <header>
-  <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Piano Model X</a></h1>
+  <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Electric clavinet</a></h1>
   <select id="midiSel"><option>no MIDI</option></select>
   <button id="sustainBtn">sustain</button>
   <button id="unaBtn">una corda</button>
@@ -87,6 +93,15 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
   <span class="stat">strings <b id="statStrings">–</b></span>
   <span class="stat">ringing <b id="statActive">–</b></span>
   <span class="stat">dsp load <b id="statLoad">–</b></span>
+  <div id="menuWrap">
+    <button id="menuBtn" title="More" aria-label="More">⋯</button>
+    <div id="menu">
+      <button id="exportBtn">Export settings…</button>
+      <button id="importBtn">Import settings…</button>
+      <button id="resetAllBtn">Reset everything</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
 </header>
 
 <main>
@@ -102,7 +117,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     </div>
     <div class="panel" style="margin-top:14px">
       <h2>Instrument</h2>
-      <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2.5" step="0.01" value="1.0"><output id="gainV"></output></div>
+      <div class="row"><label>master</label><input type="range" id="gain" min="0" max="12.5" step="0.01" value="1.0"><output id="gainV"></output></div>
       <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
       <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
     </div>
@@ -148,10 +163,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <div class="panel" style="margin-top:14px">
       <h2>Parameter editor — slider is a global offset, chart is per key</h2>
       <div id="peBar">
-        <button id="peSave">save</button>
-        <button id="peLoad">load</button>
-        <button id="peExport">export</button>
-        <button id="peImport">import</button>
         <button id="peResetAll">reset all</button>
         <span class="stat">edited <b id="peCount">0</b></span>
       </div>

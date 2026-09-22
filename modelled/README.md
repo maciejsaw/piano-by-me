@@ -46,7 +46,7 @@ the silent hold and it stops.
 | **Wound strings** | core carries stiffness, winding adds mass — which is exactly why a short bass string can still have low inharmonicity |
 | **Hammer** | nonlinear Hertzian contact `F = K·δ^p`, integrated per strike against the combined impedance of the unison, terminated by the wave reflecting off the agraffe |
 | **Strike position** | comb filter; α ≈ 1/8 notches out the 8th partial |
-| **Dampers** | lossy terminations that ramp, not gates; bottom two octaves have none |
+| **Dampers** | lossy terminations that ramp, not gates; the top of the compass (above E6) has none, as on the C5 |
 | **Bridge** | 16 soundboard zones with a spread kernel, so coupling depends on register |
 | **Pedals** | sustain, una corda (hammer misses the outer string, which then rings sympathetically) |
 | **Body** | plate radiation efficiency, case as baffle, enclosed air as analytic box modes from real case dimensions, one lid reflection |

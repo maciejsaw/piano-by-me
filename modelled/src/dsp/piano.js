@@ -30,6 +30,9 @@ import { Room } from './room.js';
 const softclip = Math.tanh;
 
 const ZONES = 16;             // soundboard regions across the compass
+// Bridge drive below which an idle undamped string is not worth ticking.
+// About 60 dB under what a note played in that zone puts there.
+const SYMPATHY_FLOOR = 1e-6;
 
 // The parameters that are baked into a string's loop filters, and so need a
 // recompile when they move. Everything else is read at the strike or sits
@@ -258,6 +261,7 @@ export class Piano {
     this.zoneAcc = new Float64Array(ZONES);
     this.zoneVel = new Float64Array(ZONES);
     this.zoneDrive = new Float64Array(ZONES);
+    this.zoneLevel = new Float64Array(ZONES);   // peak |drive| over the block
     this.refreshActive();
   }
 
@@ -270,11 +274,26 @@ export class Piano {
     return Math.pow(1 + this.bridgeSpread, shape) / this.bridgeNorm;
   }
 
-  /** Only strings that can move are ticked: struck, ringing, or damper-up. */
+  /**
+   * Only strings that can move are ticked: struck, ringing, or damper-up.
+   *
+   * The undamped treble is damper-up for good, and ticking all of it all the
+   * time is ~20% of a core for nothing: while the board under it is still,
+   * those strings hold no energy anybody could hear (a held C3 leaves them
+   * near 1e-21). So an idle undamped string is only ticked while its own
+   * zone is being driven, or while it still carries energy of its own. The
+   * zone level includes its own radiation, so once it is ringing it keeps
+   * itself in the list until it has actually died away.
+   */
   refreshActive() {
-    this.active = this.strings.filter(
-      (s) => s.active || s.damperClosed < 0.999 || s.damperTarget < 0.5
-    );
+    const zl = this.zoneLevel;
+    this.active = this.strings.filter((s) => {
+      if (s.active || s.damperClosed < 0.999) return true;
+      if (s.damperTarget >= 0.5) return false;
+      if (s.note.hasDamper) return true;
+      return s.energy > 1e-12 || (zl && zl[s.zone] > SYMPATHY_FLOOR);
+    });
+    zl && zl.fill(0);
     const seen = new Set();
     for (const s of this.active) seen.add(s.noteIndex);
     this.activeNotes = [...seen];
@@ -496,7 +515,7 @@ export class Piano {
     if (this.tensionDrift > 0 || this.unisonLock > 0) this.drift(this.fs / Math.max(n, 1));
     const active = this.active, activeNotes = this.activeNotes;
     const nj = this.noteJunction, acc = this.noteAcc;
-    const zAcc = this.zoneAcc, zVel = this.zoneVel, zDrive = this.zoneDrive;
+    const zAcc = this.zoneAcc, zVel = this.zoneVel, zDrive = this.zoneDrive, zLevel = this.zoneLevel;
     const kernel = this.kernel, zones = this.zones, gain = this.masterGain;
 
     for (let i = 0; i < n; i++) {
@@ -533,6 +552,8 @@ export class Piano {
         let d = 0;
         for (let w = 0; w < ZONES; w++) d += row[w] * zVel[w];
         zDrive[z] = d;
+        const a = d < 0 ? -d : d;
+        if (a > zLevel[z]) zLevel[z] = a;
       }
       out[i] = softclip(this.body.process(mix) * gain);
     }

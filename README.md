@@ -5,14 +5,14 @@ computer keyboard.
 
 | | |
 |---|---|
-| [`modelled/`](modelled/README.md) | physically modelled: 240 waveguide strings on a shared bridge |
-| [`sampled/`](sampled/README.md) | a recorded Yamaha C5 (Salamander), one dedicated sample per key per layer |
+| **Classic grand piano** — [`sampled/`](sampled/README.md) | a recorded Yamaha C5 (Salamander), one dedicated sample per key per layer |
+| **Electric clavinet** — [`modelled/`](modelled/README.md) | physically modelled: 240 waveguide strings on a shared bridge |
 
 ## Run it
 
 ```bash
 npm install
-npm start           # -> http://localhost:8080, then pick a piano (or press 1 / 2)
+npm start           # -> http://localhost:8080, then pick an instrument (1 = Classic grand piano, 2 = Electric clavinet)
 ```
 
 `/modelled/` and `/sampled/` open either one directly; the title in each
