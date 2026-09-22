@@ -105,6 +105,84 @@ export const DEFAULT_SETTINGS = {
           "hi": 54,
           "v": -0.522,
           "feather": 0
+        },
+        {
+          "lo": 21,
+          "hi": 59,
+          "v": -0.6839999999999999,
+          "feather": 3
+        },
+        {
+          "lo": 21,
+          "hi": 48,
+          "v": -0.486,
+          "feather": 14
+        },
+        {
+          "lo": 83,
+          "hi": 108,
+          "v": 0.23399999999999999,
+          "feather": 14
+        },
+        {
+          "lo": 90,
+          "hi": 108,
+          "v": -0.882,
+          "feather": 14
+        },
+        {
+          "lo": 86,
+          "hi": 108,
+          "v": -0.252,
+          "feather": 14
+        },
+        {
+          "lo": 87,
+          "hi": 91,
+          "v": -0.72,
+          "feather": 14
+        },
+        {
+          "lo": 87,
+          "hi": 108,
+          "v": -0.378,
+          "feather": 14
+        },
+        {
+          "lo": 72,
+          "hi": 81,
+          "v": 0.72,
+          "feather": 14
+        },
+        {
+          "lo": 68,
+          "hi": 71,
+          "v": -1.206,
+          "feather": 4
+        },
+        {
+          "lo": 63,
+          "hi": 66,
+          "v": 1.2240000000000002,
+          "feather": 0
+        },
+        {
+          "lo": 64,
+          "hi": 67,
+          "v": 1.476,
+          "feather": 0
+        },
+        {
+          "lo": 67,
+          "hi": 69,
+          "v": -0.6479999999999999,
+          "feather": 0
+        },
+        {
+          "lo": 67,
+          "hi": 70,
+          "v": -1.89,
+          "feather": 0
         }
       ],
       "layerBias": [
@@ -278,7 +356,7 @@ export const DEFAULT_SETTINGS = {
         0,
         0,
         0,
-        0,
+        -0.108,
         0,
         0,
         0,
@@ -286,12 +364,12 @@ export const DEFAULT_SETTINGS = {
         -0.504,
         0,
         0,
+        -0.972,
+        -0.954,
         0,
         0,
         0,
-        0,
-        0,
-        0,
+        -0.486,
         0,
         0,
         0,
@@ -438,11 +516,11 @@ export const DEFAULT_SETTINGS = {
       },
       {
         "v": 84,
-        "layer": 9.531640625000001
+        "layer": 9.242187500000002
       },
       {
         "v": 88,
-        "layer": 11.116796875
+        "layer": 10.43828125
       },
       {
         "v": 95,
@@ -466,11 +544,15 @@ export const DEFAULT_SETTINGS = {
     "points": [
       {
         "k": 21,
-        "db": -19.299999999999997
+        "db": -22.873437499999994
+      },
+      {
+        "k": 27,
+        "db": -14.146875000000001
       },
       {
         "k": 38,
-        "db": -5.459375000000001
+        "db": -6.46875
       },
       {
         "k": 49,
@@ -508,28 +590,48 @@ export const DEFAULT_SETTINGS = {
   },
   "sliders": {
     "gain": "0.45",
-    "spread": "-0.15",
-    "width": "0.56",
-    "wet": "0",
-    "size": "1",
-    "rt60": "1.35",
-    "absorb": "0.26",
-    "dist": "0.72",
+    "spread": "0",
+    "width": "0.59",
+    "dry": "0.81",
+    "fdnWet": "0.86",
+    "bExpRatio": "1.2",
+    "bExpThr": "-8.5",
+    "bExpAtt": "2.1",
+    "bExpRel": "70",
+    "fdnEr": "0.8",
+    "fdnTail": "0.12",
+    "fdnW": "20",
+    "fdnD": "29.1",
+    "fdnH": "10.8",
+    "fdnAbs": "0.28",
+    "fdnPre": "15",
+    "fdnDamp": "9250",
+    "fdnPos": "0.63",
+    "wet": "0.06",
+    "aExpRatio": "1.4",
+    "aExpThr": "-4",
+    "aExpAtt": "18.2",
+    "aExpRel": "180",
+    "rt60": "2.08",
+    "hallBass": "1.25",
+    "hallTreble": "0.5",
+    "hallPre": "26",
+    "hallBuild": "59",
     "resAmt": "1.675",
     "resDrive": "3.55",
     "resSustain": "0.5",
     "resRing": "1",
-    "resSel": "1",
-    "resProx": "1.5",
+    "resSel": "1.5",
+    "resProx": "3.5",
     "resTone": "7300",
     "resMax": "18",
     "resTail": "2",
     "sbAmt": "0.24",
-    "sbTail": "6.3",
+    "sbTail": "4.6",
     "resSelf": "0.36",
     "resDamped": "0.17",
     "resOffDrop": "0.17",
-    "resOffFall": "3.5",
+    "resOffFall": "3.1",
     "naMs": "0",
     "raMs": "4",
     "rrMs": "240",
@@ -538,8 +640,8 @@ export const DEFAULT_SETTINGS = {
     "hoKey": "0",
     "relNoise": "0.67",
     "dampNoise": "1.22",
-    "relTrim": "99",
-    "relRR": "7",
+    "relTrim": "0",
+    "relRR": "0",
     "relDelay": "1"
   },
   "eqBands": [
@@ -567,6 +669,8 @@ export const DEFAULT_SETTINGS = {
     "eq": true,
     "res": true,
     "perspective": 1,
-    "align": true
+    "align": true,
+    "roomA": true,
+    "roomB": true
   }
 };

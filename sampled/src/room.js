@@ -1,5 +1,9 @@
 // The room, rendered once and convolved.
 //
+// Now used only for the soundboard's long, dark impulse (engine.js). The
+// reverbs you hear as a room are fdn-room.js (early reflections) and hall.js
+// (the late tail).
+//
 // A reverb has two jobs the ear treats separately, and this renders each the
 // way that job actually wants to be rendered, then hands the whole impulse
 // response to a ConvolverNode so the convolution runs in native code.

@@ -1,7 +1,8 @@
 // Main thread: load the library, build the instrument, wire the controls.
 import { Library } from './library.js';
 import { Curves, createEditor, PARAMS, noteName, LOW, HIGH } from './curves.js';
-import { Engine } from './engine.js';
+import { Engine, loadWorklets } from './engine.js';
+import * as irStore from './ir-store.js';
 import { buildKeyboard } from './keyboard.js';
 import { levelDb, pickLayer, nativeAt, nearestLayer, createVelCurveEditor, createVelLayerEditor } from './velocity.js';
 import { Envelopes } from './envelopes.js';
@@ -64,6 +65,7 @@ async function start(install = false) {
   // once every sample is on disk -- so it never runs from memory meanwhile.
   if (install) await runInstall();
 
+  await loadWorklets(ctx);
   engine = new Engine(ctx, lib, curves, envelopes);
   restore();
   buildUI();
@@ -371,17 +373,61 @@ function buildUI() {
     const run = () => { const v = +el.value; fn(v); if (out) out.textContent = fmt ? fmt(v) : v.toFixed(2); save(); };
     el.oninput = run; run();
   };
-  const db = (v) => `${v >= 0 ? '+' : ''}${(20 * Math.log10(Math.max(v, 1e-4))).toFixed(1)} dB`;
+  const db = (v) => {
+    const d = 20 * Math.log10(Math.max(v, 1e-4));
+    return v <= 0 ? 'off' : `${d >= 0 ? '+' : ''}${d.toFixed(1)} dB`;
+  };
 
   bind('gain', (v) => { engine.master.gain.value = v; }, db);
   bind('spread', (v) => { engine.spread = v; engine.refreshStrips(); },
     (v) => v === 0 ? 'off' : v > 0 ? `+${v.toFixed(2)} wider` : `${v.toFixed(2)} mirrored`);
   bind('width', (v) => { engine.width = v; engine.refreshStrips(); }, (v) => v.toFixed(2) + '×');
+  bind('dry', (v) => { engine.dry.gain.value = v; }, (v) => v === 0 ? 'off — reverbs only' : db(v));
+  // Each room's own send expander, and its meter: level as the bar, the
+  // expander's pull as the red part from the right, reported every 50 ms.
+  for (const [pfx, r] of [['aExp', engine.hall], ['bExp', engine.early]]) {
+    bind(pfx + 'Ratio', (v) => engine.setSendExpander(r, { ratio: v }), (v) => v <= 1 ? 'off' : `${v.toFixed(2)}:1`);
+    bind(pfx + 'Thr', (v) => engine.setSendExpander(r, { threshold: v }), (v) => v.toFixed(1) + ' dB');
+    bind(pfx + 'Att', (v) => engine.setSendExpander(r, { attack: v }), (v) => v.toFixed(1) + ' ms');
+    bind(pfx + 'Rel', (v) => engine.setSendExpander(r, { release: v }), (v) => v.toFixed(0) + ' ms');
+    r.exp.port.onmessage = (e) => {
+      const { levelDb, reductionDb } = e.data;
+      // Nothing on the send is not "fully pulled down": draw an empty meter.
+      const silent = levelDb < -70;
+      const lvl = silent ? 0 : Math.max(0, Math.min(1, (levelDb + 70) / 70));
+      const gr = silent ? 0 : Math.max(0, Math.min(1, -reductionDb / 40));
+      $(pfx + 'Level').style.width = `${(lvl * 100).toFixed(1)}%`;
+      $(pfx + 'Gr').style.width = `${(gr * 100).toFixed(1)}%`;
+      $(pfx + 'GrV').textContent = silent ? 'silent'
+        : `${levelDb.toFixed(0)} dB, −${(-reductionDb).toFixed(1)} dB`;
+    };
+  }
   bind('wet', (v) => { engine.wet.gain.value = v; }, db);
-  bind('rt60', (v) => engine.setRoom({ rt60: v }), (v) => v.toFixed(2) + ' s');
-  bind('size', (v) => engine.setRoom({ width: 7.2 * v, depth: 9.5 * v, height: 3.8 * Math.sqrt(v) }), (v) => (9.5 * v).toFixed(1) + ' m deep');
-  bind('absorb', (v) => engine.setRoom({ absorption: v }));
-  bind('dist', (v) => engine.setRoom({ distance: v }), (v) => v < 0.5 ? 'over the strings' : v < 0.8 ? 'at the piano' : 'across the room');
+  // Bass and treble read out in seconds, which move with the reverb time.
+  const hallRtReadouts = () => {
+    const rt = engine.hallOpts.rt60;
+    for (const [id, f] of [['hallBass', '125 Hz'], ['hallTreble', '8 kHz']]) {
+      const v = +$(id).value;
+      $(id + 'V').textContent = `${(v * rt).toFixed(2)} s @ ${f}`;
+    }
+  };
+  bind('rt60', (v) => { engine.setHall({ rt60: v }); hallRtReadouts(); }, (v) => v.toFixed(2) + ' s mids');
+  bind('hallBass', (v) => engine.setHall({ bass: v }),
+    (v) => `${(v * engine.hallOpts.rt60).toFixed(2)} s @ 125 Hz`);
+  bind('hallTreble', (v) => engine.setHall({ treble: v }),
+    (v) => `${(v * engine.hallOpts.rt60).toFixed(2)} s @ 8 kHz`);
+  bind('hallPre', (v) => engine.setHall({ predelayMs: v }), (v) => v.toFixed(1) + ' ms');
+  bind('hallBuild', (v) => engine.setHall({ buildMs: v }), (v) => v.toFixed(0) + ' ms');
+  bind('fdnWet', (v) => { engine.early.wet.gain.value = v; }, db);
+  bind('fdnEr', (v) => engine.setFdnRoom({ erLevel: v }), (v) => v.toFixed(2) + '×');
+  bind('fdnTail', (v) => engine.setFdnRoom({ tailLevel: v }), (v) => v.toFixed(2) + '×');
+  bind('fdnW', (v) => engine.setFdnRoom({ width: v }), (v) => v.toFixed(1) + ' m');
+  bind('fdnD', (v) => engine.setFdnRoom({ depth: v }), (v) => v.toFixed(1) + ' m');
+  bind('fdnH', (v) => engine.setFdnRoom({ height: v }), (v) => v.toFixed(1) + ' m');
+  bind('fdnAbs', (v) => engine.setFdnRoom({ absorption: v }));
+  bind('fdnPre', (v) => engine.setFdnRoom({ predelayMs: v }), (v) => v.toFixed(1) + ' ms');
+  bind('fdnDamp', (v) => engine.setFdnRoom({ tailDampHz: v }), (v) => (v / 1000).toFixed(1) + ' kHz');
+  bind('fdnPos', (v) => engine.setFdnRoom({ distance: v }), (v) => (v * 100).toFixed(0) + '% back');
   bind('resAmt', (v) => { engine.res.amount = v; }, (v) => `${v.toFixed(3)} (${(20 * Math.log10(v / 0.15)).toFixed(1)} dB of default)`);
   bind('resDrive', (v) => { engine.res.drive = v; }, (v) => v.toFixed(1) + ' (vel^n)');
   bind('resSustain', (v) => { engine.res.sustain = v; },
@@ -430,6 +476,49 @@ function buildUI() {
     $('limBtn').textContent = engine.limiterOn ? 'on' : 'off (watch your ears)';
     save();
   };
+  const syncRooms = () => {
+    for (const [id, r] of [['roomBtn', engine.hall], ['fdnBtn', engine.early]]) {
+      $(id).classList.toggle('on', r.on);
+      $(id).textContent = r.on ? 'on' : 'off';
+    }
+  };
+  $('roomBtn').onclick = () => { engine.setHallOn(!engine.hall.on); syncRooms(); save(); };
+  $('fdnBtn').onclick = () => { engine.setEarlyOn(!engine.early.on); syncRooms(); save(); };
+  syncRooms();
+
+  // The hall's impulse: synthetic, or a captured IR the player loads. The file
+  // is kept in IndexedDB (it is far too big for localStorage), so it comes
+  // back on reload; it is not part of an exported settings file.
+  const syncHallIr = (name) => {
+    $('hallIrBtn').classList.toggle('on', !!name);
+    $('hallIrBtn').textContent = name ? `${name} — click for synthetic` : 'synthetic — load an IR file…';
+  };
+  const useHallIr = async (name, bytes) => {
+    const buf = await ctx.decodeAudioData(bytes.slice(0));
+    engine.setHallIR(buf);
+    syncHallIr(name);
+    $('hallIrBtn').nextElementSibling.textContent =
+      `${buf.numberOfChannels === 1 ? 'mono' : buf.numberOfChannels + ' ch'}, ${buf.duration.toFixed(1)} s`;
+  };
+  $('hallIrBtn').onclick = () => {
+    if (engine.hallFile) {
+      engine.setHallIR(null); syncHallIr(null);
+      $('hallIrBtn').nextElementSibling.textContent = '';
+      irStore.clear().catch(() => {});
+    } else $('hallIrFile').click();
+  };
+  $('hallIrFile').onchange = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    const bytes = await f.arrayBuffer();
+    try {
+      await useHallIr(f.name, bytes);
+      irStore.put(f.name, bytes).catch(() => {});
+    } catch (err) { alert(`Could not decode ${f.name}: ${err.message}`); }
+  };
+  syncHallIr(null);
+  irStore.get().then((ir) => ir && useHallIr(ir.name, ir.bytes)).catch(() => {});
   $('persBtn').onclick = () => {
     engine.perspective *= -1;
     $('persBtn').textContent = engine.perspective > 0 ? "player's view" : 'audience view';
@@ -606,6 +695,8 @@ function collectSettings() {
       limiter: engine.limiterOn, eq: engine.eq.enabled,
       res: engine.res.enabled, perspective: engine.perspective,
       align: engine.alignStarts,
+      // Keys from when these were rooms A and B; kept so older files load.
+      roomA: engine.hall.on, roomB: engine.early.on,
     },
   };
 }
@@ -632,6 +723,14 @@ function applySettings(o) {
 function applyControls(o) {
   // Sliders and EQ bands are applied by dispatching the same `input` event a
   // drag would, so each one's bound handler moves the engine and the readout.
+  // The send expander used to be one, shared by both rooms (expRatio...);
+  // a file from then gives both rooms its settings.
+  if (o.sliders) for (const k of ['Ratio', 'Thr', 'Att', 'Rel']) {
+    const v = o.sliders['exp' + k];
+    if (v == null) continue;
+    o.sliders['aExp' + k] ??= v; o.sliders['bExp' + k] ??= v;
+    delete o.sliders['exp' + k];
+  }
   if (o.sliders) for (const [id, val] of Object.entries(o.sliders)) {
     if (id === 'ped') continue;   // momentary; see collectSettings -- never restore it
     const el = $(id);
@@ -655,6 +754,8 @@ function applyControls(o) {
   if (t.eq != null && engine.eq.enabled !== t.eq) $('eqBtn').click();
   if (t.res != null && engine.res.enabled !== t.res) $('resBtn').click();
   if (t.align != null && engine.alignStarts !== t.align) $('alignBtn').click();
+  if (t.roomA != null && engine.hall.on !== t.roomA) $('roomBtn').click();
+  if (t.roomB != null && engine.early.on !== t.roomB) $('fdnBtn').click();
   if (t.perspective != null && engine.perspective !== t.perspective) $('persBtn').click();
   // Redraw the things that read from state rather than from a slider event.
   editor?.refresh(); redrawEnvs(); for (const e of envEditors) e.draw();

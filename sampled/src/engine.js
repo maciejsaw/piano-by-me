@@ -5,8 +5,15 @@
 //
 //   voice ──► voiceGain ──┐
 //                          ├─► [ per-key channel strip ] ──┬─► dry ──────► master ──► out
-//   sympathetic voice ────┘        width matrix, then      └─► send ──► room ──► wet ──┘
-//                                  position, then trim
+//   sympathetic voice ────┘        width matrix, then      └─► send ─┬─► expander ──► early reflections ──► gate ──► wet ──┤
+//                                  position, then trim               └─► expander ──► hall ─────────────── ► gate ──► wet ──┘
+//
+// Two reverbs on the one send, in the order sound meets them: the early
+// reflections (fdn-room.js -- the modelled piano's image-source room, kept
+// short), then the hall's long late tail (hall.js, or an IR file). Each has its
+// own expander (expander-worklet.js) shaping only what that reverb hears, its
+// own level and its own switch. The dry path never sees either. Both are
+// convolutions, so a reverb that is off costs nothing once its input is cut.
 //
 // One strip per key rather than one per voice. A key's place in the stereo
 // image, its width and its trim are properties of the KEY -- of where its
@@ -18,6 +25,8 @@
 import { plan, VelCurve, VelLayerCurve } from './velocity.js';
 import { Resonance } from './resonance.js';
 import { renderIR, DEFAULTS as ROOM_DEFAULTS } from './room.js';
+import { renderFdnIR, FDN_DEFAULTS } from './fdn-room.js';
+import { renderHallIR, HALL_DEFAULTS, energyOf } from './hall.js';
 import { Envelopes } from './envelopes.js';
 import { Eq } from './eq.js';
 import { StreamSource } from './stream.js';
@@ -28,6 +37,11 @@ const MAX_VOICES = 64;
 // shortening notes rather than sustaining them, which is what half-pedalling
 // is; at or above it the string is free and nothing should be touching it.
 const UNDAMP = 0.35;
+
+/** Register the engine's own audio-thread processors. Await before `new Engine`. */
+export function loadWorklets(ctx) {
+  return ctx.audioWorklet.addModule(new URL('./expander-worklet.js', import.meta.url));
+}
 
 export class Engine {
   constructor(ctx, lib, curves, envelopes = new Envelopes()) {
@@ -81,14 +95,24 @@ export class Engine {
     this.lookahead = 0.006;
 
     this.dry = ctx.createGain(); this.dry.connect(this.master);
-    this.wet = ctx.createGain(); this.wet.gain.value = 0.34; this.wet.connect(this.master);
     this.send = ctx.createGain();
-    this.conv = ctx.createConvolver();
-    this.conv.normalize = false;
-    this.send.connect(this.conv).connect(this.wet);
-    this.roomOpts = { ...ROOM_DEFAULTS };
-    this.irRef = null;
-    this.rebuildRoom();
+    this.early = this.makeReverb(0.95, true);
+    this.fdnOpts = { ...FDN_DEFAULTS };
+    // Level reference: this room as it was when its level was tuned, with a
+    // 1.25 s tail. Taking it from the (now short) default would make every
+    // saved level louder than it was set.
+    this.fdnRef = renderFdnIR(ctx, { ...FDN_DEFAULTS, rt60: 1.25 }).energy;
+    this.rebuildFdnRoom();
+    // The hall's `conv` and `wet` are also engine.conv / engine.wet -- the
+    // render and test tools reach for engine.wet.
+    const h = this.makeReverb(1.09, true);
+    this.hall = h; this.conv = h.conv; this.wet = h.wet;
+    this.hallOpts = { ...HALL_DEFAULTS };
+    // Level reference: a hall with the old room's reference RT60 of 1.35 s, so
+    // a saved hall level means about what it did against the old room.
+    this.hallRef = renderHallIR(ctx, { ...HALL_DEFAULTS, rt60: 1.35 }).energy;
+    this.hallFile = null;               // a loaded IR, which replaces the synthetic hall
+    this.rebuildHall();
 
     // Mechanical noise -- pedal action, key release -- does not belong to a
     // key's place on the soundboard, so it bypasses the strips.
@@ -243,18 +267,105 @@ export class Engine {
     }
   }
 
-  rebuildRoom() {
-    const { buf, energy } = renderIR(this.ctx, this.roomOpts, this.irRef);
-    this.irRef ??= energy;              // the default room is the level reference
-    this.conv.buffer = buf;
+  /**
+   * send -> expander -> convolver -> gate -> wet -> master. The gate is the
+   * on/off switch. The expander needs expander-worklet.js registered on the
+   * context first: see loadWorklets().
+   */
+  makeReverb(level, on) {
+    const c = this.ctx;
+    const exp = new AudioWorkletNode(c, 'send-expander', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+    });
+    const conv = c.createConvolver();
+    conv.normalize = false;
+    const gate = c.createGain(); gate.gain.value = on ? 1 : 0;
+    const wet = c.createGain(); wet.gain.value = level;
+    exp.connect(conv).connect(gate).connect(wet).connect(this.master);
+    if (on) this.send.connect(exp);
+    return { exp, conv, gate, wet, on, timer: 0 };
   }
 
-  /** The pedal's own long reverb: the room's geometry, a much longer decay. */
-  /** The soundboard's own long, dark impulse -- the body, not the room. */
+  /**
+   * Switch a room in or out. The gate ramps rather than jumps, because
+   * closing a gain under a ringing tail instantaneously is a click; once it
+   * is shut the send is cut too, so a room that is off stops convolving.
+   */
+  setReverbOn(r, on) {
+    if (on === r.on) return;
+    r.on = on;
+    clearTimeout(r.timer);
+    const t = this.ctx.currentTime;
+    r.gate.gain.cancelScheduledValues(t);
+    r.gate.gain.setValueAtTime(r.gate.gain.value, t);
+    r.gate.gain.linearRampToValueAtTime(on ? 1 : 0, t + 0.03);
+    if (on) {
+      try { this.send.connect(r.exp); } catch { /* already connected */ }
+    } else {
+      r.timer = setTimeout(() => {
+        if (!r.on) try { this.send.disconnect(r.exp); } catch { /* not connected */ }
+      }, 60);
+    }
+  }
+
+  /** A room's send expander: ratio (1 is none), threshold dB, attack and release ms. */
+  setSendExpander(r, patch) {
+    const p = r.exp.parameters;
+    for (const k of ['ratio', 'threshold', 'attack', 'release']) {
+      if (patch[k] != null) p.get(k).value = patch[k];
+    }
+  }
+
+  setHallOn(on) { this.setReverbOn(this.hall, on); }
+  setEarlyOn(on) { this.setReverbOn(this.early, on); }
+
+  rebuildFdnRoom() {
+    const { buf } = renderFdnIR(this.ctx, this.fdnOpts, this.fdnRef);
+    this.early.conv.buffer = buf;
+  }
+
+  setFdnRoom(patch) { Object.assign(this.fdnOpts, patch); this.rebuildFdnRoom(); }
+
+  rebuildHall() {
+    const { buf } = renderHallIR(this.ctx, this.hallOpts, this.hallRef);
+    this.synthHall = buf;
+    if (!this.hallFile) this.hall.conv.buffer = buf;
+  }
+
+  setHall(patch) { Object.assign(this.hallOpts, patch); this.rebuildHall(); }
+
+  /**
+   * Use a captured impulse response for the hall, or null to go back to the
+   * synthetic one. Levelled to the same energy as the synthetic hall as it is
+   * currently set, so switching between them does not jump in level.
+   */
+  setHallIR(buffer) {
+    if (buffer) {
+      const g = Math.sqrt(energyOf(this.synthHall) / Math.max(energyOf(buffer), 1e-12));
+      const b = this.ctx.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        const src = buffer.getChannelData(c), dst = b.getChannelData(c);
+        for (let i = 0; i < src.length; i++) dst[i] = src[i] * g;
+      }
+      this.hallFile = b;
+    } else this.hallFile = null;
+    this.hall.conv.buffer = this.hallFile ?? this.synthHall;
+  }
+
+  /**
+   * The soundboard's own long, dark impulse -- the body, not the room. It
+   * keeps the geometry the old room had when it was tuned (size 0.83,
+   * absorption 0.51, listener at 0.87), and that room's default as its level
+   * reference, so moving the reverbs does not move the body.
+   */
   rebuildSoundboard() {
-    const { buf } = renderIR(this.ctx,
-      { ...this.roomOpts, rt60: Math.max(0.5, this.sbTailSec), tailDampHz: 2200 },
-      this.irRef ?? undefined);
+    this.sbRef ??= renderIR(this.ctx, ROOM_DEFAULTS).energy;
+    const { buf } = renderIR(this.ctx, {
+      ...ROOM_DEFAULTS,
+      width: 7.2 * 0.83, depth: 9.5 * 0.83, height: 3.8 * Math.sqrt(0.83),
+      absorption: 0.51, distance: 0.87,
+      rt60: Math.max(0.5, this.sbTailSec), tailDampHz: 2200,
+    }, this.sbRef);
     this.sbConv.buffer = buf;
   }
 
@@ -295,7 +406,6 @@ export class Engine {
 
   /** The last node before the destination -- what a recorder should tap. */
   outputNode() { return this.limiterOn ? this.limiter : this.eq.out; }
-  setRoom(patch) { Object.assign(this.roomOpts, patch); this.rebuildRoom(); this.rebuildSoundboard(); }
 
   /**
    * Where in the buffer to start this note, and how long to wait first.
