@@ -20,6 +20,8 @@ const LOW = 21, HIGH = 108;
 
 let ctx = null, node = null, model = null, quality = 16;
 let unisonCoupling = 0.55, bridgeCoupling = 0.30;
+// Highest note that gets the long dispersion chain; below LOW means off.
+let detailSplit = 48;
 let selNote = 60, selString = 1;
 const down = new Set(), silent = new Set();
 // Declared here because the keyboard is built before the editor exists.
@@ -52,7 +54,7 @@ async function start() {
   node = new AudioWorkletNode(ctx, 'piano-processor', {
     numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
     processorOptions: {
-      quality, unisonCoupling, bridgeCoupling, gain: +$('gain').value,
+      quality, unisonCoupling, bridgeCoupling, detailSplit, gain: +$('gain').value,
       body: { ...caseOpts(), cavityMix: +$('cmix').value, lidGain: +$('lid').value, enabled: bodyOn() },
       room: roomOpts(),
     },
@@ -355,6 +357,16 @@ $('uc').addEventListener('change', pushCoupling);
 $('bc').addEventListener('input', (e) => { bridgeCoupling = +e.target.value; $('bcV').textContent = bridgeCoupling.toFixed(2); });
 $('bc').addEventListener('change', pushCoupling);
 
+// Bass clarity. The label is live; the post waits for the drag to end, because
+// it recompiles every string in the register and that is not free.
+const detailLabel = (v) =>
+  (v < LOW ? 'off' : v >= HIGH ? 'whole keyboard' : `${noteName(v)} and below`);
+$('detail').addEventListener('input', (e) => {
+  detailSplit = +e.target.value;
+  $('detailV').textContent = detailLabel(detailSplit);
+});
+$('detail').addEventListener('change', () => post({ type: 'detail', split: detailSplit }));
+
 // Each returns the spec fields it changed, so exactly those are recorded.
 bindNoteGeometry('len', (n, v) => ({ lengthM: (n.spec.lengthM = v) }), (v) => (v * 1000).toFixed(0) + ' mm');
 bindNoteGeometry('core', (n, v) => ({ coreDiameterMm: (n.spec.coreDiameterMm = v) }), (v) => v.toFixed(3) + ' mm');
@@ -370,6 +382,7 @@ bindString('cpl', 'coupling', (v) => v.toFixed(2) + '×');
 $('gainV').textContent = (+$('gain').value).toFixed(2);
 $('ucV').textContent = unisonCoupling.toFixed(2);
 $('bcV').textContent = bridgeCoupling.toFixed(2);
+$('detailV').textContent = detailLabel(detailSplit);
 
 
 // -------------------------------------------------------- parameter editor -

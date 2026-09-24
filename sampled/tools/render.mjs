@@ -40,7 +40,6 @@ const opts = {
   noise: !argv.includes('--no-noise') && !argv.includes('--bare'),
   resAmount: +arg('--res-amount', 'NaN'),
   resVoices: +arg('--res-voices', 'NaN'),
-  resComp: !argv.includes('--no-res-comp'),
   voices: +arg('--voices', 'NaN'),
   wet: +arg('--wet', 'NaN'),
 };
@@ -85,10 +84,9 @@ const result = await page.evaluate(async ({ events, seconds, tail, opts }) => {
   if (!opts.room) engine.wet.gain.value = 0;
   if (Number.isFinite(opts.wet)) engine.wet.gain.value = opts.wet;
   if (!opts.noise) { engine.releaseNoise = 0; engine.damperNoise = 0; engine.pedalNoise = 0; }
-  if (Number.isFinite(opts.resAmount)) engine.res.amount = opts.resAmount;
+  if (Number.isFinite(opts.resAmount)) engine.res.symAmount = opts.resAmount;
   if (Number.isFinite(opts.resVoices)) engine.res.maxVoices = opts.resVoices;
   if (Number.isFinite(opts.voices)) engine.maxVoices = opts.voices;
-  engine.res.compensate = opts.resComp;
 
   // Stop streaming, then fetch exactly the layers this score asks for. With
   // the warm pass still running it could evict one of them mid-performance,

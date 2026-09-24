@@ -13,6 +13,7 @@ class PianoProcessor extends AudioWorkletProcessor {
       quality: o.quality ?? 16,
       unisonCoupling: o.unisonCoupling ?? 0.55,
       bridgeCoupling: o.bridgeCoupling ?? 0.30,
+      detailSplit: o.detailSplit,
       body: o.body, room: o.room,
     });
     this.gain = o.gain ?? 1;
@@ -53,6 +54,14 @@ class PianoProcessor extends AudioWorkletProcessor {
         if (m.rebuild) p.rebuildBody(m.opts);
         break;
       }
+      // Which register gets the long dispersion chain. Recompiling the bass
+      // costs a few hundred milliseconds, so this arrives on drag-end only;
+      // a string already ringing keeps its current loop until it next goes
+      // quiet, which is why nothing here touches s.detail.
+      case 'detail':
+        p.detailSplit = m.split;
+        for (const s of p.strings) p.recompileString(s);
+        break;
       case 'coupling':
         p.unisonCoupling = m.unison; p.bridgeCoupling = m.bridge;
         for (const s of p.strings) p.recompileString(s);

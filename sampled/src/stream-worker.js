@@ -23,6 +23,7 @@ import { demux, unpackHead, opusHead, RATE } from './ogg.js';
 const AHEAD = RATE * 1.2;      // decoded ahead of the playhead, per stream
 const BLOCK = 4800;            // frames per message to the worklet (100 ms)
 const CONCURRENCY = 6;
+const PREROLL = 3840;          // 80 ms of Opus decoded and thrown away before a seek point
 const URGENT = 10;
 
 let base = '', tag = '';
@@ -296,7 +297,18 @@ class DecodeStream {
     this.from = from; this.sent = from; this.consumed = from;
     this.end = d.total;
     this.next = 0; this.ts = 0;
-    this.outPos = -trimOf(d);
+    // A stream that starts well past the head (the resonance enters a
+    // recording ~1 s in) seeks instead of decoding everything before it: from
+    // the packet PREROLL ahead of `from`, which Opus needs to converge. Output
+    // positions follow the same rule as from the top -- whatever the decoder
+    // does with the pre-skip, it does it to its first output after configure.
+    // Starts at the head keep decoding from packet 0, so the join with the
+    // head is sample-exact.
+    if (from > headFrames + PREROLL) {
+      const want = from + trimOf(d) - PREROLL;
+      while (this.next < d.n - 1 && this.ts + d.dur[this.next] <= want) this.ts += d.dur[this.next++];
+    }
+    this.outPos = this.ts - trimOf(d);
     this.acc = null; this.accN = 0; this.accStart = from;
     this.closed = false;
     this.dec = new AudioDecoder({

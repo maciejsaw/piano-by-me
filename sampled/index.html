@@ -166,6 +166,16 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
   <span class="stat">loaded <b id="statLoad">–</b></span>
   <div id="loadWrap"><div id="loadBar"></div></div>
   <span class="stat">resident <b id="statMem">–</b></span>
+  <label class="stat" title="Audio buffer size. Larger is safer against dropouts and cut-off notes, but adds delay between key and sound. Changing it restarts the audio.">latency
+    <select id="latencySel">
+      <option value="interactive">lowest</option>
+      <option value="0.01">10 ms</option>
+      <option value="0.02">20 ms</option>
+      <option value="balanced">balanced</option>
+      <option value="0.05">50 ms</option>
+      <option value="0.1">100 ms</option>
+      <option value="playback">safest</option>
+    </select> <b id="statLatency">–</b></label>
   <div id="menuWrap">
     <button id="menuBtn" title="More" aria-label="More">⋯</button>
     <div id="menu">
@@ -232,12 +242,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <div class="panel" style="order:6">
       <h2>Output &amp; stereo</h2>
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="2" step="0.01" value="0.45"><output id="gainV"></output></div>
+      <div class="row"><label>stereo invert</label><button id="invBtn" style="flex:1">off</button><output></output></div>
       <div class="row"><label>stereo spread</label><input type="range" id="spread" min="-1" max="1" step="0.01" value="0"><output id="spreadV"></output></div>
       <div class="row"><label>stereo width</label><input type="range" id="width" min="0" max="2" step="0.01" value="1"><output id="widthV"></output></div>
       <div class="row"><label>perspective</label><button id="persBtn" style="flex:1">player's view</button><output></output></div>
       <div class="hint">The Salamander recordings are reversed — a key on the right of the keyboard sits on the
         left of the stereo image — so left and right are <b>swapped first</b>, for every key and its release,
-        damper and sympathetic-resonance sounds alike. After that, <b>spread</b> at 0 leaves each key at its
+        damper and resonance sounds alike. <b>Stereo invert</b> flips that swap back, before spread and width,
+        for when your speakers or the recordings disagree. After that, <b>spread</b> at 0 leaves each key at its
         own corrected position; move it right to push the treble further right and the bass further left, or
         left to mirror the whole keyboard. <b>Width</b> rotates each key's own stereo image rather than panning
         it, so a spread key does not collapse to one side.</div>
@@ -258,8 +270,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <div class="panel" style="order:8">
       <h2>Reverb</h2>
       <div class="row"><label>dry</label><input type="range" id="dry" min="0" max="1.2" step="0.01" value="0.81"><output id="dryV"></output></div>
-      <div class="hint">The one dry path, shared by both reverbs. At zero you hear only the reverbs (and the
-        soundboard, which has its own level under Sympathetic resonance).</div>
+      <div class="hint">The one dry path, shared by both reverbs. At zero you hear only the reverbs.</div>
 
       <h3 class="sub">1 · Early reflections — the modelled piano's room</h3>
       <div class="row"><label>early reflections</label><button id="fdnBtn" class="on" style="flex:1">on</button><output></output></div>
@@ -327,88 +338,79 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     </div>
 
     <div class="panel" style="order:5">
-      <h2>Sympathetic resonance</h2>
+      <h2>Resonance</h2>
       <canvas id="resMap" height="150"></canvas>
       <div class="hint" style="margin:0 0 10px">
-        <b>Gold bars</b> are the energy sitting in each string — every strike adds to them and they leak
-        away at that string's own measured decay rate. <b>Bright gold</b> is the ones loud enough to have
-        been given a voice; dim gold is energy that is there but below the threshold or outside the voice
-        limit. The <b>lit background</b> is every string whose damper is off, which is what the pedal
-        actually does. <b>Blue</b> is what you are holding down.
-        Press the pedal and play: the background lights up, then the bars build where the partials agree.
+        <b>Gold bars</b> are the strings answering right now, as loud as their voices currently are.
+        The <b>lit background</b> is every string whose damper is off, which is what the pedal actually does.
+        <b>Blue</b> is what you are holding down.
       </div>
       <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Resonance level per key</h3>
       <canvas id="resCurveCanvas" height="300"></canvas>
       <div class="row"><label>this curve</label><span class="btnrow"><button id="resCurveResetBtn">flatten to 0 dB</button></span><output id="resCurveV"></output></div>
-      <div class="hint" style="margin-bottom:12px">How strongly each string answers, in dB on top of the
-        <b>amount</b> above: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove,
-        pull a point to the bottom to stop those strings answering at all. It ships <b>flat</b>, doing nothing.
-        The point of it is the right-hand end: the top strings of a piano have <b>no dampers</b> (the green
-        line is where they stop), so they are free to answer everything you play whether the pedal is down
-        or not, and go on ringing after the rest of the instrument has been stopped. Taking them down here
-        quietens them <i>and</i> shortens them — a string given less energy drops under the voice threshold
-        sooner — which is the difference between this and turning the whole resonance down.</div>
+      <div class="hint" style="margin-bottom:12px">How strongly each string answers, in dB, for all three kinds
+        below: <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove, pull a point to
+        the bottom to stop those strings answering at all. The top strings have <b>no dampers</b> (right of the
+        green line), so they answer everything, pedal or not.</div>
       <div class="row"><label>resonance</label><span class="btnrow"><button id="resBtn" class="on">on</button><button id="resSoloBtn">solo</button></span><output></output></div>
-      <div class="row"><label>amount</label><input type="range" id="resAmt" min="0" max="3.2" step="0.005" value="0.15"><output id="resAmtV"></output></div>
-      <div class="row"><label>build with velocity</label><input type="range" id="resDrive" min="1" max="4" step="0.05" value="2.2"><output id="resDriveV"></output></div>
-      <div class="row"><label>sustained drive</label><input type="range" id="resSustain" min="0" max="3" step="0.05" value="1"><output id="resSustainV"></output></div>
-      <div class="row"><label>ring length</label><input type="range" id="resRing" min="0.2" max="4" step="0.05" value="1"><output id="resRingV"></output></div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Sympathetic &mdash; free strings, by shared partials</h3>
+      <div class="row"><label>level</label><input type="range" id="symAmt" min="0" max="1.5" step="0.005" value="0.3"><output id="symAmtV"></output></div>
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
-      <div class="row"><label>near/far</label><input type="range" id="resProx" min="-8" max="8" step="0.25" value="0"><output id="resProxV"></output></div>
+      <div class="row"><label>near/far</label><input type="range" id="resProx" min="-24" max="24" step="0.25" value="0"><output id="resProxV"></output></div>
+      <div class="row"><label>ring partials only</label><button id="partialsBtn" class="on" style="flex:1">on</button><output></output></div>
+      <div class="row"><label>release</label><input type="range" id="symRel" min="0.05" max="10" step="0.05" value="3"><output id="symRelV"></output></div>
+      <div class="row"><label>pedal-up release</label><input type="range" id="symPedalUp" min="0.02" max="4" step="0.02" value="0.6"><output id="symPedalUpV"></output></div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Soundboard &mdash; strings around the key, pedal or not</h3>
+      <div class="row"><label>level</label><input type="range" id="sbLevel" min="0" max="0.6" step="0.002" value="0.08"><output id="sbLevelV"></output></div>
+      <div class="row"><label>falloff</label><input type="range" id="sbFalloff" min="0" max="40" step="0.25" value="9"><output id="sbFalloffV"></output></div>
+      <div class="row"><label>strings</label><input type="range" id="sbStep" min="1" max="12" step="1" value="1"><output id="sbStepV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="sbRel" min="0.05" max="6" step="0.05" value="1.2"><output id="sbRelV"></output></div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Self &mdash; the struck key's own strings</h3>
+      <div class="row"><label>level</label><input type="range" id="selfAmt" min="0" max="1" step="0.005" value="0"><output id="selfAmtV"></output></div>
+      <div class="row"><label>release</label><input type="range" id="selfRel" min="0.02" max="4" step="0.02" value="0.4"><output id="selfRelV"></output></div>
+
+      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">All resonance voices</h3>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
-      <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="48" step="1" value="16"><output id="resMaxV"></output></div>
-      <div class="row"><label>release tail</label><input type="range" id="resTail" min="0.05" max="2" step="0.05" value="0.6"><output id="resTailV"></output></div>
-      <div class="row"><label>soundboard level</label><input type="range" id="sbAmt" min="0" max="2" step="0.01" value="0.5"><output id="sbAmtV"></output></div>
-      <div class="row"><label>soundboard tail</label><input type="range" id="sbTail" min="0.5" max="8" step="0.1" value="4.5"><output id="sbTailV"></output></div>
-      <div class="row"><label>self resonance</label><input type="range" id="resSelf" min="0" max="1" step="0.01" value="0"><output id="resSelfV"></output></div>
-      <div class="row"><label>pedal-up bleed</label><input type="range" id="resDamped" min="0" max="0.5" step="0.005" value="0.12"><output id="resDampedV"></output></div>
-      <div class="row"><label>pedal-off drop</label><input type="range" id="resOffDrop" min="0" max="1" step="0.01" value="0.4"><output id="resOffDropV"></output></div>
-      <div class="row"><label>pedal-off fall</label><input type="range" id="resOffFall" min="0.05" max="6" step="0.05" value="2"><output id="resOffFallV"></output></div>
-      <div class="hint"><b>Near/far</b> tilts which strings answer by how far they are from the note played.
-        Partial coincidence on its own has no sense of distance — a C5 drives the C2 three octaves below it
-        about as readily as the C4 under it, because it is matching a partial and a partial does not care
-        where its string is. A real bridge does: its near end moves most, and what answers a note loudest is
-        mostly its neighbours. Positive is dB per octave of separation taken off the far strings; negative
-        does the reverse and blooms the far ones. Each note's total drive is held constant as you sweep it,
-        so it moves the resonance around the keyboard rather than turning it up.
-        <br><br>It does two things, because there are two separate questions. It decides how much energy
-        each string is <i>given</i> — and it also decides which of the ringing strings are actually
-        <i>heard</i>. There are always far more strings ringing than there are voices to play them with
-        (<b>max voices</b>), and they used to be ranked on accumulated energy alone, so a distant string
-        carrying a large deposit from something played several seconds ago would hold a voice while a string
-        right under the hand, freshly driven but quieter, never got one. The ranking is now biased by
-        distance to the nearest note sounding, on the same dB-per-octave scale. It only orders the queue:
-        no string is made quieter or pushed under the threshold by it.</div>
-      <div class="hint"><b>Sustained drive</b> is what keeps a halo alive under a long note: a struck string
-        goes on pushing the bridge for as long as it rings, so it holds every string coupled to it at a level
-        instead of just kicking them once at the attack, and the halo decays with the music rather than on
-        its own schedule. At 0 only the strikes count, which is where this used to be — hold a chord and
-        the resonance disappears out from under it. <b>Ring length</b> scales the
-        aftersound decay measured from the recordings, which is how long a string keeps answering once it
-        has been driven.</div>
-      <div class="hint">Which strings answer is decided by partial coincidence, with each string's real
-        inharmonicity and the bandwidth implied by its measured decay — so a fifth answers strongly and a
-        tritone barely. <b>Selectivity</b> widens that bandwidth: at 1× it is physical and almost nothing
-        resonates unless it is in tune to a cent, which is why every instrument that does this has to open
-        it up. <b>Build with velocity</b> is the exponent on velocity: 2 is the energy a hammer delivers.
-        <b>Soundboard</b> feeds all of this into a long, dark reverb, so lifting the pedal does not cut the
-        resonance dead: lifting it <b>ducks</b> the resonance down to <b>pedal-off drop</b> at once — the dampers
-        touching — then lets it fall the rest of the way slowly over <b>pedal-off fall</b>, scattered slightly in
-        time so the frame does not land as one click, while the body goes on ringing for the <b>soundboard
-        tail</b>, the way a whole piano keeps sounding for a few seconds after the dampers land.
-        <b>Pedal-up bleed</b> is how much a <b>damped</b> string still answers: a damper never fully stills a
-        string and the soundboard couples them regardless, so a real grand has a faint pitched halo even with
-        no pedal. Those strings ring only briefly, so it reads as body rather than as sustain; at zero only
-        free strings resonate, as before.
-        <b>Self resonance</b> lets the struck string answer itself: a note is never one string but a unison of
-        two or three plus the duplex behind the bridge, and part of what follows the knock is the rest of
-        them coming up through the bridge. Here that is the softest layer of the <i>same</i> key fed into the
-        same accumulator, so it blooms just behind the attack and sustains under it until the damper lands —
-        100% drives it as hard as a perfectly coupled string would be. At zero the diagonal is empty, as before.
-        <br><br><b>Solo</b> mutes everything else &mdash; the struck notes, their release and damper sounds &mdash;
-        and leaves only the sympathetic voices and the soundboard, which is the one way to
-        hear what this section is actually contributing while you set it. It is a monitoring switch, not a
-        setting: it is never saved, and the instrument always comes up unsoloed.</div>
+      <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="64" step="1" value="24"><output id="resMaxV"></output></div>
+      <div class="row"><label>resume above</label><input type="range" id="resResume" min="-80" max="-10" step="1" value="-45"><output id="resResumeV"></output></div>
+      <div class="row"><label>cut crossfade</label><input type="range" id="resXfade" min="0.02" max="3" step="0.01" value="0.4"><output id="resXfadeV"></output></div>
+      <div class="row"><label>enter at</label><input type="range" id="resStart" min="0.03" max="2" step="0.01" value="0.8"><output id="resStartV"></output></div>
+      <div class="row"><label>fade-in</label><input type="range" id="resBloom" min="0" max="1" step="0.01" value="0.25"><output id="resBloomV"></output></div>
+
+      <div class="hint">Every resonance voice plays the library's own recording of the string that answers, as
+        recorded, and lasts as long as the note driving it: while the key is held, or while the pedal holds the
+        note after the key is up. When that note stops, the voice fades over its kind's <b>release</b>.
+        <br><br><b>Sympathetic</b> strings are the ones whose dampers are off &mdash; pedal down, keys held, and
+        the top strings &mdash; answering at the partials they share with the note: a fifth strongly, a tritone
+        barely. A string answers at the <i>partials</i> that match, not at its note: C2 into a free G2 meets at
+        G2's 2nd partial, so G2 rings an octave up and its own pitch never sounds, and a high note reaches a bass
+        string only through its upper partials. <b>Ring partials only</b> plays just those partials (a steep
+        high-pass under the lowest one driven); off plays the whole recording. <b>Selectivity</b> widens how far
+        out of tune a partial may be and still answer.
+        <b>Near/far</b> tilts it by distance (positive favours near strings) without changing the total. <b>Pedal-up release</b> is how fast they die when the pedal lifts and the dampers land.
+        <br><br><b>Soundboard</b> is the strings around the struck key picking it up through the bridge and the
+        board, pedal or not: the nearest loudest, down by <b>falloff</b>. With the pedal up, this
+        is what goes on sounding for its <b>release</b> after you let go of the key. <b>Strings</b> picks which
+        of them answer, counted out from the key: every one, every 2nd, every 3rd... (12 is the octaves only).
+        <br><br><b>Self</b> is the struck key's own unison and duplex answering it: the same key's recording
+        under the note.
+        <br><br><b>Falloff</b> and <b>near/far</b> are in dB per <i>doubling</i> of distance, the way vibration
+        spreading from a point dies away: the nearest few strings stay close in level, an octave away is well
+        down, and further out the curve flattens. The readout shows what that comes to at 1 semitone, an
+        octave and two octaves.
+        <br><br><b>Enter at</b> starts each recording past the hammer knock, and <b>fade-in</b> brings it in
+        gently, because what answers a strike is a string ringing, not another strike. <b>Max voices</b> keeps
+        the loudest. A string struck again while it is still ringing is not restarted: it is turned up
+        smoothly, the way a vibrating string is pushed harder. <b>Cut crossfade</b> is how long a voice takes
+        to hand over when it does have to go &mdash; faded out to make room under max voices, or crossfaded
+        into a fresh start when its recording has decayed too far to turn up.
+        <br><br>A quick pedal change &mdash; up and straight back down &mdash; does not stop what the dampers
+        had not finished stopping: it carries on from the level it had fallen to. Only resonance still louder
+        than <b>resume above</b> comes back (in dB of that string struck mezzo-forte); the rest finishes
+        fading. Lifting a damper never starts new resonance &mdash; only a strike does. <b>Solo</b> mutes everything else, to hear only what this section adds; it is never saved.</div>
     </div>
 
     <div class="panel" style="order:4">
@@ -425,8 +427,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
           <h3>Damper fall<span id="nrPreset"></span></h3>
           <canvas id="nrCanvas" height="220"></canvas>
           <div class="hint" style="margin:6px 0 0">Duration is per key — the <b>Damper fall</b> parameter above.
-             This is the shape, and it is what decides whether a released chord sounds stopped or swallowed.
-             The same shape stops a sympathetic voice, because it is the same damper.</div>
+             This is the shape, and it is what decides whether a released chord sounds stopped or swallowed.</div>
         </div>
         <div class="env">
           <h3>Release sample attack<span id="raPreset"></span></h3>
@@ -440,6 +441,19 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
           <canvas id="rrCanvas" height="220"></canvas>
           <div class="row"><label>time</label><input type="range" id="rrMs" min="0" max="1500" step="10" value="240"><output id="rrMsV"></output></div>
           <p>Applied at the tail of the release sample, so it lands rather than stops.</p>
+        </div>
+        <div class="env">
+          <h3>Resonance fade-in<span id="rfPreset"></span></h3>
+          <canvas id="rfCanvas" height="220"></canvas>
+          <p>How a resonance voice comes up, over the <b>fade-in</b> time in the Resonance panel &mdash; a string
+             that was only driven blooms rather than being struck. Its mirror image is the fade-out of a voice
+             handing over in a crossfade, so the two always add to a constant level.</p>
+        </div>
+        <div class="env">
+          <h3>Resonance release<span id="rlPreset"></span></h3>
+          <canvas id="rlCanvas" height="220"></canvas>
+          <p>Every resonance release: sympathetic, soundboard and self when the note driving them stops, and the
+             <b>pedal-up release</b> when the dampers land. The times are in the Resonance panel.</p>
         </div>
         <div class="env wide">
           <h3>Release level against how long the key was held<span id="hoPreset"></span></h3>
@@ -489,7 +503,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         ahead of it. There is <b>no pedal-action sample</b>: Salamander's two pedal recordings are a mechanism
         being worked, with a room and a frame ringing in them that are not this room or this frame, and what
         they stand in for — the whole undamped frame lighting up as the pedal goes down — is something this
-        engine does properly, string by string, under <b>Sympathetic resonance</b>. They are not loaded.</div>
+        engine does properly, string by string, under <b>Resonance</b>. They are not loaded.</div>
     </div>
   </div>
 

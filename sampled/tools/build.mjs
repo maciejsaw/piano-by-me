@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { cpus } from 'node:os';
 import { findFfmpeg, EXT } from './lib/encode.mjs';
-import { ROOTS, HARM_ROOTS, planNotes, centsTable, noteName, LOW, HIGH } from './lib/plan.mjs';
+import { ROOTS, HARM_ROOTS, planNotes, centsTable, noteName, LOW, HIGH, RES_LAYERS } from './lib/plan.mjs';
 import { readWavStereo, mid } from './lib/wav.mjs';
 import { measureF0, midiToHz } from './lib/analysis.mjs';
 
@@ -236,9 +236,11 @@ async function main() {
       n.layers[layer] = rest;
       if (r.edr) n.layers[layer].edr = r.edr;
       // The resonance engine divides a sympathetic voice's own decay back out,
-      // so it needs the curve -- from the softest layer, which is the one it
-      // plays.
+      // so it needs the curve of whichever layer it plays -- see
+      // tools/res-decay.mjs. `decay` (the softest layer) also drives the
+      // sustained-drive and ring-length estimates.
       if (layer === 1) n.decay = decay;
+      if (decay && RES_LAYERS.includes(layer)) (n.layerDecay ??= {})[layer] = decay;
     } else if (r.kind === 'damper') {
       const n = need(r.midi);
       (n.damper ??= {})[r.variant] = { file: r.file, gain: r.gain, dur: r.dur };
@@ -261,7 +263,7 @@ async function main() {
     format: o.format, ext: EXT[o.format], rate: 48000, bitrate: o.format === 'opus' ? o.bitrate : null,
     keys: { lo: LOW, hi: HIGH },
     lowestDamped: LOW, highestDamped: HIGHEST_DAMPED,
-    layers, hivel: HIVEL, mixDb: MIX_DB,
+    layers, hivel: HIVEL, mixDb: MIX_DB, resLayers: RES_LAYERS,
     bodyCorrection: o.correct, tuning: o.tune,
     // Every sample was normalised to -1 dBFS; `gain` on each entry puts the
     // real level back. Nothing downstream should ever ignore it.

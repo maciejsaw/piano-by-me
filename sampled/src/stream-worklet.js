@@ -71,16 +71,24 @@ class PianoVoice extends AudioWorkletProcessor {
     this.underrun = 0;
     this.l = 0; this.r = 0;             // read() results, to avoid allocating
     this.fadeN = 0; this.fadeI = 0;     // fade-in, in output samples, and how far through
+    this.waiting = false;               // started past the head, first block not here yet
     this.port.onmessage = (e) => {
       const d = e.data;
-      if (d.type === 'start') this.begin(d.when, d.offset, d.fade);
+      if (d.type === 'start') this.begin(d.when, d.offset, d.fade, d.curve);
       else if (d.type === 'stop') this.stopFrame = Math.min(this.stopFrame, Math.round(d.when * sampleRate));
+      // A damper lifted again before its fall ended: the scheduled stop is
+      // off. Too late if the voice has already finished; the caller only asks
+      // while the stop is still well in the future.
+      else if (d.type === 'resume') this.stopFrame = Infinity;
     };
   }
 
-  begin(when, offset, fade = 0) {
+  begin(when, offset, fade = 0, curve = null) {
     if (this.state !== 0) return;
     this.state = 1;
+    // The fade-in's shape, 0 -> 1, as a table read across the fade; without
+    // one, a raised cosine.
+    this.fadeCurve = curve;
     // Counted in samples actually played, not from `when`: a start that
     // arrives late still gets all of it, so a cut into a sound is never a step.
     this.fadeN = Math.round(Math.max(0, fade) * sampleRate);
@@ -92,6 +100,11 @@ class PianoVoice extends AudioWorkletProcessor {
     // The stream picks up where the head leaves off -- or where the note
     // starts, for the rare start that is past the head already.
     const from = Math.max(this.hf, Math.floor(this.pos));
+    // A start past the head has nothing to play until the stream's first block
+    // arrives. Hold the voice until then -- a few ms late -- rather than play
+    // zeros and call them an underrun. Only the sympathetic resonance does
+    // this: it enters a recording past its prompt sound.
+    this.waiting = this.pos >= this.hf;
     if (from < this.total) worker?.postMessage({ type: 'start', id: this.id, key: this.key, from });
   }
 
@@ -131,6 +144,13 @@ class PianoVoice extends AudioWorkletProcessor {
     const n = L.length, f0 = currentFrame;
     if (f0 + n <= this.startFrame) return true;
     let i = f0 < this.startFrame ? this.startFrame - f0 : 0;
+    if (this.waiting) {
+      // Stopped, or the stream failed (eof pulls `total` in) before a block came.
+      if (f0 + n > this.stopFrame || this.pos >= this.total - 1) { this.finish(); return false; }
+      if (this.q.length === 0) return true;
+      if (this.q[0].start > this.pos) this.pos = this.q[0].start;
+      this.waiting = false;
+    }
     // The samples are 48 kHz; a context at another rate reads them faster or
     // slower to keep the pitch.
     const rate = params.playbackRate[0] * (48000 / sampleRate);
@@ -147,7 +167,10 @@ class PianoVoice extends AudioWorkletProcessor {
         R[i] = r0 + (this.r - r0) * fr;
       }
       if (this.fadeI < this.fadeN) {
-        const w = 0.5 - 0.5 * Math.cos(Math.PI * this.fadeI++ / this.fadeN);
+        const c = this.fadeCurve, u = this.fadeI++ / this.fadeN;
+        let w;
+        if (c) { const x = u * (c.length - 1), j = x | 0; w = c[j] + (c[Math.min(c.length - 1, j + 1)] - c[j]) * (x - j); }
+        else w = 0.5 - 0.5 * Math.cos(Math.PI * u);
         L[i] *= w; if (R !== L) R[i] *= w;
       }
       this.pos = p + rate;

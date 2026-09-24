@@ -183,6 +183,18 @@ export const DEFAULT_SETTINGS = {
           "hi": 70,
           "v": -1.89,
           "feather": 0
+        },
+        {
+          "lo": 72,
+          "hi": 79,
+          "v": -0.252,
+          "feather": 0
+        },
+        {
+          "lo": 75,
+          "hi": 77,
+          "v": -0.558,
+          "feather": 0
         }
       ],
       "layerBias": [
@@ -214,6 +226,12 @@ export const DEFAULT_SETTINGS = {
           "lo": 77,
           "hi": 80,
           "v": 1.03,
+          "feather": 0
+        },
+        {
+          "lo": 72,
+          "hi": 79,
+          "v": -0.47,
           "feather": 0
         }
       ],
@@ -406,6 +424,96 @@ export const DEFAULT_SETTINGS = {
         0,
         0,
         0
+      ],
+      "layerBias": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        -0.86,
+        -0.46,
+        -0.05,
+        -0.15,
+        -0.23,
+        -0.33,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
       ]
     }
   },
@@ -443,6 +551,22 @@ export const DEFAULT_SETTINGS = {
         0.62,
         0.32,
         0.9
+      ]
+    },
+    "resAttack": {
+      "shape": [
+        0.37,
+        0,
+        0.63,
+        1
+      ]
+    },
+    "resRelease": {
+      "shape": [
+        0,
+        0.369,
+        0.1804,
+        0.9706
       ]
     },
     "hold": {
@@ -548,11 +672,11 @@ export const DEFAULT_SETTINGS = {
       },
       {
         "k": 27,
-        "db": -14.146875000000001
+        "db": -16.0375
       },
       {
-        "k": 38,
-        "db": -6.46875
+        "k": 39,
+        "db": -15.142187500000002
       },
       {
         "k": 49,
@@ -590,7 +714,7 @@ export const DEFAULT_SETTINGS = {
   },
   "sliders": {
     "gain": "0.45",
-    "spread": "0",
+    "spread": "-0.39",
     "width": "0.59",
     "dry": "0.81",
     "fdnWet": "0.86",
@@ -617,21 +741,23 @@ export const DEFAULT_SETTINGS = {
     "hallTreble": "0.5",
     "hallPre": "26",
     "hallBuild": "59",
-    "resAmt": "1.675",
-    "resDrive": "3.55",
-    "resSustain": "0.5",
-    "resRing": "1",
-    "resSel": "1.5",
-    "resProx": "3.5",
-    "resTone": "7300",
-    "resMax": "18",
-    "resTail": "2",
-    "sbAmt": "0.24",
-    "sbTail": "4.6",
-    "resSelf": "0.36",
-    "resDamped": "0.17",
-    "resOffDrop": "0.17",
-    "resOffFall": "3.1",
+    "symAmt": "0.76",
+    "resSel": "1",
+    "resProx": "15",
+    "symRel": "3",
+    "symPedalUp": "1.94",
+    "sbLevel": "0.122",
+    "sbFalloff": "8.5",
+    "sbStep": "1",
+    "sbRel": "3.55",
+    "selfAmt": "0.115",
+    "selfRel": "2.72",
+    "resTone": "3400",
+    "resMax": "32",
+    "resResume": "-45",
+    "resXfade": "0.4",
+    "resStart": "1.16",
+    "resBloom": "0.23",
     "naMs": "0",
     "raMs": "4",
     "rrMs": "240",
@@ -647,7 +773,7 @@ export const DEFAULT_SETTINGS = {
   "eqBands": [
     {
       "f": "4.34919738166216",
-      "g": "2.3"
+      "g": "-1"
     },
     {
       "f": "6.25317018598809",
@@ -655,9 +781,9 @@ export const DEFAULT_SETTINGS = {
       "q": "0.75"
     },
     {
-      "f": "8.04161172766793",
-      "g": "0",
-      "q": "0.9"
+      "f": "8.55061172766793",
+      "g": "-4.5",
+      "q": "0.75"
     },
     {
       "f": "9.27090245954208",
@@ -669,8 +795,10 @@ export const DEFAULT_SETTINGS = {
     "eq": true,
     "res": true,
     "perspective": 1,
+    "invert": true,
+    "partialsOnly": true,
     "align": true,
-    "roomA": true,
+    "roomA": false,
     "roomB": true
   }
 };

@@ -128,6 +128,15 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="12.5" step="0.01" value="1.0"><output id="gainV"></output></div>
       <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
       <div class="row"><label>bridge coupling</label><input type="range" id="bc" min="0" max="0.9" step="0.01" value="0.30"><output id="bcV"></output></div>
+      <div class="row"><label>bass clarity up to</label><input type="range" id="detail" min="20" max="108" step="1" value="48"><output id="detailV"></output></div>
+      <div class="hint">The dispersion chain that gives a string its inharmonicity is a cascade of
+        allpass sections, and a short one cannot hold the partial ladder of a note with hundreds of
+        partials: untreated, A0's are out by 400 cents by 2&nbsp;kHz, which is the metallic edge on
+        the bottom two octaves. Notes at or below this one get a chain long enough to hold them
+        (up to 6&nbsp;kHz, within 25 cents) when they are struck. Drag to the far left to turn it
+        off, to the far right to give it to the whole keyboard. Costs DSP load in the register it
+        covers, so it is only handed to strings you actually strike, never to ones ringing
+        sympathetically.</div>
     </div>
     <div class="panel" style="margin-top:14px">
       <h2>Velocity response</h2>

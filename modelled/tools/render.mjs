@@ -77,6 +77,19 @@ const scenes = {
     return out;
   },
 
+  // The bass, with the dispersion chain sized per note and then left at the
+  // base 16 sections. Same five notes twice; the difference is the metallic
+  // edge on the first half.
+  'bass-detail-ab': () => {
+    const notes = [21, 28, 33, 40, 45];
+    const phrase = notes.flatMap((m, i) => [on(0.1 + i * 1.6, m, 0.85), off(1.4 + i * 1.6, m)]);
+    const a = scene(8.5, phrase, { detailSplit: 0 });
+    const b = scene(8.5, phrase, {});
+    const out = new Float32Array(a.length + b.length);
+    out.set(a); out.set(b, a.length);
+    return out;
+  },
+
   'chord-with-pedal': () => scene(12, [
     ped(0, true),
     ...[40, 47, 52, 56, 59].flatMap((m, i) => [on(0.1 + i * 0.09, m, 0.8)]),

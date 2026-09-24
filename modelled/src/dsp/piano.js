@@ -34,6 +34,12 @@ const ZONES = 16;             // soundboard regions across the compass
 // this ratio (-60 dB) of the loudest zone's, and above an absolute floor.
 const SYMPATHY_REL = 1e-3;
 const SYMPATHY_FLOOR = 1e-7;
+// Smoothed power below which a string is treated as silent and may be dropped
+// from the active list. Amplitude 1e-6, i.e. 120 dB under a ringing string.
+const IDLE_ENERGY = 1e-12;
+// And below which a strike may re-arm a string's dispersion chain: 30 dB under
+// a struck string, four orders above a sympathetic one. See noteOn.
+const SWAP_ENERGY = 1e-3;
 
 // The parameters that are baked into a string's loop filters, and so need a
 // recompile when they move. Everything else is read at the strike or sits
@@ -45,6 +51,15 @@ export class Piano {
   constructor(fs, opts = {}) {
     this.fs = fs;
     this.quality = opts.quality ?? 32;
+    // Bass clarity: see dispersionFor(). detailSplit is the highest note that
+    // gets the long chain -- 0 turns it off entirely, 108 gives it to the whole
+    // keyboard. C3 (48) is the default because that is where the problem stops
+    // being worth paying for: measured to 4 kHz, the untreated chain is 436
+    // cents out at A0 and 238 at F1, but only 18 at D3 and 6 at F3.
+    this.detailSplit = opts.detailSplit ?? 48;
+    this.detailSections = opts.detailSections ?? 128;
+    this.detailFitHz = opts.detailFitHz ?? 6000;
+    this.detailTolCents = opts.detailTolCents ?? 25;
     // Coupling as a fraction of each string's own loss: 0 = isolated strings,
     // 1 = every bit of the string's loss goes into the bridge instead of into
     // internal damping. Stability is guaranteed for anything below 1.
@@ -152,14 +167,14 @@ export class Piano {
       const zone = Math.min(ZONES - 1, Math.floor((ni * ZONES) / notes.length));
       const voices = [];
       for (const st of n.strings) {
-        const coeffs = compileString(fs, st.phys ?? n.phys, {
-          ...st,
-          couplingFraction: (this.unisonCoupling + this.bridgeCoupling) * st.coupling,
-          transientFc: this.transientFc ?? st.transientFc,
-          couplingFc: this.couplingFc ?? st.couplingFc,
-          maxAllpass: this.quality,
-        });
-        const s = new WaveguideString(fs, Math.ceil(coeffs.delay) + 8);
+        const { lite, full } = this.compilePair(n, st);
+        const coeffs = lite;
+        // The delay line has to hold whichever design is longer; the detailed
+        // chain eats more of the period, so its line is the shorter one.
+        const s = new WaveguideString(fs, Math.ceil(Math.max(lite.delay, full ? full.delay : 0)) + 8);
+        s.coeffsLite = lite;
+        s.coeffsFull = full;
+        s.detail = false;
         s.setCoefficients(coeffs);
         s.coeffs = coeffs;
         s.note = n;
@@ -276,6 +291,79 @@ export class Piano {
   }
 
   /**
+   * The dispersion budget for one note: how many allpass sections it may have,
+   * and how far up its partial ladder the fit has to hold.
+   *
+   * This is the bass growl, and it is not inharmonicity -- it is the model
+   * failing to deliver the inharmonicity it was asked for. A chain of identical
+   * first-order allpasses can only follow sqrt(1 + B n^2) over the range it was
+   * fitted to, and with the 16 sections the worklet runs it cannot follow it
+   * far at all: measured on A0, partial 48 lands 44 cents flat, partial 64 is
+   * 132 cents flat and partial 96 -- 2.6 kHz, right where the ear is -- is 371
+   * cents flat. The top half of every bass note is therefore squeezed into a
+   * mistuned cluster, which is heard as a metallic, distorted edge. At 128
+   * sections the same note holds to within 30 cents out to partial 96.
+   *
+   * It is a bass problem for two reasons. A treble string has few partials, so
+   * 48 of them already reach past hearing and the error lands where nothing is;
+   * and it could not pay for the sections anyway, since the chain may eat at
+   * most 65% of the period and a treble period is short. A bass string has both
+   * hundreds of audible partials and a period thousands of samples long, so the
+   * sections are there for the asking -- they were simply never asked for.
+   *
+   * Above the split, nothing changes: the same `quality` and the same
+   * 48-partial fit the rest of the instrument was voiced against.
+   */
+  dispersionFor(midi) {
+    if (midi > this.detailSplit || this.detailSections <= this.quality) return null;
+    return {
+      maxAllpass: this.detailSections,
+      dispersionFitHz: this.detailFitHz,
+      dispersionTolCents: this.detailTolCents,
+    };
+  }
+
+  /**
+   * Compile one string twice: the cheap chain it rings along on, and the
+   * accurate one it is struck with. `full` is null outside the detailed
+   * register, where the two would be the same design.
+   */
+  compilePair(note, st) {
+    const base = {
+      ...st,
+      couplingFraction: (this.unisonCoupling + this.bridgeCoupling) * (st.coupling ?? 1),
+      transientFc: this.transientFc ?? st.transientFc,
+      couplingFc: this.couplingFc ?? st.couplingFc,
+    };
+    const phys = st.phys ?? note.phys;
+    const lite = compileString(this.fs, phys, { ...base, maxAllpass: this.quality });
+    const detail = this.dispersionFor(note.midi);
+    return { lite, full: detail ? compileString(this.fs, phys, { ...base, ...detail }) : null };
+  }
+
+  /**
+   * Hand one string the accurate chain, or take it back.
+   *
+   * The long chain is worth its cost on a note you are listening to, and not
+   * on one that is merely ringing along with it: nobody picks the partial
+   * tuning out of a sympathetic string 50 dB down, and with the pedal held
+   * there are two hundred of those against the ten you actually struck. So it
+   * is handed out at the strike and handed back when the string goes quiet,
+   * which leaves a held pedal costing about what it cost before.
+   *
+   * Only ever swapped on a silent string. The two designs have different
+   * delay-line lengths and different numbers of allpass states, so switching
+   * under a ringing one is a click and a pitch jump.
+   */
+  setDetail(s, on) {
+    if (!s.coeffsFull || s.detail === on) return;
+    s.detail = on;
+    s.coeffs = on ? s.coeffsFull : s.coeffsLite;
+    s.setCoefficients(s.coeffs);
+    s.reset();
+  }
+
+  /**
    * Only strings that can move are ticked: struck, ringing, or damper-up.
    *
    * The undamped treble is damper-up for good, and ticking all of it all the
@@ -292,8 +380,33 @@ export class Piano {
     if (zl) for (let z = 0; z < ZONES; z++) floor = Math.max(floor, zl[z] * SYMPATHY_REL);
     this.active = this.strings.filter((s) => {
       if (s.active) return true;
-      if (s.note.hasDamper) return s.damperClosed < 0.999 || s.damperTarget < 0.5;
-      return s.energy > 1e-12 || (zl && zl[s.zone] > floor);
+      // Still ringing, whatever its damper is doing.
+      if (s.energy > IDLE_ENERGY) return true;
+      // Damper coming down. It has to keep being ticked until the string has
+      // actually gone quiet, NOT merely until the damper has finished its
+      // 60 ms travel: dropping it the moment damperClosed hits 1 freezes
+      // whatever is still in the delay line, and a frozen wave loses nothing,
+      // because a string that is not ticked is not decaying either. The next
+      // time the damper lifts -- i.e. the next time the sustain pedal goes
+      // down -- every key played since the instrument started hands its frozen
+      // remainder back at once, undamped. That is what made the pedal sound
+      // louder, brighter and more open than the notes actually under it.
+      if (s.damperTarget > 0.5) {
+        if (s.damperClosed < 0.999) return true;
+        // Damped and silent: clear the loop so there is nothing to resurrect,
+        // and snap the damper state to match.
+        s.reset();
+        s.damperClosed = 1;
+        this.setDetail(s, false);
+        return false;
+      }
+      // Damper up (pedal down, key held, or no damper at all) and idle: tick
+      // it only while its zone is being driven, so a held pedal costs the
+      // sympathetic strings it can actually be heard through rather than all
+      // 240 of them.
+      if (zl && zl[s.zone] > floor) return true;
+      this.setDetail(s, false);
+      return false;
     });
     zl && zl.fill(0);
     const seen = new Set();
@@ -320,6 +433,22 @@ export class Piano {
     const dh = shape.hardness ?? 0;
     const massK = Math.pow(10, -0.35 * dh), feltK = Math.pow(10, 2 * dh);
     let level = null;       // pulse scale, worked out on the first string struck
+    // Take the accurate chain before the blow, while the string is quiet
+    // enough for the swap to be inaudible. The threshold separates the two
+    // states cleanly and is not a close call: measured with the pedal down
+    // under a busy passage, a string ringing only sympathetically sits at
+    // 1e-8 to 4e-4, and one that has just been struck at 1e-1 to 2. So a
+    // string that is merely humming along is re-armed and one that is
+    // genuinely sounding -- a repeated note -- keeps the loop it is running,
+    // because changing a live loop is a click.
+    let swapped = false;
+    for (const s of note.voices) {
+      if (s.active || s.energy >= SWAP_ENERGY) continue;
+      const was = s.detail;
+      this.setDetail(s, true);
+      swapped ||= was !== s.detail;
+    }
+    if (swapped) this.setLockTargets(note);
     for (const s of note.voices) {
       s.setDamper(false);
       // Una corda shifts the action so the hammer misses the outer string, which
@@ -453,13 +582,14 @@ export class Piano {
   /** Recompile one string after a parameter edit, preserving its ringing state. */
   recompileString(s, tuning = s.tuning) {
     Object.assign(s.tuning, tuning);
-    const frac = (this.unisonCoupling + this.bridgeCoupling) * (s.tuning.coupling ?? 1);
     // Per-string geometry, as build() uses: a recompile must not silently drop
     // back to the note's nominal physics and lose this string's own length,
     // gauge and inharmonicity.
-    const c = compileString(this.fs, s.tuning.phys ?? s.note.phys, {
-      ...s.tuning, couplingFraction: frac, maxAllpass: this.quality,
-    });
+    const pair = this.compilePair(s.note, s.tuning);
+    s.coeffsLite = pair.lite;
+    s.coeffsFull = pair.full;
+    if (!pair.full) s.detail = false;
+    const c = s.detail ? pair.full : pair.lite;
     s.coeffs = c;
     const split = this.unisonCoupling / (this.unisonCoupling + this.bridgeCoupling || 1);
     s.kUnison = c.kappa * split;
