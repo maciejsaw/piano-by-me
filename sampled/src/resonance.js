@@ -302,11 +302,15 @@ export class Resonance {
    *
    * @param sounding  [{ midi }] -- the notes ringing freely, after the
    *                  engine has resumed its own
+   * @param delayOf   (midi) => seconds until that string's damper lands: a
+   *                  pedal lift reaches the bass after the treble
    */
-  setUndamped(set, sounding = []) {
+  setUndamped(set, sounding = [], delayOf = null) {
     this.undamped = set;
     for (const [id, v] of [...this.voices]) {
-      if (v.kind === 'sym' && !set.has(v.midi)) this.release(id, this.pedalUpRelease, PEDAL_JITTER, false, true);
+      if (v.kind === 'sym' && !set.has(v.midi)) {
+        this.release(id, this.pedalUpRelease, PEDAL_JITTER, false, true, delayOf?.(v.midi) ?? 0);
+      }
     }
     if (this.enabled && sounding.length) this.resumeFreed(set, new Set(sounding.map((s) => s.midi)));
   }
@@ -504,16 +508,16 @@ export class Resonance {
   }
 
   /**
-   * Fade a voice out over `fall` seconds (after up to `jitter` s), then stop
-   * it. `xfade` uses the mirror image of a new voice's fade-in, so a restart
+   * Fade a voice out over `fall` seconds, starting `after` s from now plus up
+   * to `jitter` s at random, then stop it. `xfade` uses the mirror image of a new voice's fade-in, so a restart
    * crossfades at constant level; otherwise the resonance release shape.
    */
-  release(id, fall, jitter = 0, xfade = false, resumable = false) {
+  release(id, fall, jitter = 0, xfade = false, resumable = false, after = 0) {
     const v = this.voices.get(id);
     if (!v) return;
     this.voices.delete(id);
     this.fading.add(v);
-    const t = this.ctx.currentTime + this.lookahead + Math.random() * jitter;
+    const t = this.ctx.currentTime + this.lookahead + after + Math.random() * jitter;
     fall = Math.max(0.02, fall);
     const shape = this.env?.resRelease.shape;
     // From the level it is at: 1, unless it was resumed partway down a fall.

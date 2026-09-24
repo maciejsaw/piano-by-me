@@ -184,6 +184,19 @@ export class Engine {
     // on the key-up, so only the note's own stop is nudged.
     this.releaseDelay = 1;
     this.damperNoise = 1;
+    // Lifting the pedal. The damper frame does not land all at once: the
+    // dampers reach the top strings first and the bass last, so each key's
+    // damper lands `pedalSweep` x (how far down the keyboard it is) seconds
+    // after the treble's -- 0 at the highest damped key, all of it at A0.
+    this.pedalSweep = 0.04;       // s, top damped key to the lowest
+    // Of the strings a pedal lift stops, the loudest `pedalDamperCount` get
+    // a damper sound, at `pedalDamperLevel` of what a key release plays. A
+    // whole frame of them at full level is a wall of noise, not a piano.
+    this.pedalDamperCount = 6;
+    this.pedalDamperLevel = 0.5;
+    // Notes estimated quieter than this, in dB of full scale before the
+    // master, are faded out (see cutQuiet). -100 or lower is off.
+    this.cutDb = -80;
     this.held = new Set();
 
     // The hand-drawn velocity curves, shared with the editors in the UI: one
@@ -565,26 +578,66 @@ export class Engine {
     const list = this.voices.get(midi);
     if (!list) return;
     const now = this.time(when);
-    const dur = Math.max(0.006, fall);
-    for (const v of list) {
-      if (v.releasing) continue;
-      v.releasing = true;
-      // From the level it is at: 1, unless it was resumed partway down a fall.
-      const curve = this.env.noteRelease.shape.curve(v.level ?? 1, 0);
-      // A start time already in the past is clamped to the present by the
-      // audio thread, and the curve's first value is the level the gain is
-      // already at -- so a late call starts late, it does not jump.
-      try { v.rel.gain.setValueCurveAtTime(curve, now, dur); v.fade = { t0: now, dur, curve }; }
-      catch { v.rel.gain.setTargetAtTime(0, now, dur / 4); v.fade = null; }
-      v.stopAt = now + dur + 0.03;
-      try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
-      if (damper && v.fade) {
-        let d = this.damping.get(midi);
-        if (!d) this.damping.set(midi, d = []);
-        d.push(v);
-      }
-    }
+    for (const v of list) this.fadeVoice(v, fall, now, damper);
     this.voices.delete(midi);
+  }
+
+  /** One voice's fall, from wherever it is to silence, then its stop. See kill(). */
+  fadeVoice(v, fall, now, damper = false) {
+    if (v.releasing) return;
+    v.releasing = true;
+    const dur = Math.max(0.006, fall);
+    // From the level it is at: 1, unless it was resumed partway down a fall.
+    const curve = this.env.noteRelease.shape.curve(v.level ?? 1, 0);
+    // A start time already in the past is clamped to the present by the
+    // audio thread, and the curve's first value is the level the gain is
+    // already at -- so a late call starts late, it does not jump.
+    try { v.rel.gain.setValueCurveAtTime(curve, now, dur); v.fade = { t0: now, dur, curve }; }
+    catch { v.rel.gain.setTargetAtTime(0, now, dur / 4); v.fade = null; }
+    v.stopAt = now + dur + 0.03;
+    try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
+    if (damper && v.fade) {
+      let d = this.damping.get(v.midi);
+      if (!d) this.damping.set(v.midi, d = []);
+      d.push(v);
+    }
+  }
+
+  /**
+   * Fade out every note that has decayed below `cutDb`. A note otherwise plays
+   * its whole recording -- twenty seconds in the bass -- under the pedal or a
+   * held key, long after it has anything to say, holding a voice and a stream
+   * the whole time. The level is estimated, not measured: the note's playing
+   * gain down its recording's decay curve, measured at build time.
+   */
+  cutQuiet() {
+    if (!(this.cutDb > -100)) return;
+    const floor = Math.pow(10, this.cutDb / 20), t = this.ctx.currentTime;
+    for (const [midi, list] of [...this.voices]) {
+      for (const v of [...list]) {
+        if (v.releasing) continue;
+        const age = t - v.started;
+        if (age < 0.5) continue;
+        const level = v.g.gain.value * (v.level ?? 1) * Math.pow(10, this.decayDb(midi, v.layer, age) / 20);
+        if (level >= floor) continue;
+        this.fadeVoice(v, 0.3, this.time());
+        list.splice(list.indexOf(v), 1);
+      }
+      if (!list.length) this.voices.delete(midi);
+    }
+  }
+
+  /** How far `layer` of `midi` has decayed `t` s in, dB below its peak, from the manifest. */
+  decayDb(midi, layer, t) {
+    const n = this.lib.note(midi);
+    const d = n?.layerDecay?.[layer] ?? n?.decay;
+    if (!d?.t?.length) return 0;
+    const { t: ts, db } = d;
+    if (t <= ts[0]) return db[0];
+    for (let i = 0; i < ts.length - 1; i++) {
+      if (t <= ts[i + 1]) return db[i] + (db[i + 1] - db[i]) * (t - ts[i]) / (ts[i + 1] - ts[i]);
+    }
+    return db[db.length - 1];
   }
 
   /**
@@ -765,25 +818,40 @@ export class Engine {
     const was = this.pedal;
     const now = this.time(when);
     this.pedal = Math.max(0, Math.min(1, v));
-    // Coming off the pedal drops every damper that no key is holding. A whole
-    // frame of dampers landing at once is an audible event on a real piano, so
-    // the loudest few get their damper sound -- but only a few, because twenty
-    // at once is a wall of noise and not a piano.
+    // Coming off the pedal drops every damper that no key is holding, treble
+    // first (see pedalSweep). The loudest few get their damper sound.
+    let sweep = null;
     if (was >= UNDAMP && this.pedal < UNDAMP) {
+      sweep = (m) => this.sweepDelay(m);
       const landed = [];
+      const t = this.ctx.currentTime;
       for (let m = this.lo; m <= this.topDamped; m++) {
         if (this.down.has(m) || this.silent.has(m)) continue;
-        const v = this.voices.get(m)?.[0];
-        if (!v) continue;
-        landed.push({ m, v });
-        this.kill(m, this.damperTime(m) * 1.2, now, true);
+        const list = this.voices.get(m);
+        if (!list?.length) continue;
+        // How loud the string is now: the loudest of its voices, each down its
+        // own recording's decay since it started.
+        let loud = 0, v = list[0];
+        for (const x of list) {
+          if (x.releasing) continue;
+          const l = x.g.gain.value * (x.level ?? 1) * Math.pow(10, this.res.decayDb(m, t - x.started) / 20);
+          if (l > loud) { loud = l; v = x; }
+        }
+        landed.push({ m, v, loud });
+        this.kill(m, this.damperTime(m) * 1.2, now + sweep(m), true);
       }
-      landed.sort((a, b) => b.v.started - a.v.started);
-      for (const { m, v } of landed.slice(0, 6)) {
-        this.damperSound(m, v.vel, now - v.started, 0.5, now);
+      landed.sort((a, b) => b.loud - a.loud);
+      for (const { m, v } of landed.slice(0, Math.max(0, Math.round(this.pedalDamperCount)))) {
+        this.damperSound(m, v.vel, now - v.started, this.pedalDamperLevel, now + sweep(m));
       }
     }
-    this.updateUndamped();
+    this.updateUndamped(sweep);
+  }
+
+  /** When this key's damper lands after the treble's, on a pedal lift. */
+  sweepDelay(midi) {
+    const span = Math.max(1, this.topDamped - this.lo);
+    return Math.max(0, this.pedalSweep) * Math.max(0, Math.min(1, (this.topDamped - midi) / span));
   }
 
   /**
@@ -793,7 +861,8 @@ export class Engine {
    * in this set -- which is most of where a piano's shimmer comes from, and
    * costs nothing to get right.
    */
-  updateUndamped() {
+  /** `delayOf`: (midi) => seconds, when dampers landing now land late (a pedal lift). */
+  updateUndamped(delayOf = null) {
     const u = new Set();
     for (let m = this.topDamped + 1; m <= this.hi; m++) u.add(m);
     for (const m of this.down) u.add(m);
@@ -803,7 +872,7 @@ export class Engine {
     // Strings freed again before their dampers finished stopping them ring on.
     this.resumeFreed(u);
     // With what is sounding, so resonance driven by a resumed note comes back too.
-    this.res.setUndamped(u, this.sounding());
+    this.res.setUndamped(u, this.sounding(), delayOf);
   }
 
   refreshHeld() {
@@ -823,7 +892,7 @@ export class Engine {
     this.updateUndamped();
   }
 
-  tick(dt) { this.res.tick(dt, this.sounding()); }
+  tick(dt) { this.cutQuiet(); this.res.tick(dt, this.sounding()); }
 
   /**
    * The notes that are still ringing freely, and how far into their own decay
@@ -843,6 +912,11 @@ export class Engine {
         if (v.releasing) continue;
         out.push({ midi, vel: v.vel, t: now - v.started });
       }
+    }
+    // A damper still on its way down -- a pedal lift reaching the bass late --
+    // has not stopped its string yet, so the string still drives.
+    for (const [midi, list] of this.damping) {
+      for (const v of list) if (v.fade && v.fade.t0 > now) out.push({ midi, vel: v.vel, t: now - v.started });
     }
     return out;
   }
