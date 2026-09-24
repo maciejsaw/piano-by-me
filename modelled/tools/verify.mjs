@@ -149,6 +149,29 @@ console.log('\n=== 5. Sustain pedal lifts all dampers ===');
   check('pedal down sustains after note-off', db > 15, `pedal adds ${db.toFixed(1)} dB of tail`);
 }
 
+console.log('\n=== 5b. A damped note leaves nothing behind for the pedal ===');
+{
+  // The regression this guards: a string dropped from the active list the
+  // moment its damper finished travelling kept whatever was still in its delay
+  // line, and a string that is not ticked is not decaying either. Every key
+  // played since startup therefore held a frozen copy of itself, and the next
+  // press of the pedal handed them all back at once, undamped -- the pedal
+  // sounding louder, brighter and more open than the notes under it.
+  const p = new Piano(FS, { quality: 24 });
+  render(p, 2.5, [
+    { at: 0.05, run: (q) => { q.noteOn(60, 0.95); q.noteOn(64, 0.95); q.noteOn(67, 0.95); } },
+    { at: 0.5, run: (q) => { q.noteOff(60); q.noteOff(64); q.noteOff(67); } },
+  ]);
+  const before = peak(render(p, 0.5, []));
+  // Now lift the dampers with nothing played. Anything audible is stale.
+  const after = peak(render(p, 2, [{ at: 0.01, run: (q) => q.setSustain(true) }]));
+  check('pedal raises no stale energy', after <= before * 4 && after < 1e-9,
+    `silence ${before.toExponential(1)} -> pedal down ${after.toExponential(1)}`);
+  let held = 0;
+  for (const s of p.strings) for (const v of s.buf) held = Math.max(held, Math.abs(v));
+  check('damped strings hold no frozen wave', held < 1e-5, `largest sample left in any loop ${held.toExponential(1)}`);
+}
+
 console.log('\n=== 6. Sympathetic halo is loud enough to hear ===');
 {
   const run = (pedal) => {

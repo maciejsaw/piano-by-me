@@ -84,9 +84,17 @@ const phaseDelay = (w, resp) => {
  * help (the optimiser drives both groups to the same value), so this is a fast
  * 1-D golden-section search over `a` for each candidate M.
  */
-export function designDispersion(fs, f0, B, loss, maxSections = 48) {
+export function designDispersion(fs, f0, B, loss, maxSections = 48, fitHz = 0, tolCents = 0) {
   const nyq = 0.45 * fs;
-  const nMax = Math.max(2, Math.min(48, Math.floor(nyq / f0)));
+  // How far up the ladder the fit is asked to hold. Counting partials, as this
+  // did unconditionally, is the wrong unit in the bass: 48 partials of C4 reach
+  // 12 kHz and are the whole note, while 48 partials of A0 reach 1.3 kHz and
+  // are the bottom third of one. Everything above the fit range is left to
+  // whatever the chain happens to do there, which is drift flat without limit
+  // -- so on a bass note the audible top is a mistuned cluster. `fitHz` states
+  // the ceiling in hertz instead; 0 keeps the 48-partial rule.
+  const wanted = fitHz > 0 ? Math.round(fitHz / f0) : 48;
+  const nMax = Math.max(2, Math.min(Math.max(8, wanted), Math.floor(nyq / f0)));
   const period = fs / f0;
   const targetD = (n) => fs / (f0 * Math.sqrt(1 + B * n * n));
   const partialW = (n) => 2 * Math.PI * Math.min(partialHz(f0, n, B), nyq) / fs;
@@ -101,14 +109,21 @@ export function designDispersion(fs, f0, B, loss, maxSections = 48) {
     const ap = ws.map((w) => phaseDelay(w, allpassResponse(w, a)));
     const dLine = targetD(1) - (M * ap[0] + lossPD[0]);
     if (dLine < 6) return { err: Infinity, dLine, a, M };
-    let err = 0, wsum = 0;
+    let err = 0, wsum = 0, worst = 0;
     for (let n = 2; n <= nMax; n++) {
       const i = n - 1;
       const e = Math.log((dLine + M * ap[i] + lossPD[i]) / targetD(n));
       const wt = 1 / n;                       // struck-string energy falls ~1/n
       err += wt * e * e; wsum += wt;
+      if (e > worst || -e > worst) worst = e < 0 ? -e : e;
     }
-    return { err: wsum ? err / wsum : 0, dLine, a, M };
+    // A partial resonates where the loop delay is n periods, so a fractional
+    // delay error is a pitch error of the same size the other way: 1200/ln2
+    // cents per unit of log-delay. Reported alongside the weighted figure
+    // because the weighted one is what to MINIMISE and this is what to
+    // ACCEPT -- a chain twice as long for an error already inaudible is
+    // twice the cost for nothing.
+    return { err: wsum ? err / wsum : 0, maxCents: worst * 1731.234, dLine, a, M };
   };
 
   // Golden-section search over a in [-0.98, 0] for fixed M.
@@ -130,13 +145,27 @@ export function designDispersion(fs, f0, B, loss, maxSections = 48) {
 
   let best = { err: Infinity, dLine: period, a: 0, M: 0 };
   const tried = new Set();
-  for (const M of [cap, Math.floor(cap / 2), Math.floor(cap / 4), 8, 4, 2, 1]) {
+  // Every section is a multiply-add per sample for as long as the note rings,
+  // and in the bass the cap is in the hundreds, so when a tolerance is given
+  // walk UP from the cheapest chain and stop at the first one that is accurate
+  // enough. What each note needs falls steeply with pitch -- at 25 cents to
+  // 6 kHz the bottom octave wants 96-128 sections and A2 wants 32 -- so sizing
+  // per note rather than handing every string the cap is most of the cost.
+  const ladder = [];
+  if (tolCents > 0) {
+    for (let M = 1; M < cap; M *= 2) ladder.push(M);
+    ladder.push(cap);
+  } else {
+    ladder.push(cap, Math.floor(cap / 2), Math.floor(cap / 4), 8, 4, 2, 1);
+  }
+  for (const M of ladder) {
     if (M < 1 || tried.has(M)) continue;
     tried.add(M);
     const r = bestA(M);
     if (r.err < best.err) best = r;
+    if (tolCents > 0 && best.maxCents <= tolCents) break;
   }
-  return best;   // { a, M, dLine, err }
+  return best;   // { a, M, dLine, err, maxCents }
 }
 
 /** Measure what inharmonicity a compiled design actually produces, in cents. */
@@ -181,7 +210,7 @@ function impliedB(freqs, f0) {
  * produces, and correct the target until the realised value lands. A handful of
  * cheap iterations, once per string, at build time.
  */
-function designDispersionMatched(fs, f0, B, loss, maxSections) {
+function designDispersionMatched(fs, f0, B, loss, maxSections, fitHz = 0, tolCents = 0) {
   const realisedOf = (design) => {
     const got = verifyDispersion(fs, f0, B, loss, design, 16);
     return impliedB(got.map((g) => ({ n: g.n, f: g.got })), f0);
@@ -190,7 +219,7 @@ function designDispersionMatched(fs, f0, B, loss, maxSections) {
   let target = B;
   let best = null, bestErr = Infinity;
   for (let it = 0; it < 8; it++) {
-    const cand = designDispersion(fs, f0, target, loss, maxSections);
+    const cand = designDispersion(fs, f0, target, loss, maxSections, fitHz, tolCents);
     if (!isFinite(cand.err)) break;
     const realised = realisedOf(cand);
     if (!isFinite(realised) || realised <= 0) break;
@@ -205,7 +234,7 @@ function designDispersionMatched(fs, f0, B, loss, maxSections) {
     // Clamp the step: an unreachable target must not run away.
     target *= Math.pow(Math.min(4, Math.max(0.25, ratio)), 0.8);
   }
-  return best ?? designDispersion(fs, f0, B, loss, maxSections);
+  return best ?? designDispersion(fs, f0, B, loss, maxSections, fitHz, tolCents);
 }
 
 /** Compile one string's physical parameters into a runnable coefficient set. */
@@ -243,7 +272,8 @@ export function compileString(fs, phys, tuning) {
   kappa = Math.min(0.5, kappa / Math.max(gAtF0, 0.05));
   // The loss filter is designed WITHOUT the coupling term: it is the aftersound.
   const loss = designLoss(fs, f0, tuning.t60Low, tuning.t60High, 5000, 0);
-  const disp = designDispersionMatched(fs, f0, phys.B, loss, tuning.maxAllpass ?? 48);
+  const disp = designDispersionMatched(fs, f0, phys.B, loss,
+    tuning.maxAllpass ?? 48, tuning.dispersionFitHz ?? 0, tuning.dispersionTolCents ?? 0);
   const damped = designLoss(fs, f0, tuning.t60Damped ?? 0.12, (tuning.t60Damped ?? 0.12) * 0.35, 5000, 0);
   // Transient damping is biased toward high frequency; this is the split
   // point. It rises with the note, because the partials a treble string has

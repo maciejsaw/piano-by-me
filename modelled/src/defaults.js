@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS = {
     "gain": "12.5",
     "uc": "0.55",
     "bc": "0.3",
+    "detail": "48",
     "cw": "1.45",
     "cl": "2",
     "cd": "0.26",

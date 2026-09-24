@@ -42,11 +42,11 @@ the silent hold and it stops.
 | | |
 |---|---|
 | **Strings** | 240 waveguides: 1–3 per note, single delay loop each |
-| **Stiffness** | dispersion allpass chain, fitted per string to the note's real inharmonicity `B = π³Ed⁴/(64TL²)` |
+| **Stiffness** | dispersion allpass chain, fitted per string to the note's real inharmonicity `B = π³Ed⁴/(64TL²)`; sized per note in the bass, where a short chain cannot hold a ladder hundreds of partials long (see **Bass clarity**) |
 | **Wound strings** | core carries stiffness, winding adds mass — which is exactly why a short bass string can still have low inharmonicity |
 | **Hammer** | nonlinear Hertzian contact `F = K·δ^p`, integrated per strike against the combined impedance of the unison, terminated by the wave reflecting off the agraffe |
 | **Strike position** | comb filter; α ≈ 1/8 notches out the 8th partial |
-| **Dampers** | lossy terminations that ramp, not gates; the top of the compass (above E6) has none, as on the C5 |
+| **Dampers** | lossy terminations that ramp, not gates; the top of the compass (above E6) has none, as on the C5. A damped string keeps running until it is genuinely silent, not merely until the damper has finished its travel — a string that stops being ticked stops decaying, and the wave left frozen in its loop comes back the next time the pedal lifts |
 | **Bridge** | 16 soundboard zones with a spread kernel, so coupling depends on register |
 | **Pedals** | sustain, una corda (hammer misses the outer string, which then rings sympathetically) |
 | **Velocity** | two drawn curves: volume (dB below a full-velocity strike, normalised by the pulse's power at the string's partials so hammer speed keeps only the timbre) and a per-strike felt-hardness offset |
@@ -198,8 +198,8 @@ npm run render          # demo WAVs into modelled/renders/
 ```
 
 `verify` measures inharmonicity (within 1.15× of spec), T60 (1.02×), unison beat
-rates, sympathetic transfer, the pedal halo (−27 dB below the strike peak, and
-74 dB above the same gesture with the pedal up), two-stage decay, and stability
+rates, sympathetic transfer, the pedal halo (−29 dB below the strike peak, and
+274 dB above the same gesture with the pedal up), two-stage decay, and stability
 under a fortissimo pedal-down cluster.
 
 ## Cost
@@ -215,6 +215,41 @@ At 48 kHz, percentage of one core:
 Quality is the allpass section count, which trades CPU against how accurately
 inharmonicity is realised. Default is 16. Pedal-down is the worst case because
 every string must run to receive sympathetic excitation.
+
+Bass clarity is charged on top of that, but only in the register it covers and
+only on strings you actually strike: a bass passage costs about twice what it did
+(18% → 38% of a core here), while the same passage with the pedal held goes from
+66% to 86% rather than to the 170% a flat 128-section chain would have cost.
+
+## Bass clarity
+
+The inharmonicity of a string is realised by a cascade of identical first-order
+allpass sections, and a cascade can only follow `sqrt(1 + Bn²)` over the range it
+was fitted to. In the treble that costs nothing: 48 partials of C4 already reach
+12 kHz. In the bass it is the whole problem — 48 partials of A0 reach 1.3 kHz,
+and everything above that was left to drift.
+
+Measured on A0 at the default 16 sections, partial 48 landed 44 cents flat,
+partial 64 132 cents flat and partial 96 — 2.6 kHz, right where the ear is — 371
+cents flat. The top half of every bass note was squeezed into a mistuned
+cluster, heard as a metallic, distorted edge. Worst error below 4 kHz, by note:
+
+| | A0 | F1 | G1 | E2 | A2 | D3 | F3 |
+|---|---|---|---|---|---|---|---|
+| 16 sections | 436¢ | 238¢ | 157¢ | 75¢ | 35¢ | 18¢ | 6¢ |
+| sized per note | 49¢ | 39¢ | 24¢ | 10¢ | 4¢ | 0¢ | 6¢ |
+
+Three things make that affordable. The fit range is stated in hertz (6 kHz)
+rather than in partials, so the optimiser can see the damage it is doing. The
+chain is the SHORTEST that lands inside 25 cents rather than the longest
+available, which is 128 sections in the bottom octave and 32 by A2. And it is
+handed out at the strike and handed back when the string goes quiet, so with the
+pedal held the ten notes you struck pay for it and the two hundred ringing along
+behind them do not.
+
+The **bass clarity** slider is the split: every note at or below it gets the long
+chain. Far left turns it off, far right gives it to the whole keyboard. C3 is the
+default, because by D3 the untreated error is already 18 cents.
 
 ## Layout
 
@@ -253,8 +288,9 @@ so turning a knob costs the audio thread nothing.
 - **No longitudinal modes.** The "phantom partials" that give loud bass notes
   their growl are not modelled.
 - **Hammer contact ignores returning waves** except the first agraffe reflection.
-- **Sympathetic strings run at full quality.** Tiering them down would roughly
-  double the affordable polyphony with the pedal held.
+- **Sympathetic strings run at the base quality.** They no longer take the long
+  bass chain, but they are still ticked in full otherwise; tiering them further
+  down would raise the affordable polyphony with the pedal held again.
 - **The body is one static filter.** Real radiation is directional and varies
   across the soundboard; this is a single average response. Per-zone radiation
   would be more faithful and is not expensive.

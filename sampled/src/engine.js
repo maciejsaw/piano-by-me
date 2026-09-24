@@ -24,10 +24,9 @@
 // same strings.
 import { plan, VelCurve, VelLayerCurve } from './velocity.js';
 import { Resonance } from './resonance.js';
-import { renderIR, DEFAULTS as ROOM_DEFAULTS } from './room.js';
 import { renderFdnIR, FDN_DEFAULTS } from './fdn-room.js';
 import { renderHallIR, HALL_DEFAULTS, energyOf } from './hall.js';
-import { Envelopes } from './envelopes.js';
+import { Envelopes, holdFade } from './envelopes.js';
 import { Eq } from './eq.js';
 import { StreamSource } from './stream.js';
 
@@ -124,29 +123,11 @@ export class Engine {
     this.noise.connect(this.noiseSolo);
     this.noiseSolo.connect(this.dry); this.noiseSolo.connect(this.send);
 
-    // There is no pedal-action sample and no reverb for one. Salamander's
-    // pedal recordings are a mechanism being worked, not an instrument
-    // responding: the same two files however you use the pedal, with a room
-    // and a frame ringing in them that are not this room or this frame. What
-    // they were standing in for -- the whole undamped frame lighting up when
-    // the pedal goes down -- is something this engine already does properly,
-    // string by string, through the resonance accumulator and the soundboard
-    // reverb. Playing a recording of it on top was two answers to one question.
-
-    // The soundboard. Sympathetic resonance is fed continuously into a long
-    // reverb, so that when the pedal lifts and the dampers cut the strings, the
-    // energy already in the body keeps ringing for a few seconds -- the whole
-    // instrument resonating, not just the strings that were free. It is what
-    // turns a pedal-off from a cut into a decay.
-    this.sbSend = ctx.createGain();
-    this.sbSend.gain.value = 1;
-    this.sbConv = ctx.createConvolver();
-    this.sbConv.normalize = false;
-    this.sbGain = ctx.createGain();
-    this.sbGain.gain.value = 0.5;          // soundboard tail level
-    this.sbSend.connect(this.sbConv).connect(this.sbGain).connect(this.master);
-    this.sbTailSec = 4.5;                   // how long the body rings, in seconds
-    this.rebuildSoundboard();
+    // There is no pedal-action sample. Salamander's pedal recordings are a
+    // mechanism being worked, not an instrument responding: the same two files
+    // however you use the pedal. What they were standing in for -- the undamped
+    // frame lighting up when the pedal goes down -- is what the resonance
+    // engine does, string by string.
 
     // Salamander's own levels for the auxiliary samples (see build.mjs). The
     // key-release recordings sit at full scale in the file and the SFZ takes
@@ -160,12 +141,19 @@ export class Engine {
     for (let m = this.lo; m <= this.hi; m++) this.strips.set(m, this.makeStrip(m));
 
     this.voices = new Map();        // midi -> [voice]
+    // Voices whose damper is falling, until they are silent: midi -> [voice].
+    // A damper that lifts again before then -- a quick pedal change, the key
+    // pressed silently -- leaves the string ringing where the fall had got
+    // to, and resume() puts the voice back. Only damper falls go in here: a
+    // voice cut to make room or restruck is gone.
+    this.damping = new Map();
     this.down = new Set();
     this.silent = new Set();
     this.pedal = 0;                 // 0..1, continuous: half-pedal is real
     this.spread = 0;            // no artificial spread by default -- just the swap
     this.width = 1;
     this.perspective = 1;           // +1 player's view (bass left), -1 audience
+    this.invert = false;            // undo the input channel swap (see makeStrip)
     this.releaseNoise = 0.9;
     // What fraction of the key-release recording to play when the string is NOT
     // being damped (pedal held). The recording is mostly the damper stopping
@@ -204,7 +192,7 @@ export class Engine {
     this.velCurve = new VelCurve();
     this.velLayer = VelLayerCurve.fromHivel(lib.m.hivel, lib.layers);
 
-    this.res = new Resonance(ctx, lib, curves, (m) => this.strips.get(m).in, this.env, this.sbSend);
+    this.res = new Resonance(ctx, lib, curves, (m) => this.strips.get(m).in, this.env);
     this.res.lookahead = this.lookahead;
     this.refreshStrips();
     this.updateUndamped();
@@ -260,10 +248,14 @@ export class Engine {
       const p = Math.max(-1, Math.min(1, place + this.curves.at('pan', m)));
       const th = (p + 1) * Math.PI / 4;
       const gl = Math.cos(th), gr = Math.sin(th);
-      s.g[0].gain.value = gl * (1 + w) / 2;
-      s.g[1].gain.value = gl * (1 - w) / 2;
-      s.g[2].gain.value = gr * (1 - w) / 2;
-      s.g[3].gain.value = gr * (1 + w) / 2;
+      // Inverted, each output takes its "own" side from the other input
+      // channel -- the swap undone -- before width and placement act on it.
+      const a = (1 + w) / 2, b = (1 - w) / 2;
+      const [own, other] = this.invert ? [b, a] : [a, b];
+      s.g[0].gain.value = gl * own;
+      s.g[1].gain.value = gl * other;
+      s.g[2].gain.value = gr * other;
+      s.g[3].gain.value = gr * own;
     }
   }
 
@@ -352,25 +344,6 @@ export class Engine {
     this.hall.conv.buffer = this.hallFile ?? this.synthHall;
   }
 
-  /**
-   * The soundboard's own long, dark impulse -- the body, not the room. It
-   * keeps the geometry the old room had when it was tuned (size 0.83,
-   * absorption 0.51, listener at 0.87), and that room's default as its level
-   * reference, so moving the reverbs does not move the body.
-   */
-  rebuildSoundboard() {
-    this.sbRef ??= renderIR(this.ctx, ROOM_DEFAULTS).energy;
-    const { buf } = renderIR(this.ctx, {
-      ...ROOM_DEFAULTS,
-      width: 7.2 * 0.83, depth: 9.5 * 0.83, height: 3.8 * Math.sqrt(0.83),
-      absorption: 0.51, distance: 0.87,
-      rt60: Math.max(0.5, this.sbTailSec), tailDampHz: 2200,
-    }, this.sbRef);
-    this.sbConv.buffer = buf;
-  }
-
-  setSoundboardTail(sec) { this.sbTailSec = sec; this.rebuildSoundboard(); }
-
   setLimiter(on) {
     if (on === this.limiterOn) return;
     this.limiterOn = on;
@@ -384,9 +357,9 @@ export class Engine {
   /**
    * Solo the sympathetic resonance: mute every direct path -- the struck
    * notes, their release and damper samples, the mechanical noise and the
-   * samples -- and leave the resonance voices and the soundboard
-   * sounding. It is a monitoring switch for setting this section up by ear,
-   * not a setting: nothing persists it, so the instrument always starts unsoloed.
+   * samples -- and leave only the resonance voices sounding. It is a
+   * monitoring switch for setting this section up by ear, not a setting:
+   * nothing persists it, so the instrument always starts unsoloed.
    *
    * Every mute is a short ramp rather than a jump, because closing a gain
    * under a ringing chord instantaneously is a click.
@@ -462,6 +435,9 @@ export class Engine {
     const willRing = this.pedal >= UNDAMP || midi > this.topDamped
       || this.silent.has(midi);
     if (!willRing) this.kill(midi, 0.008, now);
+    // A fresh hammer on the string: what was left of its last note is not
+    // brought back when this key's damper lifts, it just finishes falling.
+    this.damping.delete(midi);
     // A streamed sample: its head is already decoded, the rest is decoded by
     // the stream worker as it plays. Used exactly like a buffer source.
     const src = new StreamSource(this.lib.streamer, p.key, p.frames);
@@ -514,7 +490,7 @@ export class Engine {
     list.push(v);
     this.down.add(midi);
     this.updateUndamped();
-    this.res.excite(midi, vel, this.pedal);
+    this.res.excite(midi, vel, t0);
     this.prune();
     this.refreshHeld();
     return v;
@@ -548,7 +524,7 @@ export class Engine {
       // string shortens it without stopping it.
       const base = this.damperTime(midi);
       const t = base * Math.pow(9 / base, this.pedal / UNDAMP);
-      this.kill(midi, t, relNow);
+      this.kill(midi, t, relNow, true);
       this.damperSound(midi, struckAt, heldFor, 1, relNow);
     }
     // The key-release recording is the key returning AND its damper stopping
@@ -584,26 +560,68 @@ export class Engine {
    * damper sound is started at the same `when` by the caller, so the note
    * fading out and the thud fading in stay in step.
    */
-  kill(midi, fall, when) {
+  /** `damper`: this is a damper landing, so the voice may be resumed (see `damping`). */
+  kill(midi, fall, when, damper = false) {
     const list = this.voices.get(midi);
     if (!list) return;
     const now = this.time(when);
-    const curve = this.env.noteRelease.shape.curve(1, 0);
     const dur = Math.max(0.006, fall);
     for (const v of list) {
       if (v.releasing) continue;
       v.releasing = true;
+      // From the level it is at: 1, unless it was resumed partway down a fall.
+      const curve = this.env.noteRelease.shape.curve(v.level ?? 1, 0);
       // A start time already in the past is clamped to the present by the
-      // audio thread, and the curve's first value is the 1 the gain is
+      // audio thread, and the curve's first value is the level the gain is
       // already at -- so a late call starts late, it does not jump.
-      try { v.rel.gain.setValueCurveAtTime(curve, now, dur); }
-      catch { v.rel.gain.setTargetAtTime(0, now, dur / 4); }
-      try { v.src.stop(now + dur + 0.03); } catch { /* already stopped */ }
+      try { v.rel.gain.setValueCurveAtTime(curve, now, dur); v.fade = { t0: now, dur, curve }; }
+      catch { v.rel.gain.setTargetAtTime(0, now, dur / 4); v.fade = null; }
+      v.stopAt = now + dur + 0.03;
+      try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
+      if (damper && v.fade) {
+        let d = this.damping.get(midi);
+        if (!d) this.damping.set(midi, d = []);
+        d.push(v);
+      }
     }
     this.voices.delete(midi);
   }
 
+  /**
+   * Put back the falling voices of every string that is free again, at the
+   * level their fall had reached. Too quiet (-60 dB), or too close to their
+   * scheduled stop to cancel it safely, and they are left to finish.
+   */
+  resumeFreed(free) {
+    if (!this.damping.size) return;
+    // Far enough ahead to be in the audio thread's future even at the largest
+    // buffer size: a hold placed in its past would cut the fade short instead.
+    const t = this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01;
+    for (const [midi, list] of [...this.damping]) {
+      if (!free.has(midi)) continue;
+      this.damping.delete(midi);
+      for (const v of list) {
+        if (t > v.stopAt - 0.04 || !v.fade) continue;
+        const level = holdFade(v.rel.gain, v.fade, t);
+        if (level < 1e-3) continue;
+        v.src.resume();
+        v.level = level;
+        v.releasing = false;
+        v.fade = null;
+        let l = this.voices.get(midi);
+        if (!l) this.voices.set(midi, l = []);
+        l.push(v);
+      }
+    }
+  }
+
   forget(v) {
+    const d = this.damping.get(v.midi);
+    if (d) {
+      const i = d.indexOf(v);
+      if (i >= 0) d.splice(i, 1);
+      if (!d.length) this.damping.delete(v.midi);
+    }
     const list = this.voices.get(v.midi);
     if (!list) return;
     const i = list.indexOf(v);
@@ -758,7 +776,7 @@ export class Engine {
         const v = this.voices.get(m)?.[0];
         if (!v) continue;
         landed.push({ m, v });
-        this.kill(m, this.damperTime(m) * 1.2, now);
+        this.kill(m, this.damperTime(m) * 1.2, now, true);
       }
       landed.sort((a, b) => b.v.started - a.v.started);
       for (const { m, v } of landed.slice(0, 6)) {
@@ -782,7 +800,10 @@ export class Engine {
     for (const m of this.silent) u.add(m);
     if (this.pedal >= UNDAMP) for (let m = this.lo; m <= this.topDamped; m++) u.add(m);
     this.undamped = u;
-    this.res.setUndamped(u);
+    // Strings freed again before their dampers finished stopping them ring on.
+    this.resumeFreed(u);
+    // With what is sounding, so resonance driven by a resumed note comes back too.
+    this.res.setUndamped(u, this.sounding());
   }
 
   refreshHeld() {
@@ -796,12 +817,13 @@ export class Engine {
     for (const s of this.oneShots) { try { s.stop(); } catch { /* already done */ } }
     this.oneShots.clear();
     for (const m of [...this.voices.keys()]) this.kill(m, 0.04);
+    this.damping.clear();
     this.down.clear(); this.silent.clear();
     this.res.allOff();
     this.updateUndamped();
   }
 
-  tick(dt) { this.res.tick(dt, this.sounding(), this.pedal); }
+  tick(dt) { this.res.tick(dt, this.sounding()); }
 
   /**
    * The notes that are still ringing freely, and how far into their own decay

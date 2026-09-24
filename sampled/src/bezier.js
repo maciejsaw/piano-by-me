@@ -104,12 +104,16 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
   const ctx = canvas.getContext('2d');
   let drag = null;
   const R = 5;
+  // A release is stored like every other shape, 0 -> 1 (the share of the fall
+  // done), but drawn the way it sounds: full at the top left, falling to
+  // silence at the bottom right. Only the drawing and the pointer are flipped.
+  const flip = opts.falling ? (y) => 1 - y : (y) => y;
 
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width, y: 1 - (e.clientY - r.top) / r.height };
+    return { x: (e.clientX - r.left) / r.width, y: flip(1 - (e.clientY - r.top) / r.height) };
   };
-  const toPx = (x, y, w, h) => [x * w, (1 - y) * h];
+  const toPx = (x, y, w, h) => [x * w, (1 - flip(y)) * h];
 
   function draw() {
     const w = canvas.width = canvas.clientWidth * devicePixelRatio;
@@ -121,6 +125,13 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
     for (let i = 1; i < 4; i++) {
       ctx.beginPath(); ctx.moveTo(w * i / 4, 0); ctx.lineTo(w * i / 4, h); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, h * i / 4); ctx.lineTo(w, h * i / 4); ctx.stroke();
+    }
+
+    if (opts.falling) {
+      ctx.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
+      ctx.fillStyle = '#6d6458';
+      ctx.textAlign = 'left'; ctx.fillText('full', 4 * devicePixelRatio, 11 * devicePixelRatio);
+      ctx.textAlign = 'right'; ctx.fillText('silent', w - 4 * devicePixelRatio, h - 4 * devicePixelRatio);
     }
 
     const ghost = opts.ghost?.();

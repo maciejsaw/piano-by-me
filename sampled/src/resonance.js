@@ -1,47 +1,36 @@
-// Sympathetic resonance.
+// Resonance: the rest of the piano answering the key you played.
 //
-// When a hammer hits a string, every other string whose damper is off gets
-// driven through the bridge, and rings at whatever partials it shares with the
-// one that was struck. It is why a piano with the pedal down sounds like a
-// different instrument from one with the pedal up, and why holding a chord
-// silently and then playing into it produces a halo that no reverb reproduces.
+// Three kinds, each a set of voices playing the library's own recordings of
+// the strings that answer, and each with its own level and its own release:
 //
-// The physically modelled half of this repo gets this for free: its strings
-// are real waveguides on a shared bridge, so the coupling is in the structure.
-// A sampler has no strings, so it has to be built, and the honest way to build
-// it from a sample library is to play the library's own softest recordings --
-// the quietest layer of the resonating note, started past the hammer knock so
-// what you hear is string and not a strike.
+//   SYMPATHETIC   strings whose dampers are off -- the pedal is down, a key is
+//                 held, or it is one of the top strings that have no damper --
+//                 ring at the partials they share with the struck note. Which
+//                 strings, and how strongly, is partial coincidence (with each
+//                 string's real inharmonicity) tilted by distance (near/far).
+//                 When the pedal lifts, the dampers land on them: that is the
+//                 `pedalUpRelease`.
+//   SOUNDBOARD    with or without the pedal, the strings around the struck key
+//                 pick some of it up through the bridge and the board. Nearest
+//                 loudest, falling off by `sbFalloff` dB per doubling of
+//                 distance (see distanceDb).
+//   SELF          the struck string's own unison and duplex answering it: the
+//                 same key's recording under the note.
 //
-// Three things make it behave like the real thing rather than like a reverb:
+// A resonance voice lasts exactly as long as what drives it. It starts on the
+// strike, plays its recording as recorded -- the recording's own decay is the
+// decay, nothing is compensated -- and when the note driving it stops sounding
+// (key up with the pedal up, or the pedal lifting) it fades over its kind's
+// release time. A voice driven by several notes waits for the last of them.
 //
-//   WHICH strings answer is decided by partial coincidence, with each string's
-//     real inharmonicity and its real bandwidth. A fifth answers strongly, a
-//     tritone barely, and the answer for any pair is a number computed once.
-//   HOW MUCH is an energy accumulator per string, not a trigger. Every strike
-//     adds to it, scaled by the square of velocity -- hit harder, get more --
-//     and it leaks away at that string's own measured AFTERSOUND rate.
-//   HOW LONG is not decided at the attack. A struck string goes on pushing the
-//     bridge for as long as it rings, so it goes on feeding the accumulator of
-//     every string coupled to it, every tick, at its own current amplitude.
-//     That is the difference between a halo that lasts as long as the note
-//     under it and one that dies a moment after the attack whatever you play.
-//   PILE-UP falls out of the accumulator for free. With the pedal down nothing
-//     is being damped, so a second chord adds to what the first left behind
-//     and the halo grows. Lift the pedal and every accumulator is cut at the
-//     speed of its damper.
-//
-// The one trick that makes it sound right rather than merely correct: the
-// resonating sample's OWN decay is divided back out of its gain, from the
-// decay curve measured at build time. Without that the voice would die at
-// twice the proper rate -- once because the string is decaying, and once again
-// because the recording of it is. With it, the accumulator alone decides the
-// level, and the recording only supplies the timbre.
+// A recording is entered past the hammer knock (`startAt`, with a `bloom`
+// fade-in), because what answers a strike is a string, not another strike.
+// There is no reverb here: the voices go into the same per-key channel strips
+// as the struck notes, and the room is the room's job.
 
 import { StreamSource } from './stream.js';
 import { RATE } from './ogg.js';
-
-const SEMI = Math.pow(2, 1 / 12);
+import { holdFade, fadeAt } from './envelopes.js';
 
 /** Inharmonicity across the compass: 1.2e-4 at A0 to 2.5e-2 at C8, log-linear. */
 const bOf = (midi) => Math.pow(10, -3.92 + (midi - 21) * (-1.60 + 3.92) / 87);
@@ -49,107 +38,37 @@ const bOf = (midi) => Math.pow(10, -3.92 + (midi - 21) * (-1.60 + 3.92) / 87);
 const partial = (f0, B, n) => f0 * n * Math.sqrt(1 + B * n * n);
 
 /**
- * The AFTERSOUND decay rate of a note, in dB/s, fitted from its decay curve.
- *
- * `edr` in the manifest is the EARLY decay rate -- a least squares fit over
- * the first 20 dB (sampled/tools/lib/analysis.mjs), which on a piano is the
- * prompt sound: the fast first slope of a famously double-sloped decay. Using
- * it as the leak constant of an accumulator that is supposed to hold a halo up
- * is why the halo used to vanish. It reads 63 dB/s at C6 -- a time constant of
- * 0.14 s, so the sympathetic ring of the top two octaves was over before the
- * note driving it had finished speaking.
- *
- * What is wanted is the SECOND slope: the same least squares, run past the
- * knee, over the decay curve the build already stores per note. Nothing has to
- * be re-measured.
- *
- *   from -10 dB   past the prompt sound and into the aftersound
- *   to -40 dB     about as far as a trimmed library sample honestly goes
- *   t < 85% of the recording
- *                 the last points are the build's own fade to silence -- C6
- *                 drops 22 dB between its final two -- and a fit through
- *                 those measures the trim rather than the string
- */
-export function aftersoundRate(decay) {
-  if (!decay?.t?.length) return null;
-  const { t, db } = decay;
-  const tEnd = t[t.length - 1] * 0.85;
-  let n = 0, st = 0, sd = 0, stt = 0, std = 0, first = Infinity, last = -Infinity;
-  for (let i = 0; i < t.length; i++) {
-    if (t[i] > tEnd || db[i] > -10 || db[i] < -40) continue;
-    n++; st += t[i]; sd += db[i]; stt += t[i] * t[i]; std += t[i] * db[i];
-    if (t[i] < first) first = t[i];
-    if (t[i] > last) last = t[i];
-  }
-  // Four points spanning at least half a second, or this is fitting noise.
-  if (n < 4 || last - first < 0.5) return null;
-  const denom = n * stt - st * st;
-  if (Math.abs(denom) < 1e-12) return null;
-  const slope = (n * std - st * sd) / denom;
-  if (slope >= -0.05) return null;
-  return -slope;
-}
-
-/**
- * Median, then mean, across the compass, in the log domain.
- *
- * A rate fitted from one recording of one note is noisy: the manifest has C3
- * at 14.7 dB/s and C4 at 1.9, a factor of eight between two octaves of the
- * same instrument, which is measurement and not piano. Real decay rates vary
- * smoothly with string length, so the scatter can simply be taken out -- the
- * median kills the outliers, the mean takes the steps out of what is left, and
- * both run on log(rate), which is the scale decay rates live on.
- */
-function smoothAcross(a, radius = 3) {
-  const n = a.length;
-  const log = new Float64Array(n), med = new Float64Array(n), out = new Float64Array(n);
-  for (let i = 0; i < n; i++) log[i] = Math.log(a[i]);
-  const win = [];
-  for (let i = 0; i < n; i++) {
-    win.length = 0;
-    for (let j = Math.max(0, i - radius); j <= Math.min(n - 1, i + radius); j++) win.push(log[j]);
-    win.sort((x, y) => x - y);
-    med[i] = win[win.length >> 1];
-  }
-  for (let i = 0; i < n; i++) {
-    let s = 0, c = 0;
-    for (let j = Math.max(0, i - radius); j <= Math.min(n - 1, i + radius); j++) { s += med[j]; c++; }
-    out[i] = Math.exp(s / c);
-  }
-  return out;
-}
-
-/**
- * Coupling weight for every ordered pair of keys.
+ * Coupling weight for every ordered pair of keys, normalised to a peak of 1,
+ * and which of the answering string's partials it drives.
  *
  * For each partial of the struck note, find the resonator's nearest partial
- * and score the overlap with a Lorentzian in Hz -- which is the shape a driven
- * resonator actually has, and whose width is the string's own half-power
- * bandwidth, alpha/pi, straight out of the decay rate measured at build time.
- * A Gaussian in cents is the usual shortcut and gets the bass wrong, because
- * bandwidth is a property of frequency and cents are not.
- *
- * `selectivity` scales that bandwidth. At 1 it is physical and almost nothing
- * resonates unless it is in tune to a cent; the default opens it up, which is
- * what every instrument that does this has to do -- a real bridge couples
- * strings through a soundboard with its own broad modes, and this stands in
- * for that.
+ * and score the overlap with a Lorentzian in Hz (its power response), whose
+ * width is the string's half-power bandwidth from its measured decay rate,
+ * times `selectivity`. At 1
+ * it is physical and almost nothing answers unless it is in tune to a cent;
+ * wider stands in for the soundboard's own broad modes.
  */
 export function couplingMatrix(hz, { partials = 16, selectivity = 8, lo = 21, hi = 108 } = {}) {
   const n = hi - lo + 1;
   const W = new Float32Array(n * n);
+  // The lowest partial of the answering string that takes a real share (a
+  // quarter of the strongest) of the drive. A string is driven at its partials,
+  // not at its note: C2 into a free D2 meets only at C2's 9th and D2's 8th, so
+  // D2 rings at its 8th partial and its fundamental never moves. 1 means the
+  // string's own fundamental answers.
+  const K = new Uint8Array(n * n);
+  const wk = new Float64Array(partials + 1);
   const f0 = new Float64Array(n), B = new Float64Array(n), bw = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     const m = lo + i;
     f0[i] = hz(m);
     B[i] = bOf(m);
-    // Half-power bandwidth from the decay rate, widened by `selectivity`.
     bw[i] = Math.max(0.05, hz.rate?.(m) ?? 3) / (20 / Math.LN10) / Math.PI * selectivity;
   }
   for (let si = 0; si < n; si++) {
     for (let ri = 0; ri < n; ri++) {
       if (si === ri) continue;
-      let w = 0;
+      wk.fill(0);
       for (let m = 1; m <= partials; m++) {
         const f = partial(f0[si], B[si], m);
         if (f > 12000) break;
@@ -162,52 +81,38 @@ export function couplingMatrix(hz, { partials = 16, selectivity = 8, lo = 21, hi
           // Higher partials of the resonator are more heavily damped, so they
           // answer over a wider band and contribute less.
           const width = bw[ri] * Math.pow(k, 0.8);
-          if (d > width * 12) continue;
+          // The resonator's POWER response, 1/(1+r^2): energy is what passes
+          // from one string to the other. The amplitude response, 1/sqrt, has
+          // tails so long that a string a semitone off answered at -7 dB.
+          if (d > width * 8) continue;
           const r = 2 * d / width;
-          w += a * Math.pow(k, -1.2) / Math.sqrt(1 + r * r);
+          wk[k] += a * Math.pow(k, -1.2) / (1 + r * r);
         }
       }
+      let w = 0, top = 0;
+      for (let k = 1; k <= partials; k++) { w += wk[k]; if (wk[k] > top) top = wk[k]; }
+      let kmin = 1;
+      while (kmin < partials && wk[kmin] < top * 0.25) kmin++;
       W[si * n + ri] = w;
+      K[si * n + ri] = kmin;
     }
   }
   let max = 0;
   for (let i = 0; i < W.length; i++) if (W[i] > max) max = W[i];
   if (max > 0) for (let i = 0; i < W.length; i++) W[i] /= max;
-  return { W, n, lo };
+  return { W, K, n, lo };
 }
 
-// How far the decay compensation is allowed to go. Past this it is amplifying
-// the room's noise floor rather than the string -- and every decibel of it
-// also brings the moment the voice has to be restarted closer, which is the
-// other half of what made this sound granular.
-const LIMIT_DB = 6;
-
-// How far the per-key level curve reaches down. At the floor a string does not
-// answer at all: its energy never clears the voice threshold, so it costs
-// nothing and makes no sound.
+// How far the per-key level curve reaches down. At the floor a string does
+// not answer at all.
 export const RES_FLOOR = -48;
 export const RES_CEIL = 12;
 
 /**
- * A hand-drawn key -> level curve for the sympathetic resonance, in dB.
- *
- * The one thing a single "amount" knob cannot do is balance the resonance
- * ACROSS the keyboard, and the place that shows is the top of the instrument:
- * the highest strings have no dampers at all, so they are free to answer
- * whatever you play, forever, whether the pedal is down or not. On a real
- * grand they are also small, quiet and far from the bridge's centre; here they
- * are recordings played at the same send as everything else, and they ring on
- * over a passage that should have stopped. This is where you take them down.
- *
- * Same shape as the velocity curves: a list of points the user places, pinned
- * at the two ends and linearly interpolated between. Flat 0 dB by default, so
- * it changes nothing until it is drawn.
- *
- * The value is applied to the ENERGY the accumulator receives, squared, which
- * is what makes it a level in dB on the resulting voice -- the voice's gain
- * goes as the square root of energy. Doing it there rather than at the voice
- * also shortens what it quietens: a string fed less energy falls under the
- * voice threshold sooner, so the too-long ring goes with the too-loud one.
+ * A hand-drawn key -> level curve for all the resonance, in dB, on the string
+ * that answers. Pinned at both ends of the keyboard, linear between points,
+ * flat 0 dB by default. Mostly for the top strings, which have no dampers and
+ * so answer everything whether the pedal is down or not.
  */
 export class ResCurve {
   constructor(lo = 21, hi = 108) {
@@ -229,10 +134,10 @@ export class ResCurve {
     return p[p.length - 1].db;
   }
 
-  /** The factor on ACCUMULATED ENERGY -- amplitude squared. Floor means off. */
-  energy(midi) {
+  /** The factor on a voice's amplitude. Floor means off. */
+  gain(midi) {
     const db = this.at(midi);
-    return db <= RES_FLOOR ? 0 : Math.pow(10, db / 10);
+    return db <= RES_FLOOR ? 0 : Math.pow(10, db / 20);
   }
 
   /** True while the curve is flat at 0 dB, i.e. doing nothing. */
@@ -254,209 +159,119 @@ export class ResCurve {
   }
 }
 
+export const KINDS = ['sym', 'sb', 'self'];
+
+// A voice quieter than this, as a fraction of the recording's true level, is
+// not worth starting (-54 dB).
+const MIN_GAIN = 0.002;
+// Velocity to amplitude. A hammer's energy goes as v^2 and what reaches the
+// bridge is graded a little more sharply than that.
+const VEL_EXP = 1.75;
+// How far a sounding voice's recording may have decayed (-18 dB) and still be
+// turned up to take a fresh drive. Past this, turning it up would be turning
+// up the room's noise, so it is crossfaded into a new start instead. How loud
+// the string has become is not limited here: under the pedal, repeated strikes
+// really do build it up.
+const TOPUP_DECAY = 0.125;
+// How much louder a newcomer must be than the quietest sounding voice to take
+// its slot when max voices is full (+6 dB). Without it the strings either side
+// of the cut trade places on every strike, and every trade is a fade.
+const STEAL = 2;
+// A top-up smaller than this (+0.5 dB) is not worth moving the gain for.
+const TOPUP_MIN = 1.06;
+// Time constant of a top-up: quick, since a string pushed again answers at once.
+const TOPUP_TAU = 0.04;
+
+// The distance at which the fall-off starts to bite, in semitones.
+const NEAR_REF = 2;
+
+/**
+ * Level, in dB, at `d` semitones from the struck key, falling `perDoubling` dB
+ * each time the distance doubles -- the law a vibration spreading out from a
+ * point obeys (6 dB per doubling is 1/r). Measured from NEAR_REF rather than
+ * from zero, so the nearest few strings are close in level and the curve then
+ * flattens out: an octave away is well down, but three octaves is not much
+ * further down than two. A negative rate favours far strings the same way.
+ */
+export const distanceDb = (d, perDoubling) => -perDoubling * Math.log2(1 + d / NEAR_REF);
+// Random stagger across a pedal lift, so the dampers do not land as one click.
+const PEDAL_JITTER = 0.04;
+
 export class Resonance {
   /**
-   * @param strip  (midi) => the per-key channel strip to play into, so a
-   *               sympathetic voice inherits that key's pan and width
+   * @param strip  (midi) => the per-key channel strip input to play into, so a
+   *               resonance voice sits where that key's strings sit
    */
-  constructor(ctx, lib, curves, strip, envelopes = null, sbSend = null) {
+  constructor(ctx, lib, curves, strip, envelopes = null) {
     this.ctx = ctx; this.lib = lib; this.curves = curves; this.strip = strip; this.env = envelopes;
-    this.sbSend = sbSend;       // the soundboard reverb: rings on after dampers land
     this.lo = lib.m.keys.lo; this.hi = lib.m.keys.hi;
     this.n = this.hi - this.lo + 1;
-    this.E = new Float64Array(this.n);
-    // The level the notes currently sounding hold each string at. Rebuilt from
-    // scratch every tick by sustainFrom; the accumulator is never allowed to
-    // leak below it.
-    this.T = new Float64Array(this.n);
-    this.tau = new Float64Array(this.n);
-    this.voices = new Map();
-    // Strings whose resonating recording has played all the way through. They
-    // are NOT re-opened while they still have energy leaking away -- that would
-    // replay the sample's onset as a fresh strike. A new hammer landing on the
-    // string (excite) clears the mark and is allowed to open a fresh voice.
-    this.spent = new Set();
-    // WHEN a string is allowed to start sounding: only just after a hammer has
-    // driven it. midi -> the time of the strike that fed it.
-    //
-    // Re-ranking alone must never open a voice. tick() sorts the strings by
-    // energy every tick and keeps the top `maxVoices`, and a string ENTERING
-    // that set gets start(), which plays the resonating recording from its
-    // onset -- so a string that merely rose through the ranking as louder ones
-    // decayed began speaking from the top, seconds into a held chord, with a
-    // 45 ms rise. That is heard as a ghost note: a quiet piano note appearing
-    // out of nowhere in the middle of a sustained passage. A sympathetic string
-    // is only ever heard to start when something drives it, so that is the only
-    // time one is allowed to.
-    this.fresh = new Map();
-    this.startWindow = 0.2;     // seconds a strike stays a licence to speak
-    // How much louder a silent string must be than a sounding one to take its
-    // voice away. Without it a pair of strings either side of the cut trade the
-    // last slot back and forth, which is a stop and a restart every few ticks.
-    this.stickiness = 2;
-    // How much the keyboard distance between two strings matters. See
-    // applyProximity: dB of level per octave of separation, positive favouring
-    // near strings, 0 leaving the partial coincidence alone.
-    this.proximity = 0;
-    // The same preference, applied a second time and for a different reason:
-    // when there are more strings ringing than there are voices to play them
-    // with, spend the voices near where the music is. See nearness().
-    this.near = new Float64Array(this.n).fill(1);
-    this.undamped = new Set();
-    // Calibrated, not chosen. At 0.15 the halo over a pedalled passage sits
-    // about 16 dB under the notes driving it, which is a bloom you can hear
-    // without it becoming the music; the physically modelled variant in this
-    // repo measures its own pedal halo at -27 dB below a single strike peak.
-    // It was 0.5 with the recording's level left out entirely, which put the
-    // halo 15 dB ABOVE the piano -- two dozen peak-normalised pianissimo
-    // samples restarting under everything, which is what a grain cloud is.
-    this.amount = 0.15;         // master send
-    this.drive = 2.2;           // velocity exponent: how much harder hitting builds
-    // A string that has been struck does not stop pushing the bridge when the
-    // hammer leaves it -- it goes on driving every coupled string for as long
-    // as it rings. `excite` is only the strike; this is the drive that follows
-    // it, and it is what makes a held note keep a halo around it instead of
-    // one that dies on its own schedule a moment after the attack.
-    //
-    // It is a FLOOR, not another thing added to the accumulator. Adding it was
-    // the obvious way round and it does nothing audible: a strike deposits its
-    // energy all at once, and by the time the sustained term has trickled in
-    // enough to matter the note driving it is 25 dB down and contributing far
-    // less than the strike's own residual. Measured on a held pedalled chord
-    // it moved the halo by 0.0 dB. As a floor it does the job it is there for
-    // -- a string is never allowed to fall below the level the notes currently
-    // sounding are holding it at, so the halo stops decaying on its own
-    // schedule and decays with the music instead.
-    //
-    // At 1 a perfectly coupled string is held at the energy a strike of the
-    // same velocity would have deposited, so it is a fraction of a strike.
-    this.sustain = 1;
-    // A multiplier on every string's measured aftersound time constant, for
-    // tuning by ear. 1 is what the recordings say.
-    this.ring = 1;
-    // How far the accumulator is allowed to open one voice, BEFORE the
-    // recording's own level is put back. Without a ceiling a long pedalled
-    // passage keeps adding to E and a single sympathetic string ends up
-    // louder than the note that drove it.
-    this.ceiling = 1.2;         // a safety limit, not a working level
-    this.maxVoices = 16;
-    this.threshold = 0.0012;
-    // The level below which a string is FORGOTTEN, as opposed to merely being
-    // too quiet to deserve a voice (`threshold`). These were the same number,
-    // and while the only source of energy was a strike that was harmless: a
-    // string that had leaked away to nothing had nothing left to say. With the
-    // sustained drive it is not harmless at all -- the drive holds a weakly
-    // coupled string at a low but real level, and zeroing the accumulator the
-    // moment it passed under the voice threshold threw that state away every
-    // tick, so the drive could never build anything back up. A held bass note
-    // with the treble free measured EXACTLY zero halo from four seconds on,
-    // driven or not. The accumulator is a Float64Array; keeping a string in it
-    // at 1e-6 costs nothing, and it is what lets a halo come back.
-    this.floor = 1e-6;
-    this.tone = 5200;           // the bridge is not a wire: the halo is not bright
     this.enabled = true;
-    this.compensate = true;     // divide the recording's own decay back out
-    // The end of the recording, in seconds, spent fading out. Without it a
-    // voice ends when its buffer runs out -- a click, and on a short sample a
-    // halo that stops dead. This last stretch fades exponentially to nothing,
-    // landing on the buffer's end, so what is left is a decay tail that
-    // dissolves into the room instead of a cut. On a sample shorter than this
-    // it is capped to most of the sample, so a short recording just decays.
-    this.tailRelease = 0.6;
-    // When the pedal lifts, a whole frame of dampers lands. It happens in two
-    // stages rather than one fade: the level DROPS quickly to `pedalOffDrop` of
-    // where it was -- the dampers touching the strings -- and then falls the
-    // rest of the way slowly over `pedalOffFall`, the string ringing on under a
-    // resting damper while the soundboard (the long reverb) carries the body.
-    // Each damper is also given a small random delay, so the frame lands as a
-    // scatter rather than as one click.
-    this.pedalOffJitter = 0.06;   // seconds of random stagger across the frame
-    this.pedalOffDrop = 0.4;      // level the quick duck drops to (fraction)
-    this.pedalOffFall = 2.0;      // seconds for the slow release after the drop
-    // Soundboard bleed with the pedal UP. A damper does not fully still its
-    // string, and every string couples through the soundboard whether its damper
-    // is down or not -- so a real grand has a faint pitched halo and body ring
-    // even with no pedal. `dampedAmount` is the fraction of the normal coupling
-    // a DAMPED string still receives; those strings ring only briefly, leaking
-    // at `dampedDecay` rather than their open decay, because the damper is on
-    // them. At 0 the engine behaves exactly as before (only free strings answer).
-    this.dampedAmount = 0;
-    this.dampedDecay = 0.4;       // e-folding time of a damped string's bleed, s
-    // The struck string answering ITSELF.
-    //
-    // A note is never one string: two or three in a unison, slightly detuned,
-    // plus whatever the duplex scale behind the bridge is free to ring at. The
-    // hammer drives one set of them and the rest answer through the bridge, so
-    // part of what a real note does after the knock is sympathetic response to
-    // its own fundamental -- a bloom that arrives just behind the attack and
-    // sustains under it. The sample already contains its own unisons, so this
-    // is not physics being restored; it is a send that thickens and lengthens
-    // the note by putting the library's softest layer of the SAME key under it,
-    // driven by the same accumulator as every other string. Kept separate from
-    // the coupling matrix, which has no diagonal, and off by default.
-    this.self = 0;                // fraction of a perfectly-coupled string's drive
-    this.lookahead = 0;           // seconds; the engine sets its own (see Engine.time)
-    // Per-key send level, drawn (see ResCurve). Kept as a table of energy
-    // factors, rebuilt when the curve moves, because excite() reads it once
-    // per coupled string per note-on.
+    this.lookahead = 0;           // seconds; the engine sets its own
+
+    // Sympathetic (free strings, partial coincidence).
+    this.symAmount = 0.3;
+    this.symRelease = 3;          // s, a free string ringing on after the note driving it stops
+    this.pedalUpRelease = 0.6;    // s, when a damper lands on it
+    this.proximity = 0;           // near/far, dB per doubling of distance (see applyProximity)
+    // Play only the partials a sympathetic string is actually driven at: a
+    // high-pass just under the lowest one (see couplingMatrix's K). Off plays
+    // the whole recording, fundamental and all, whichever partial matched.
+    this.partialsOnly = true;
+    // Soundboard (every string near the key, pedal or not).
+    this.sbAmount = 0.08;
+    this.sbFalloff = 9;           // dB per doubling of distance (see distanceDb)
+    this.sbStep = 1;              // every string (1), every 2nd, every 3rd... out from the key
+    this.sbRelease = 1.2;
+    // Self (the struck key's own recording under the note).
+    this.selfAmount = 0;
+    this.selfRelease = 0.4;
+
+    // Shared.
+    this.maxVoices = 24;
+    // How long a voice takes to hand over when it has to be cut: crossfaded
+    // into a restart of the same string, or faded out to make room for a
+    // louder one when `maxVoices` is full.
+    this.crossfade = 0.4;         // s
+    // A voice a quick pedal change catches is brought back only if it is
+    // still louder than this, in dB of the string's own mezzo-forte level.
+    this.resumeDb = -45;
+    this.tone = 5200;
+    this.layer = lib.m.resLayers?.includes(8) ? 8 : lib.layers[Math.floor(lib.layers.length / 2)];
+    this.startAt = 0.8;           // s into the recording
+    this.bloom = 0.25;            // s of fade-in
+
+    this.voices = new Map();      // `${kind}:${midi}` -> voice, while driven
+    this.fading = new Set();      // released voices, until they have stopped
+    this.undamped = new Set();
+    this.level = new Float64Array(this.n);   // per string, for the display
     this.keyCurve = new ResCurve(this.lo, this.hi);
-    this.keyE = new Float64Array(this.n).fill(1);
+    this.keyG = new Float64Array(this.n).fill(1);
     this.build();
   }
 
   build(selectivity = 8) {
-    const hzOf = (m) => this.lib.note(m)?.hz ?? 440 * Math.pow(2, (m - 69) / 12);
-    const fn = (m) => hzOf(m);
-    // The COUPLING bandwidth is left on the early rate. It is the width of the
-    // window a string answers through, `selectivity` has been dialled in by
-    // ear against it, and moving both at once would be two changes at a time.
+    const fn = (m) => this.lib.note(m)?.hz ?? 440 * Math.pow(2, (m - 69) / 12);
     fn.rate = (m) => this.lib.note(m)?.layers?.[1]?.edr ?? 3;
     this.mat = couplingMatrix(fn, { selectivity, lo: this.lo, hi: this.hi });
-    this.applyProximity();
-    // How long a string goes on ringing once driven. See aftersoundRate: NOT
-    // the manifest's edr, which is the early decay and far too fast to hold a
-    // halo up at all above the middle of the keyboard.
-    const raw = new Float64Array(this.n);
-    for (let i = 0; i < this.n; i++) {
-      const note = this.lib.note(this.lo + i);
-      // A note whose curve will not support a fit: a piano's aftersound runs
-      // roughly a third of its early rate, so that is what edr is scaled by.
-      const r = aftersoundRate(note?.decay) ?? (note?.layers?.[1]?.edr ?? 9) / 3;
-      raw[i] = Math.min(40, Math.max(0.5, r));
-    }
-    this.rate = smoothAcross(raw);
-    this.retune();
     this.selectivity = selectivity;
+    this.applyProximity();
   }
 
   /**
-   * Redistribute the coupling by distance along the keyboard.
-   *
-   * Partial coincidence on its own has no sense of "near". A C5 couples to the
-   * C2 three octaves below about as readily as to the C4 just under it,
-   * because what it is matching is a partial and a partial does not care how
-   * far away its string is. A real instrument does care: the bridge and the
-   * soundboard are not a rigid link between any two points on the frame, the
-   * near end of the bridge moves most, and the strings that answer a note
-   * loudest are mostly its neighbours. This is the control for that.
-   *
-   * `proximity` is a tilt in dB of level per octave of separation. Positive
-   * favours near strings, negative favours distant ones, 0 leaves the physics
-   * exactly as measured.
-   *
-   * Each struck key's row is renormalised to the total drive it had before, so
-   * the slider only ever moves the coupling AROUND the keyboard and never
-   * changes how much of it there is. Without that, "prefer near" would be a
-   * volume control in disguise and the two effects would be impossible to tell
-   * apart by ear -- which is the whole point of having the slider.
+   * Tilt the partial coupling by distance along the keyboard: `proximity` dB
+   * of level per doubling of distance (distanceDb), positive favouring near
+   * strings. Each
+   * struck key's row is renormalised to the total it had, so this moves the
+   * resonance around the keyboard without turning it up or down.
    */
   applyProximity() {
     const src = this.mat.W, n = this.n;
     if (!this.W || this.W.length !== src.length) this.W = new Float32Array(src.length);
     if (!this.proximity) { this.W.set(src); return; }
-    // The weights are energies and the slider is a level, so a dB of slider is
-    // two dB of weight: 10^(-2L/20 * d/12) = 10^(-L*d/60).
-    const k = -this.proximity / 60;
+    // Weights are energies and the slider is a level, so dB/10, not dB/20.
+    const f = new Float64Array(n);
+    for (let d = 0; d < n; d++) f[d] = Math.pow(10, distanceDb(d, this.proximity) / 10);
     for (let si = 0; si < n; si++) {
       const row = si * n;
       let before = 0, after = 0;
@@ -464,450 +279,336 @@ export class Resonance {
         const w = src[row + ri];
         if (w <= 0) continue;
         before += w;
-        after += w * Math.pow(10, k * Math.abs(si - ri));
+        after += w * f[Math.abs(si - ri)];
       }
       const norm = after > 0 ? before / after : 1;
-      for (let ri = 0; ri < n; ri++) {
-        this.W[row + ri] = src[row + ri] * Math.pow(10, k * Math.abs(si - ri)) * norm;
-      }
+      for (let ri = 0; ri < n; ri++) this.W[row + ri] = src[row + ri] * f[Math.abs(si - ri)] * norm;
     }
   }
 
   setProximity(db) { this.proximity = db; this.applyProximity(); }
 
-  /**
-   * How near each string is to the music currently sounding, as a rank bias.
-   *
-   * applyProximity decides how much energy a string is GIVEN. This decides
-   * which of the strings that have energy are actually heard, and they are not
-   * the same question. There are always far more strings ringing than there
-   * are voices -- `maxVoices` of them get played and the rest ring silently --
-   * and the ranking is by accumulated energy alone. So a string two octaves
-   * away that took a large deposit from something played a while ago goes on
-   * holding a voice while a string right under the hand, freshly driven but
-   * quieter, never gets one. That is the opposite of what an instrument does:
-   * what you hear ringing around a note is mostly what is near it.
-   *
-   * The bias is the distance from each string to the NEAREST note currently
-   * sounding, on the same dB-per-octave scale as the slider, so one control
-   * governs both halves of the effect. It orders the competition for voices
-   * and nothing else -- a string's energy, and whether it is over the
-   * threshold at all, are left alone, so this can never silence a string that
-   * would otherwise have been loud enough to matter on its own.
-   */
-  nearness(sounding) {
-    const out = this.near;
-    if (!this.proximity || !sounding?.length) { out.fill(1); return out; }
-    const k = -this.proximity / 60;
-    for (let i = 0; i < this.n; i++) {
-      const m = this.lo + i;
-      let d = Infinity;
-      for (const s of sounding) { const x = Math.abs(s.midi - m); if (x < d) d = x; }
-      out[i] = Math.pow(10, k * d);
-    }
-    return out;
-  }
-
-  /** dB/s -> the e-folding time the accumulator leaks with, times `ring`. */
-  retune() {
-    for (let i = 0; i < this.n; i++) {
-      this.tau[i] = Math.min(30, Math.max(0.2, 8.686 / this.rate[i])) * this.ring;
-    }
-  }
-
-  setRing(x) { this.ring = Math.max(0.1, x); this.retune(); }
-
   /** Re-read the per-key level curve. Call after drawing on it. */
   refreshKeyCurve() {
-    for (let i = 0; i < this.n; i++) this.keyE[i] = this.keyCurve.energy(this.lo + i);
-    // A string just taken to the floor should not go on ringing from energy it
-    // was given before the curve moved.
-    for (let i = 0; i < this.n; i++) {
-      if (this.keyE[i] === 0 && this.E[i] > 0) { this.E[i] = 0; this.stop(this.lo + i); }
-    }
+    for (let i = 0; i < this.n; i++) this.keyG[i] = this.keyCurve.gain(this.lo + i);
+    for (const [id, v] of [...this.voices]) if (this.keyG[v.midi - this.lo] === 0) this.release(id, 0.1);
   }
 
-  setUndamped(set) {
-    const prev = this.undamped;
+  /**
+   * Which strings are free. A damper landing ends that string's sympathetic
+   * voice. A damper lifting never starts one -- only a strike does. It can
+   * only bring back what a damper was still in the middle of stopping (see
+   * resumeFreed), at the level it had fallen to.
+   *
+   * @param sounding  [{ midi }] -- the notes ringing freely, after the
+   *                  engine has resumed its own
+   */
+  setUndamped(set, sounding = []) {
     this.undamped = set;
-    for (let i = 0; i < this.n; i++) {
-      const m = this.lo + i;
-      // Only a damper LANDING cuts a string: it was free, now it is not. A
-      // string that was already damped is left alone -- otherwise the pedal-up
-      // soundboard bleed would be zeroed on every key change instead of leaking
-      // away at dampedDecay.
-      if (prev.has(m) && !set.has(m) && this.E[i] > 0) { this.E[i] = 0; this.stop(m, true); }
+    for (const [id, v] of [...this.voices]) {
+      if (v.kind === 'sym' && !set.has(v.midi)) this.release(id, this.pedalUpRelease, PEDAL_JITTER, false, true);
     }
-  }
-
-  /** A hammer landed on `midi`. Feed every string that is free to answer. */
-  excite(midi, vel, pedal = 0) {
-    if (!this.enabled) return;
-    const si = midi - this.lo;
-    if (si < 0 || si >= this.n) return;
-    // Velocity squared and a bit: the energy a hammer delivers goes as v^2,
-    // and what reaches the bridge is a little more sharply graded than that.
-    this.add(si, Math.pow(vel / 127, this.drive), pedal);
+    if (this.enabled && sounding.length) this.resumeFreed(set, new Set(sounding.map((s) => s.midi)));
   }
 
   /**
-   * Put energy into every string coupled to key index `si`.
-   *
-   * Two callers, and the difference between them is the whole point. A STRIKE
-   * (`sustained` false) is an impulse: a lump of energy, delivered once. The
-   * SUSTAINED drive is a rate -- the struck string still pushing the bridge,
-   * feeding its neighbours continuously for as long as it rings.
+   * Strings already sounding first, so they are topped up before anything new
+   * is weighed against them for a slot; then loudest first.
    */
-  add(si, e, pedal, sustained = false) {
-    const midi = this.lo + si;
-    const now = sustained ? 0 : this.ctx.currentTime;
-    const W = this.W, n = this.n;
-    const bleed = this.dampedAmount;
-    // Every coupled string, not only the free ones: a free string takes the full
-    // drive, a damped one takes `bleed` of it (the soundboard halo with the pedal
-    // up). When bleed is 0 the damped branch adds nothing, so this is exactly the
-    // old "only undamped strings answer".
-    for (let ri = 0; ri < n; ri++) {
-      const r = this.lo + ri;
-      if (r === midi) continue;
-      const w = W[si * n + ri];
-      if (w < 1e-4) continue;
-      const open = this.undamped.has(r);
-      if (!open && bleed <= 0) continue;
-      // The pedal does not make a string resonate harder -- it makes more
-      // strings free to. What it does add is the body of the whole undamped
-      // frame moving together, which is a real and audible extra few dB.
-      const factor = open ? (1 + 0.35 * pedal) : bleed;
-      const x = w * e * this.curves.at('resonance', r) * factor * this.keyE[ri];
-      // A strike is a deposit into the accumulator; a sustained drive is a
-      // level the accumulator is held at. Several notes driving the same string
-      // hold it higher, so the targets sum.
-      if (sustained) { this.T[ri] += this.sustain * x; continue; }
-      this.E[ri] += x;
-      // A fresh strike drives the string again, so a voice that had run its
-      // recording out is allowed to speak once more -- and it is the one moment
-      // at which this string may begin sounding at all. The sustained drive
-      // does neither: opening a voice under it replays the recording's onset,
-      // which is heard as the halo re-striking.
-      this.spent.delete(r);
-      this.fresh.set(r, now);
-    }
-    // The struck string itself. Its damper is up (the key is down), so it takes
-    // the open drive; a weight of 1, since a string coincides perfectly with
-    // its own partials.
-    if (this.self > 0) {
-      const x = this.self * e * this.curves.at('resonance', midi) * (1 + 0.35 * pedal) * this.keyE[si];
-      if (sustained) this.T[si] += this.sustain * x;
-      else { this.E[si] += x; this.spent.delete(midi); this.fresh.set(midi, now); }
-    }
+  order(want) {
+    const on = (w) => (this.voices.has(`${w.kind}:${w.target}`) ? 1 : 0);
+    want.sort((a, b) => on(b) - on(a) || b.g - a.g);
+  }
+
+  /** A candidate's gain: its coupling `g`, at velocity `vel`, on the string's own level. */
+  strength(target, g, vel) {
+    return g * Math.pow(vel / 127, VEL_EXP) * this.keyG[target - this.lo]
+      * Math.max(0, this.curves.at('resonance', target));
   }
 
   /**
-   * Every string that is still sounding goes on driving the ones coupled to it.
-   *
-   * This is the half of sympathetic resonance a sampler is most likely to
-   * leave out, because a strike is an event and a drive is not. On a real
-   * piano the sympathetic answer to a long held note lasts as long as the note
-   * does -- it is being fed the whole time, not ringing on from a kick it got
-   * at the attack. Hold a chord under the pedal and the halo builds and stays;
-   * that is the accumulator being topped up, note by note, tick by tick.
-   *
-   * How hard each note drives is its velocity's share of energy times where
-   * its own measured decay curve has reached by now, so the halo tracks the
-   * notes under it and fades exactly as they do.
-   *
-   * @param sounding  [{ midi, vel, t }] -- t is seconds since the note started
+   * A hammer landed on `midi` at `when` (context time). Start, or top up, the
+   * voices of every string that answers.
    */
-  sustainFrom(sounding, pedal) {
-    this.T.fill(0);
-    if (!(this.sustain > 0) || !sounding?.length) return;
-    for (const s of sounding) {
-      const si = s.midi - this.lo;
-      if (si < 0 || si >= this.n) continue;
-      const e = Math.pow(s.vel / 127, this.drive) * Math.pow(10, this.driveDb(s.midi, s.t) / 10);
-      if (e < 1e-6) continue;
-      this.add(si, e, pedal, true);
+  excite(midi, vel, when = this.ctx.currentTime) {
+    if (!this.enabled || midi < this.lo || midi > this.hi) return;
+    const si = midi - this.lo, n = this.n;
+    const want = [];
+    const add = (kind, target, g, k = 1) => {
+      g = this.strength(target, g, vel);
+      if (g > MIN_GAIN) want.push({ kind, target, g, k });
+    };
+    if (this.symAmount > 0) {
+      for (let ri = 0; ri < n; ri++) {
+        const r = this.lo + ri;
+        if (r === midi || !this.undamped.has(r)) continue;
+        const w = this.W[si * n + ri];
+        if (w > 1e-4) add('sym', r, this.symAmount * Math.sqrt(w), this.mat.K[si * n + ri]);
+      }
     }
+    if (this.sbAmount > 0) {
+      for (let ri = 0; ri < n; ri++) {
+        const r = this.lo + ri;
+        if (r === midi || Math.abs(r - midi) % this.sbStep) continue;
+        add('sb', r, this.sbAmount * Math.pow(10, distanceDb(Math.abs(r - midi), this.sbFalloff) / 20));
+      }
+    }
+    if (this.selfAmount > 0) add('self', midi, this.selfAmount);
+    this.order(want);
+    for (const w of want) this.drive(w.kind, w.target, w.g, midi, when, w.k);
   }
 
   /**
-   * How hard a note that started `t` seconds ago is still driving the bridge,
-   * in dB below its own peak.
+   * One string, driven by `from` at gain `g`.
    *
-   * The measured decay curve, with the two corrections that matter only here.
-   * Its last stretch is the BUILD's fade to silence and not the string -- C6
-   * drops 22 dB between its final two points -- so the curve is read only as
-   * far as the trim; and a string goes on driving past the end of a recording
-   * that was cut short, so past the trim it is continued at the aftersound
-   * rate fitted for this string. Reading the raw curve instead has a held note
-   * stop driving several seconds early, and do it fastest on exactly the notes
-   * whose recordings are shortest.
+   * A string that is already ringing is not restarted: it is pushed harder.
+   * Its gain goes smoothly up to where the energies of what it had and what it
+   * was given add, and its recording plays on. Restarting it instead -- which
+   * this used to do on every strike louder than what was left -- faded the old
+   * voice out while the new one faded in, on every answering string at once,
+   * and a repeated note under the pedal pumped. Only when the recording has
+   * decayed too far to be turned up is it crossfaded into a fresh start.
    */
-  driveDb(midi, t) {
-    const d = this.lib.note(midi)?.decay;
-    if (!d?.t?.length) return 0;
-    const cut = d.t[d.t.length - 1] * 0.85;
-    if (t <= cut) return this.decayDb(midi, t);
-    return this.decayDb(midi, cut) - (this.rate?.[midi - this.lo] ?? 6) * (t - cut);
+  drive(kind, midi, g, from, when, k = 1) {
+    const id = `${kind}:${midi}`;
+    const cur = this.voices.get(id);
+    if (cur) {
+      cur.drivers.add(from);
+      // Driven lower down its partials than before: open the filter to them.
+      if (k < cur.k) { cur.k = k; this.setPartialFilter(cur, when); }
+      const est = this.estimate(cur, when);
+      const decayed = est / cur.gain;                  // how far its recording has fallen
+      const next = Math.hypot(est, g) / Math.max(decayed, 1e-6);
+      if (next < cur.gain * TOPUP_MIN) return;
+      if (decayed >= TOPUP_DECAY) {
+        cur.gain = next;
+        cur.lvl.gain.setTargetAtTime(next * cur.unit, when, TOPUP_TAU);
+        return;
+      }
+      g = Math.hypot(est, g);
+      this.release(id, this.crossfade, 0, true);
+      const v = this.start(kind, midi, g, when, Math.max(this.crossfade, 0.02), Math.min(k, cur.k));
+      if (v) { for (const d of cur.drivers) v.drivers.add(d); this.voices.set(id, v); }
+      return;
+    }
+    if (!this.makeRoom(g, when)) return;
+    const v = this.start(kind, midi, g, when, this.bloom, k);
+    if (v) { v.drivers.add(from); this.voices.set(id, v); }
   }
 
-  /** A note's own measured decay, in dB below its peak, `t` seconds in. */
+  /** The high-pass under partial `v.k` of the string, or wide open. */
+  partialCut(v) {
+    if (!this.partialsOnly || v.k <= 1) return 10;
+    const f0 = this.lib.note(v.midi)?.hz ?? 440 * Math.pow(2, (v.midi - 69) / 12);
+    return Math.min(16000, f0 * (v.k - 0.5));
+  }
+
+  setPartialFilter(v, when = this.ctx.currentTime) {
+    const f = this.partialCut(v);
+    for (const hp of v.hp) hp.frequency.setTargetAtTime(f, when, 0.05);
+  }
+
+  /** Switch the partial filter on or off, on the voices already sounding too. */
+  setPartialsOnly(on) {
+    this.partialsOnly = on;
+    for (const v of this.voices.values()) this.setPartialFilter(v);
+  }
+
+  /** Free a voice for one of gain `g`, if it is well louder than the quietest. */
+  makeRoom(g, when) {
+    if (this.voices.size < this.maxVoices) return true;
+    let low = null, lowG = Infinity;
+    for (const [id, v] of this.voices) {
+      const e = this.estimate(v, when);
+      if (e < lowG) { lowG = e; low = id; }
+    }
+    if (lowG * STEAL >= g) return false;
+    this.release(low, this.crossfade, 0, true);
+    return true;
+  }
+
+  /** Roughly how loud a voice is now: its gain, down its recording's own decay. */
+  estimate(v, t) {
+    const age = Math.max(0, t - v.t0);
+    return v.gain * (v.level ?? 1) * Math.pow(10, (this.decayDb(v.midi, v.offset + age) - v.db0) / 20);
+  }
+
+  /** A note's measured decay, dB below its peak, `t` s in, for the layer played. */
   decayDb(midi, t) {
-    const d = this.lib.note(midi)?.decay;
+    const n = this.lib.note(midi);
+    const d = n?.layerDecay?.[this.layer] ?? n?.decay;
     if (!d?.t?.length) return 0;
     const { t: ts, db } = d;
     if (t <= ts[0]) return db[0];
     for (let i = 0; i < ts.length - 1; i++) {
-      if (t <= ts[i + 1]) {
-        const u = (t - ts[i]) / (ts[i + 1] - ts[i]);
-        return db[i] + (db[i + 1] - db[i]) * u;
-      }
+      if (t <= ts[i + 1]) return db[i] + (db[i + 1] - db[i]) * (t - ts[i]) / (ts[i + 1] - ts[i]);
     }
     return db[db.length - 1];
   }
 
-  /**
-   * Control rate. Drive, leak, re-rank, and move the voices' gains.
-   *
-   * @param sounding  the notes still ringing, for the sustained drive -- see
-   *                  sustainFrom. Omitted, this behaves as it used to: strikes
-   *                  only, and the halo is whatever the accumulator has left.
-   */
-  tick(dt, sounding = null, pedal = 0) {
-    if (!this.enabled) { if (this.voices.size) this.allOff(); return; }
-    this.sustainFrom(sounding, pedal);
-    const bleedOn = this.dampedAmount > 0;
-    const want = [];
-    for (let i = 0; i < this.n; i++) {
-      if (this.E[i] <= 0 && this.T[i] <= 0) continue;
-      const m = this.lo + i;
-      const open = this.undamped.has(m);
-      // A damped string bleeds only briefly -- the damper is resting on it -- so
-      // it leaks at dampedDecay, not at its open (measured) decay rate. It may
-      // not leak below the level the sounding notes are holding it at: that
-      // floor is the sustained drive, and it is why a held note keeps a halo.
-      this.E[i] = Math.max(this.E[i] * Math.exp(-dt / (open ? this.tau[i] : this.dampedDecay)), this.T[i]);
-      if (this.E[i] < this.threshold * 0.4) {
-        // Too quiet for a voice -- but still a string with energy in it, which
-        // the sustained drive may yet bring back. Only well under that is it
-        // actually forgotten.
-        this.stop(m);
-        if (this.E[i] < this.floor) { this.E[i] = 0; this.spent.delete(m); this.fresh.delete(m); }
-        continue;
-      }
-      // Free strings always compete for a voice; damped ones only when the
-      // soundboard bleed is switched on. They rank below the free strings by
-      // energy, so real resonance keeps priority and bleed fills spare voices.
-      if (this.E[i] > this.threshold && (open || bleedOn)) want.push(i);
-    }
-    // Rank the competition for voices: energy, biased toward the music (see
-    // nearness), and with a string that is already sounding defending its slot
-    // -- it has to be beaten by `stickiness` before it is displaced, so the
-    // strings either side of the cut stop trading the last voice back and
-    // forth every few ticks.
-    const near = this.nearness(sounding);
-    const rank = (i) => this.E[i] * near[i] * (this.voices.has(this.lo + i) ? this.stickiness : 1);
-    want.sort((a, b) => rank(b) - rank(a));
-    const keep = new Set(want.slice(0, this.maxVoices).map((i) => this.lo + i));
-    for (const midi of this.voices.keys()) if (!keep.has(midi)) this.stop(midi);
-    const now = this.ctx.currentTime;
-    for (const midi of keep) {
-      let v = this.voices.get(midi);
-      if (!v) {
-        // Its recording already ran out. Leave it ringing silently until a
-        // fresh strike (excite) drives it again -- do not replay the sample.
-        if (this.spent.has(midi)) continue;
-        // And it may only BEGIN sounding just after something drove it. A
-        // string that rose through the ranking on its own goes on ringing
-        // silently: see `fresh`. This is what stops the ghost notes.
-        const struck = this.fresh.get(midi);
-        if (struck == null || now - struck > this.startWindow) continue;
-        this.fresh.delete(midi);
-        v = this.start(midi);
-      }
-      if (!v) continue;
-      // times v.unit, the gain that restores this recording's true level.
-      // Leaving that out -- which this did -- plays a peak-normalised
-      // pianissimo sample as though it were fortissimo, about 20 dB too loud,
-      // on every one of these voices at once. The result was a grain cloud
-      // 13 dB above the piano it was supposed to be a halo around.
-      // The ceiling grows with `amount` past 0.8, the old top of its slider.
-      // Held fixed, it would cap a boosted send almost at once, and turning
-      // the amount up would stop making the halo louder.
-      const ceil = this.ceiling * Math.max(1, this.amount / 0.8);
-      const g = Math.min(this.amount * Math.sqrt(this.E[midi - this.lo]), ceil) * v.unit;
-      // Slower while the voice is opening. 45 ms up from silence is an attack,
-      // and an attack is the one thing a sympathetic string does not have; it
-      // only needs to be quick once the voice is up and following the
-      // accumulator.
-      v.lvl.gain.setTargetAtTime(g, now, now < v.rise ? 0.12 : 0.045);
-    }
-  }
-
-  /**
-   * The gain curve that takes the recording's own decay back out.
-   *
-   * Clamped at +12 dB, because past that the compensation is amplifying the
-   * room's noise floor rather than the string. Made non-increasing first: a
-   * real decay curve wobbles where the unisons beat, and following the wobble
-   * upwards would put the beat back in at the wrong depth.
-   */
-  compCurve(midi, offset, dur) {
-    const d = this.lib.note(midi)?.decay;
-    const N = 128;
-    const out = new Float32Array(N);
-    if (!d || !this.compensate) { out.fill(1); return out; }
-    const dbAt = (t) => this.decayDb(midi, t);
-    const base = dbAt(offset);
-    let floor = 0;
-    for (let i = 0; i < N; i++) {
-      const t = offset + dur * i / (N - 1);
-      const drop = base - dbAt(t);
-      floor = Math.max(floor, drop);                 // non-increasing decay
-      out[i] = Math.pow(10, Math.min(LIMIT_DB, Math.max(0, floor)) / 20);
-    }
-    return out;
-  }
-
-  start(midi) {
-    const got = this.lib.best(midi, this.lib.layers[0]);
+  start(kind, midi, g, when, fadeIn = this.bloom, k = 1) {
+    const got = this.lib.best(midi, this.layer);
     if (!got) return null;
-    const ctx = this.ctx, now = ctx.currentTime;
-    // Start past the knock. What is wanted is the string ringing, not the
-    // sound of a hammer that never happened.
+    const ctx = this.ctx;
     const len = got.frames / RATE;
-    const offset = Math.min(0.03, len * 0.1);
-    // The TRUE remaining length of the recording, so the release tail lands
-    // exactly on the buffer's end rather than after it (which would be a click).
-    const dur = Math.max(0.05, len - offset);
+    const offset = Math.max(Math.min(0.03, len * 0.1), Math.min(this.startAt, len / 3));
+    // The wanted layer's true level, whichever layer is standing in for it
+    // while the library loads -- each file is peak-normalised.
+    const unit = this.lib.entry(midi, this.layer)?.gain ?? got.entry.gain;
 
     const src = new StreamSource(this.lib.streamer, got.key, got.frames);
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
-
-    const comp = ctx.createGain();
-    comp.gain.setValueCurveAtTime(this.compCurve(midi, offset, dur), now, dur);
-
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
-
+    // Two second-order high-passes, 24 dB/octave: steep enough that a string
+    // driven at its 2nd partial loses its fundamental, not just some of it.
+    const hp = [ctx.createBiquadFilter(), ctx.createBiquadFilter()];
+    for (const h of hp) { h.type = 'highpass'; h.Q.value = Math.SQRT1_2; }
     const lvl = ctx.createGain();
-    lvl.gain.value = 0;
-
-    // The release tail. `lvl` is driven by the accumulator (tick); `rel` is
-    // untouched by it and only fades the last `tailRelease` seconds of the
-    // recording out to silence, so the buffer never simply stops. On a sample
-    // shorter than tailRelease the fade covers most of it and the voice is
-    // just a short decay.
+    lvl.gain.value = g * unit;
+    // Sits at 1 until release() runs its fall from that known value.
     const rel = ctx.createGain();
     rel.gain.value = 1;
-    const relT = Math.min(this.tailRelease, dur * 0.8);
-    if (relT > 0.02) {
-      const fadeAt = now + dur - relT;
-      rel.gain.setValueAtTime(1, fadeAt);
-      // A time constant of relT/4 is ~98% faded by the buffer's end.
-      rel.gain.setTargetAtTime(1e-4, fadeAt, relT / 4);
-    }
+    src.connect(hp[0]).connect(hp[1]).connect(lp).connect(lvl).connect(rel).connect(this.strip(midi));
+    src.start(when, offset, fadeIn, this.fadeInCurve());
 
-    // The damper. Sits at exactly 1 and nothing touches it until stop(), which
-    // runs its fall from that known 1 -- never from wherever lvl's running
-    // setTargetAtTime happens to be. So stop() has nothing to cancel or read
-    // back, and a stop that reaches the audio thread late just starts late.
-    const off = ctx.createGain();
-    off.gain.value = 1;
-
-    src.connect(comp).connect(lp).connect(lvl).connect(rel).connect(off);
-    off.connect(this.strip(midi));
-    // Feed the soundboard in parallel, so the body goes on ringing after the
-    // string itself has been damped.
-    if (this.sbSend) off.connect(this.sbSend);
-    src.start(now, offset);
-    const v = { src, comp, lp, lvl, rel, off, unit: got.entry.gain, until: now + dur,
-      rise: now + 0.3 };
+    // `gain` moves with top-ups (see drive).
+    const v = { kind, midi, key: got.key, src, lp, hp, lvl, rel, gain: g, unit, t0: when, offset,
+      db0: this.decayDb(midi, offset), drivers: new Set(), k };
+    for (const h of hp) h.frequency.value = this.partialCut(v);
     src.onended = () => {
-      // The recording runs out. Do NOT start another: re-triggering the sample
-      // from the top plays its (undecayed) onset again, which is heard as the
-      // halo audibly re-striking rather than dying away. Sympathetic resonance
-      // only ever fades -- so the voice is simply let go here, and its natural
-      // decay (the compensation is capped at +6 dB, so it cannot flatten the
-      // recording's tail all the way) is the fade. If the accumulator is still
-      // ringing when the recording ends, it rings on silently and the next
-      // strike into this string will open a fresh voice for it.
-      if (this.voices.get(midi) === v) { this.voices.delete(midi); this.spent.add(midi); }
+      // The recording ran out: nothing left to fade.
+      const id = `${kind}:${midi}`;
+      if (this.voices.get(id) === v) this.voices.delete(id);
+      this.fading.delete(v);
     };
-    this.voices.set(midi, v);
     return v;
   }
 
-  stop(midi, damped = false) {
-    const v = this.voices.get(midi);
-    if (!v) return;
-    this.voices.delete(midi);
-    // Ahead of the audio thread, for the same reason as Engine.time(): a duck
-    // scheduled in the past is joined partway down, which is a step.
-    const now = this.ctx.currentTime + this.lookahead;
-    const shape = this.env?.noteRelease.shape;
-    v.src.onended = null;
-    // Only `off` moves. It is at rest at 1, so every curve here starts from a
-    // value known exactly; lvl is left where tick() last sent it, and the two
-    // multiply. A start time already past is clamped to the present by the
-    // audio thread and the curve's first value is the 1 the gain already has,
-    // so a late stop is a late fade, not a step.
-    // Schedule the fade, but NEVER let a scheduling error skip the src.stop()
-    // below: an unstopped source is removed from this.voices with onended
-    // nulled, so nothing ever cleans it up -- it plays its multi-second buffer
-    // to the end with that buffer pinned in native memory. A frame of those
-    // orphaned at a pedal-off is what ran the tab out of memory.
-    let stopAt = now + 0.35;
-    try {
-      const g = v.off.gain;
-      if (damped) {
-        // Two stages, scattered slightly in time so the frame does not land as one
-        // click. First a quick duck to a fraction of the level -- the damper
-        // touching -- then a slow fall the rest of the way, the string ringing on
-        // under the damper while the soundboard reverb carries the body.
-        const jitter = Math.random() * this.pedalOffJitter;
-        const t0 = now + jitter;
-        const duck = Math.max(0.02, 0.09 * this.curves.at('damping', midi) * (1 + (88 - Math.min(88, midi)) / 60));
-        const drop = Math.max(1e-5, Math.min(1, Math.max(0, this.pedalOffDrop)));
-        const fall = Math.max(0.05, this.pedalOffFall);
-        // A gap between the two curves. setValueCurveAtTime rounds its END up to
-        // the next 128-sample render quantum (~2.7 ms at 48 kHz), so a second
-        // curve abutting it exactly at t0+duck starts INSIDE the first and throws
-        // NotSupportedError. One quantum-plus of gap avoids it; the value holds
-        // flat at `drop` across it, so it stays continuous and click-free.
-        const GAP = 0.006;
-        if (shape) {
-          g.setValueCurveAtTime(shape.curve(1, drop), t0, duck);
-          g.setValueCurveAtTime(shape.curve(drop, 0), t0 + duck + GAP, fall);
-        } else {
-          g.setValueAtTime(1, t0);
-          g.linearRampToValueAtTime(drop, t0 + duck);
-          g.setValueAtTime(drop, t0 + duck + GAP);
-          g.linearRampToValueAtTime(0, t0 + duck + GAP + fall);
-        }
-        stopAt = t0 + duck + GAP + fall + 0.03;
-      } else {
-        // An undamped-region leak below threshold: just a short fade.
-        const fall = 0.25;
-        if (shape) g.setValueCurveAtTime(shape.curve(1, 0), now, fall);
-        else { g.setValueAtTime(1, now); g.linearRampToValueAtTime(0, now + fall); }
-        stopAt = now + fall + 0.03;
-      }
-    } catch { /* fall through: the source is still stopped below */ }
-    try { v.src.stop(stopAt); } catch { /* already stopped */ }
+  /** The fade-in shape (Envelopes: resonance fade-in), 0 -> 1, or null for the worklet's raised cosine. */
+  fadeInCurve() { return this.env?.resAttack.shape.curve(0, 1, 64) ?? null; }
+
+  /**
+   * The crossfade's other half: `from` down to 0 along the mirror image of
+   * the fade-in, so an outgoing and an incoming voice always sum to `from`.
+   */
+  fadeOutCurve(from) {
+    const a = this.fadeInCurve();
+    const out = new Float32Array(a ? a.length : 64);
+    for (let i = 0; i < out.length; i++) {
+      const up = a ? a[i] : 0.5 - 0.5 * Math.cos(Math.PI * i / (out.length - 1));
+      out[i] = Math.max(1e-5, from * (1 - up));
+    }
+    out[out.length - 1] = 1e-5;
+    return out;
   }
 
-  allOff() { for (const midi of [...this.voices.keys()]) this.stop(midi, true); this.E.fill(0); this.T.fill(0); this.spent.clear(); this.fresh.clear(); }
+  /**
+   * Fade a voice out over `fall` seconds (after up to `jitter` s), then stop
+   * it. `xfade` uses the mirror image of a new voice's fade-in, so a restart
+   * crossfades at constant level; otherwise the resonance release shape.
+   */
+  release(id, fall, jitter = 0, xfade = false, resumable = false) {
+    const v = this.voices.get(id);
+    if (!v) return;
+    this.voices.delete(id);
+    this.fading.add(v);
+    const t = this.ctx.currentTime + this.lookahead + Math.random() * jitter;
+    fall = Math.max(0.02, fall);
+    const shape = this.env?.resRelease.shape;
+    // From the level it is at: 1, unless it was resumed partway down a fall.
+    const from = v.level ?? 1;
+    const curve = xfade ? this.fadeOutCurve(from) : shape ? shape.curve(from, 0) : null;
+    v.fade = null;
+    // Never let a scheduling error skip src.stop(): an unstopped source plays
+    // its whole recording with nothing left holding it.
+    try {
+      if (curve) { v.rel.gain.setValueCurveAtTime(curve, t, fall); v.fade = { t0: t, dur: fall, curve }; }
+      else { v.rel.gain.setValueAtTime(from, t); v.rel.gain.linearRampToValueAtTime(0, t + fall); }
+    } catch { /* stopped below regardless */ }
+    v.stopAt = t + fall + 0.03;
+    v.resumable = resumable;
+    try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
+  }
 
-  /** Move the tone control on voices that are already sounding, not just new ones. */
+  /**
+   * Put back the voices that were fading because a damper landed -- on the
+   * string, or on the note driving it -- when that damper lifts again before
+   * they are silent: a quick pedal change. They go on from the level their
+   * fall had reached, driven by whichever of their notes are sounding again --
+   * but only those still louder than `resumeDb`. The quiet ones finish.
+   */
+  resumeFreed(free, live) {
+    // Far enough ahead to be in the audio thread's future even at the largest
+    // buffer size: a hold placed in its past would cut the fade short instead.
+    const t = this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01;
+    for (const v of [...this.fading]) {
+      if (!v.resumable || !v.fade || t > v.stopAt - 0.04) continue;
+      const id = `${v.kind}:${v.midi}`;
+      if (this.voices.has(id)) continue;
+      if (v.kind === 'sym' && !free.has(v.midi)) continue;
+      const alive = [...v.drivers].filter((d) => live.has(d));
+      if (!alive.length) continue;
+      // How loud it would come back: where its fall has got to, on how loud
+      // it was when the damper landed.
+      if (this.estimate(v, t) / (v.level ?? 1) * fadeAt(v.fade, t) < Math.pow(10, this.resumeDb / 20)) continue;
+      const level = holdFade(v.rel.gain, v.fade, t);
+      v.src.resume();
+      v.level = level;
+      v.fade = null;
+      v.resumable = false;
+      v.drivers = new Set(alive);
+      this.fading.delete(v);
+      this.voices.set(id, v);
+    }
+  }
+
+  /**
+   * Control rate. Each voice keeps going while any note that drove it is still
+   * sounding; when the last one stops, it takes its kind's release.
+   *
+   * @param sounding  [{ midi }] -- the notes still ringing freely
+   */
+  tick(dt, sounding = []) {
+    if (!this.enabled) { if (this.voices.size) this.allOff(); return; }
+    const live = new Set();
+    for (const s of sounding) live.add(s.midi);
+    const now = this.ctx.currentTime;
+    this.level.fill(0);
+    for (const [id, v] of [...this.voices]) {
+      // Its drivers are kept when it is released, so a pedal change that
+      // brings them back can bring this back with them (resumeFreed).
+      const alive = [...v.drivers].filter((d) => live.has(d));
+      if (!alive.length) { this.release(id, this[v.kind + 'Release'], 0, false, true); continue; }
+      if (alive.length < v.drivers.size) v.drivers = new Set(alive);
+      const i = v.midi - this.lo;
+      this.level[i] = Math.max(this.level[i], this.estimate(v, now));
+    }
+  }
+
+  allOff() {
+    for (const id of [...this.voices.keys()]) this.release(id, 0.05);
+  }
+
+  /** Move the tone control on voices already sounding, not just new ones. */
   setTone(hz) {
     this.tone = hz;
     const now = this.ctx.currentTime;
     for (const v of this.voices.values()) v.lp.frequency.setTargetAtTime(hz, now, 0.02);
   }
 
-  /** Keys whose buffers are in use, so the library does not evict them. */
-  heldKeys(out) { for (const midi of this.voices.keys()) out.add(this.lib.key(midi, this.lib.layers[0])); }
+  /** The strings with a voice of any kind. */
+  ringing() {
+    const out = new Set();
+    for (const v of this.voices.values()) out.add(v.midi);
+    return out;
+  }
+
+  /** Keys whose recordings are in use. */
+  heldKeys(out) {
+    for (const v of this.voices.values()) out.add(v.key);
+    for (const v of this.fading) out.add(v.key);
+  }
 }
 
 

@@ -128,7 +128,12 @@ export class StreamSource {
   }
   connect(dest) { return this.node.connect(dest); }
   disconnect() { this.node.disconnect(); }
-  /** `fade`: seconds of raised-cosine fade-in, applied by the voice to the first samples it plays. */
-  start(when = 0, offset = 0, fade = 0) { this.node.port.postMessage({ type: 'start', when, offset, fade }); }
+  /**
+   * `fade`: seconds of fade-in, applied by the voice to the first samples it
+   * plays -- a raised cosine, or `curve` (a 0 -> 1 table) if given.
+   */
+  start(when = 0, offset = 0, fade = 0, curve = null) { this.node.port.postMessage({ type: 'start', when, offset, fade, curve }); }
   stop(when = 0) { this.node.port.postMessage({ type: 'stop', when }); }
+  /** Cancel a stop that has not happened yet. */
+  resume() { this.node.port.postMessage({ type: 'resume' }); }
 }

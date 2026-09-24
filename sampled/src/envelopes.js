@@ -29,6 +29,15 @@ export class Envelopes {
     this.relAttack = { ms: 4, shape: SHAPES.fast() };
     this.relRelease = { ms: 240, shape: SHAPES.natural() };
 
+    // The resonance voices' own. The fade-in is how a string that was only
+    // driven comes up -- it blooms rather than being struck -- and its mirror
+    // image is the fade-out of a voice handing over in a crossfade, so the two
+    // always add to a constant level. The release is every resonance release:
+    // the kind's own, and the pedal lifting. How LONG each takes is set in the
+    // Resonance panel; these are the shapes.
+    this.resAttack = { shape: new Bezier(0.37, 0, 0.63, 1) };
+    this.resRelease = { shape: SHAPES.natural() };
+
     // The pedal-action sample's own attack. The pedal thud is a mechanical
     // event with a real rise to it, and shaping that rise -- softening the
     // knock, or sharpening it -- is separate from everything else, so it gets
@@ -83,13 +92,18 @@ export class Envelopes {
       noteRelease: { shape: this.noteRelease.shape.toJSON() },
       relAttack: { ms: this.relAttack.ms, shape: this.relAttack.shape.toJSON() },
       relRelease: { ms: this.relRelease.ms, shape: this.relRelease.shape.toJSON() },
+      resAttack: { shape: this.resAttack.shape.toJSON() },
+      resRelease: { shape: this.resRelease.shape.toJSON() },
       hold: { seconds: this.hold.seconds, floorDb: this.hold.floorDb, keyNoiseFollow: this.hold.keyNoiseFollow, shape: this.hold.shape.toJSON() },
     };
   }
   fromJSON(o) {
     if (!o) return;
     const d = new Envelopes();
-    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'hold']) {
+    // Saved before the resonance had its own release, it used the damper fall:
+    // start from that, so an edited damper fall still shapes it as it did.
+    if (!o.resRelease && o.noteRelease) o = { ...o, resRelease: { shape: o.noteRelease.shape } };
+    for (const k of ['noteAttack', 'noteRelease', 'relAttack', 'relRelease', 'resAttack', 'resRelease', 'hold']) {
       if (!o[k]) continue;
       // Keep the SAME shape instance -- the Bezier editors hold a reference to
       // it, so an import that replaced it would leave them editing a ghost.
@@ -100,4 +114,39 @@ export class Envelopes {
       this[k].shape.set(...pts);
     }
   }
+}
+
+/**
+ * A fade in progress, and how to stop it where it has got to.
+ *
+ * `fade` is { t0, dur, curve }: a setValueCurveAtTime that started at t0. A
+ * damper that lifts again before its fall is over leaves the string ringing
+ * at whatever level the fall had reached, and this is that level -- the curve
+ * read at `t` the way the audio thread interpolates it.
+ */
+export function fadeAt(fade, t) {
+  const c = fade.curve, n = c.length;
+  const u = (t - fade.t0) / fade.dur;
+  if (u <= 0) return c[0];
+  if (u >= 1) return c[n - 1];
+  const x = u * (n - 1), i = Math.floor(x);
+  return c[i] + (c[Math.min(n - 1, i + 1)] - c[i]) * (x - i);
+}
+
+/**
+ * Freeze `param` where `fade` has got to at `t` (in the future), cancelling the
+ * rest of it.
+ *
+ * Not cancelAndHoldAtTime: on a value curve Chrome's jumps by a fifth of full
+ * scale the moment it is called, before settling on the right value, and that
+ * is the click a resumed voice made. Cancelling from `t` leaves the curve
+ * running up to `t`, and a ramp ending there on the curve's own value joins it
+ * without a step -- measured offline, the largest sample-to-sample change is
+ * the curve's own slope.
+ */
+export function holdFade(param, fade, t) {
+  const v = fadeAt(fade, t);
+  param.cancelScheduledValues(t);
+  param.linearRampToValueAtTime(v, t);
+  return v;
 }

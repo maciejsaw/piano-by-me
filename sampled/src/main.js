@@ -8,11 +8,20 @@ import { levelDb, pickLayer, nativeAt, nearestLayer, createVelCurveEditor, creat
 import { Envelopes } from './envelopes.js';
 import { createBezierEditor, SHAPES } from './bezier.js';
 import { BANDS } from './eq.js';
-import { createResCurveEditor } from './resonance.js';
+import { createResCurveEditor, distanceDb } from './resonance.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'piano-sampled-curves';
+// The audio buffer size, as an AudioContext latencyHint. A context cannot
+// change it once made, so picking another one saves it and reloads.
+const LATENCY = 'piano-sampled-latency';
+const latencyHint = () => {
+  let v = null;
+  try { v = localStorage.getItem(LATENCY); } catch { /* private window */ }
+  if (!v) return 'interactive';
+  return /^[0-9.]+$/.test(v) ? +v : v;
+};
 
 let ctx = null, lib = null, engine = null, kb = null;
 let selNote = 60;
@@ -37,7 +46,7 @@ async function start(install = false) {
   $('installChk').disabled = true;
   $('uninstallBtn').disabled = true;
   $('startBtn').textContent = 'loading…';
-  ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 });
+  ctx = new AudioContext({ latencyHint: latencyHint(), sampleRate: 48000 });
   await ctx.resume();
 
   lib = new Library(ctx, './samples');
@@ -110,22 +119,17 @@ function toggleSilent(midi) {
 }
 const paint = (m) => kb?.paint(m, {
   down: down.has(m), silent: silent.has(m), selected: m === selNote,
-  resonating: engine?.res.voices.has(m),
+  resonating: resRinging.has(m),
 });
 /**
- * What the resonance engine is doing, on a keyboard.
- *
- * The engine's whole behaviour is a number per string that rises when a
- * harmonically related key is struck and leaks away at that string's own
- * measured decay rate, with voices handed to the loudest few. All of that is
- * invisible otherwise -- you can hear that something happened but not which
- * strings it happened to, and "selectivity" is a knob with no feedback.
+ * What the resonance engine is doing, on a keyboard: which strings are
+ * answering and how loudly, over which dampers are off.
  */
-// The curve editor behind the map shows the same energies, so it only needs
+// The curve editor behind the map shows the same levels, so it only needs
 // repainting while something is ringing (plus once more when it stops).
 let resCurveLive = false;
 function paintResMap() {
-  const live = engine ? engine.res.E.some((e) => e > 0) : false;
+  const live = engine ? engine.res.level.some((e) => e > 0) : false;
   if (live || resCurveLive) { resCurveEditor?.draw(); resCurveLive = live; }
   const c = $('resMap');
   if (!c || !engine) return;
@@ -145,13 +149,13 @@ function paintResMap() {
     g.fillRect(x, 0, Math.max(1, bw - 0.5), plot);
   }
 
-  // Energy per string. sqrt, because that is how it reaches the gain.
+  // Level per string, on a 48 dB scale.
   for (let i = 0; i < res.n; i++) {
-    const e = res.E[i];
+    const e = res.level[i];
     if (e <= 0) continue;
     const midi = res.lo + i;
-    const bar = Math.min(1, Math.sqrt(e / 1.5)) * (plot - 2);
-    g.fillStyle = res.voices.has(midi) ? '#d9a441' : 'rgba(217,164,65,0.35)';
+    const bar = Math.max(0, Math.min(1, 1 + 20 * Math.log10(e) / 48)) * (plot - 2);
+    g.fillStyle = '#d9a441';
     g.fillRect((midi - LOW) * bw + 0.5, plot - bar, Math.max(1, bw - 1), bar);
   }
 
@@ -222,12 +226,12 @@ function paintLayerMap() {
   for (let m = 24; m <= HIGH; m += 12) g.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 2);
 }
 
-let lastRes = new Set();
+let resRinging = new Set();
 function paintResonance() {
-  const now = new Set(engine.res.voices.keys());
-  for (const m of lastRes) if (!now.has(m)) paint(m);
-  for (const m of now) if (!lastRes.has(m)) paint(m);
-  lastRes = now;
+  const last = resRinging;
+  resRinging = engine.res.ringing();
+  for (const m of last) if (!resRinging.has(m)) paint(m);
+  for (const m of resRinging) if (!last.has(m)) paint(m);
   paintResMap();
   paintLayerMap();
   if (performance.now() - lastVelAt < 900) { velCurveEditor?.draw(); velLayerEditor?.draw(); }   // the strike marker fades
@@ -284,7 +288,7 @@ function setPedal(v) {
   $('pedalBtn').textContent = v < 0.02 ? 'sustain' : v >= 0.98 ? 'sustain ▮▮▮' : `sustain ${(v * 100) | 0}%`;
   $('ped').value = v;
 }
-/** Mute everything but the sympathetic resonance and the soundboard. */
+/** Mute everything but the resonance. */
 function setSoloRes(on) {
   engine.setSoloRes(on);
   $('resSoloBtn').classList.toggle('on', on);
@@ -326,9 +330,11 @@ function buildUI() {
   }, () => selNote, () => down);
 
   bezierRow('na', envelopes.noteAttack);
-  bezierRow('nr', envelopes.noteRelease);
+  bezierRow('nr', envelopes.noteRelease, { falling: true });
   bezierRow('ra', envelopes.relAttack);
-  bezierRow('rr', envelopes.relRelease);
+  bezierRow('rr', envelopes.relRelease, { falling: true });
+  bezierRow('rf', envelopes.resAttack);
+  bezierRow('rl', envelopes.resRelease, { falling: true });
   bezierRow('ho', envelopes.hold, { ghost: () => envelopes.ghostFor(lib.note(selNote)) });
   buildEq();
 
@@ -346,7 +352,7 @@ function buildUI() {
   // the ringing strings behind it move in real time.
   resCurveEditor = createResCurveEditor($('resCurveCanvas'), engine.res.keyCurve, {
     topDamped: engine.topDamped,
-    energy: (m) => engine.res.E[m - engine.res.lo] ?? 0,
+    energy: (m) => engine.res.level[m - engine.res.lo] ?? 0,
     onChange: () => { engine.res.refreshKeyCurve(); syncResCurve(); save(); },
   });
   $('resCurveResetBtn').onclick = () => {
@@ -428,25 +434,29 @@ function buildUI() {
   bind('fdnPre', (v) => engine.setFdnRoom({ predelayMs: v }), (v) => v.toFixed(1) + ' ms');
   bind('fdnDamp', (v) => engine.setFdnRoom({ tailDampHz: v }), (v) => (v / 1000).toFixed(1) + ' kHz');
   bind('fdnPos', (v) => engine.setFdnRoom({ distance: v }), (v) => (v * 100).toFixed(0) + '% back');
-  bind('resAmt', (v) => { engine.res.amount = v; }, (v) => `${v.toFixed(3)} (${(20 * Math.log10(v / 0.15)).toFixed(1)} dB of default)`);
-  bind('resDrive', (v) => { engine.res.drive = v; }, (v) => v.toFixed(1) + ' (vel^n)');
-  bind('resSustain', (v) => { engine.res.sustain = v; },
-    (v) => v === 0 ? 'strikes only' : `held at ${(v * 100).toFixed(0)}% of a strike`);
-  bind('resRing', (v) => engine.res.setRing(v), (v) => v.toFixed(2) + '× measured');
+  const sec = (v) => v.toFixed(2) + ' s';
+  bind('symAmt', (v) => { engine.res.symAmount = v; }, db);
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
+  // What a dB-per-doubling rate comes to at 1 semitone, an octave, two octaves.
+  const reach = (v) => [1, 12, 24].map((d) => distanceDb(d, v).toFixed(0)).join(' / ') + ' dB';
   bind('resProx', (v) => engine.res.setProximity(v),
     (v) => v === 0 ? 'no preference'
-      : `${Math.abs(v).toFixed(1)} dB/octave toward ${v > 0 ? 'near' : 'distant'} strings`);
+      : `${Math.abs(v).toFixed(1)} dB/doubling toward ${v > 0 ? 'near' : 'distant'} (${reach(v)})`);
+  bind('symRel', (v) => { engine.res.symRelease = v; }, sec);
+  bind('symPedalUp', (v) => { engine.res.pedalUpRelease = v; }, sec);
+  bind('sbLevel', (v) => { engine.res.sbAmount = v; }, db);
+  bind('sbFalloff', (v) => { engine.res.sbFalloff = v; }, (v) => v === 0 ? 'flat' : `${v.toFixed(1)} dB/doubling (${reach(v)})`);
+  bind('sbStep', (v) => { engine.res.sbStep = v; },
+    (v) => v === 1 ? 'every string' : v === 12 ? 'octaves only' : `every ${v}${v === 2 ? 'nd' : v === 3 ? 'rd' : 'th'}`);
+  bind('sbRel', (v) => { engine.res.sbRelease = v; }, sec);
+  bind('selfAmt', (v) => { engine.res.selfAmount = v; }, db);
+  bind('selfRel', (v) => { engine.res.selfRelease = v; }, sec);
   bind('resTone', (v) => engine.res.setTone(v), (v) => (v / 1000).toFixed(1) + ' kHz');
   bind('resMax', (v) => { engine.res.maxVoices = v; }, (v) => v.toFixed(0) + ' voices');
-  bind('resTail', (v) => { engine.res.tailRelease = v; }, (v) => v.toFixed(2) + ' s');
-  bind('sbAmt', (v) => { engine.sbGain.gain.value = v; }, db);
-  bind('sbTail', (v) => engine.setSoundboardTail(v), (v) => v.toFixed(1) + ' s');
-  bind('resSelf', (v) => { engine.res.self = v; },
-    (v) => v === 0 ? 'off' : `${(v * 100).toFixed(0)}% of a coupled string`);
-  bind('resDamped', (v) => { engine.res.dampedAmount = v; }, (v) => v === 0 ? 'off' : `${(v * 100).toFixed(1)}% of open`);
-  bind('resOffDrop', (v) => { engine.res.pedalOffDrop = v; }, (v) => `${(20 * Math.log10(Math.max(v, 1e-4))).toFixed(1)} dB`);
-  bind('resOffFall', (v) => { engine.res.pedalOffFall = v; }, (v) => v.toFixed(2) + ' s');
+  bind('resXfade', (v) => { engine.res.crossfade = v; }, sec);
+  bind('resResume', (v) => { engine.res.resumeDb = v; }, (v) => v.toFixed(0) + ' dB');
+  bind('resStart', (v) => { engine.res.startAt = v; }, (v) => v.toFixed(2) + ' s in');
+  bind('resBloom', (v) => { engine.res.bloom = v; }, (v) => v === 0 ? 'none' : (v * 1000).toFixed(0) + ' ms');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
   bind('dampNoise', (v) => { engine.damperNoise = v; }, db);
   bind('relTrim', (v) => { engine.relStartTrim = v; }, (v) => v.toFixed(0) + ' ms');
@@ -519,6 +529,19 @@ function buildUI() {
   };
   syncHallIr(null);
   irStore.get().then((ir) => ir && useHallIr(ir.name, ir.bytes)).catch(() => {});
+  $('partialsBtn').onclick = () => {
+    engine.res.setPartialsOnly(!engine.res.partialsOnly);
+    $('partialsBtn').classList.toggle('on', engine.res.partialsOnly);
+    $('partialsBtn').textContent = engine.res.partialsOnly ? 'on' : 'off';
+    save();
+  };
+  $('invBtn').onclick = () => {
+    engine.invert = !engine.invert;
+    $('invBtn').classList.toggle('on', engine.invert);
+    $('invBtn').textContent = engine.invert ? 'on' : 'off';
+    engine.refreshStrips();
+    save();
+  };
   $('persBtn').onclick = () => {
     engine.perspective *= -1;
     $('persBtn').textContent = engine.perspective > 0 ? "player's view" : 'audience view';
@@ -542,6 +565,16 @@ function buildUI() {
     engine.panic(); down.clear(); silent.clear();
     for (let m = LOW; m <= HIGH; m++) paint(m);
     editor?.playing();
+  };
+  // What the context actually gave: the hint is a request, and the browser
+  // rounds it to a buffer size the device supports.
+  const hint = latencyHint();
+  $('latencySel').value = String(hint);
+  $('statLatency').textContent = `${((ctx.baseLatency + (ctx.outputLatency || 0)) * 1000).toFixed(0)} ms`;
+  $('latencySel').onchange = (e) => {
+    try { localStorage.setItem(LATENCY, e.target.value); } catch { /* not kept */ }
+    save();
+    location.reload();
   };
 
   // Double-click any slider to put it back to its shipped default (the value
@@ -693,7 +726,8 @@ function collectSettings() {
     sliders, eqBands,
     toggles: {
       limiter: engine.limiterOn, eq: engine.eq.enabled,
-      res: engine.res.enabled, perspective: engine.perspective,
+      res: engine.res.enabled, perspective: engine.perspective, invert: engine.invert,
+      partialsOnly: engine.res.partialsOnly,
       align: engine.alignStarts,
       // Keys from when these were rooms A and B; kept so older files load.
       roomA: engine.hall.on, roomB: engine.early.on,
@@ -757,6 +791,8 @@ function applyControls(o) {
   if (t.roomA != null && engine.hall.on !== t.roomA) $('roomBtn').click();
   if (t.roomB != null && engine.early.on !== t.roomB) $('fdnBtn').click();
   if (t.perspective != null && engine.perspective !== t.perspective) $('persBtn').click();
+  if (t.invert != null && engine.invert !== t.invert) $('invBtn').click();
+  if (t.partialsOnly != null && engine.res.partialsOnly !== t.partialsOnly) $('partialsBtn').click();
   // Redraw the things that read from state rather than from a slider event.
   editor?.refresh(); redrawEnvs(); for (const e of envEditors) e.draw();
   const b = $('velCurveBtn');
@@ -808,9 +844,9 @@ function wireMenu() {
  * and then you move them. A preset that could not be adjusted would be back to
  * having a fixed shape and only a time knob, which is the thing these replace.
  */
-function bezierRow(id, env, { ghost = null, note = null } = {}) {
+function bezierRow(id, env, { ghost = null, note = null, falling = false } = {}) {
   const canvas = $(id + 'Canvas');
-  const ed = createBezierEditor(canvas, env.shape, () => { save(); }, { ghost });
+  const ed = createBezierEditor(canvas, env.shape, () => { save(); }, { ghost, falling });
   const bar = $(id + 'Preset');
   for (const [name, make] of Object.entries(SHAPES)) {
     const b = document.createElement('button');

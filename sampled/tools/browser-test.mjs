@@ -39,6 +39,9 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e)));
 
 await page.goto(`http://localhost:${PORT}/sampled/`, { waitUntil: 'domcontentloaded' });
+// Stream from memory: the disk install is ticked by default, and a headless
+// profile has nowhere near the quota for it.
+await page.evaluate(() => { document.getElementById('installChk').checked = false; });
 await page.click('#startBtn');
 await page.waitForFunction(() => window.piano, null, { timeout: 30000 });
 // Enough of the library resident that the notes under test are real ones --
@@ -87,21 +90,23 @@ const r = await page.evaluate(async () => {
   // Turned up so the held chord is easy to measure, and put back afterwards:
   // leaving it up made the halo check further down read 8x the shipped level
   // and blame the engine for it.
-  const shippedAmount = engine.res.amount;
-  engine.res.amount = 1.2;
+  // Only the sympathetic kind, so the soundboard's neighbours and the struck
+  // key's own voice do not count as "held strings ringing".
+  const shipped = { sym: engine.res.symAmount, sb: engine.res.sbAmount, self: engine.res.selfAmount };
+  engine.res.symAmount = 1.2; engine.res.sbAmount = 0; engine.res.selfAmount = 0;
   for (const m of [60, 64, 67]) engine.silentHold(m, true);
   engine.noteOn(48, 120); await wait(420); engine.noteOff(48);
   await wait(1500);                        // C3 is damped; anything left is the held chord
   out.sympathetic = await peakOver(500);
   out.ringing = engine.res.voices.size;
   for (const m of [60, 64, 67]) engine.silentHold(m, false);
-  engine.res.amount = shippedAmount;
   await settle();
 
   // --- the same gesture with everything damped leaves nothing ---
   engine.noteOn(48, 120); await wait(420); engine.noteOff(48);
   await wait(1500);
   out.damped = await peakOver(500);
+  engine.res.symAmount = shipped.sym; engine.res.sbAmount = shipped.sb; engine.res.selfAmount = shipped.self;
   await settle();
 
   // --- a released key under a held pedal keeps ringing, and the pedal stops it ---
@@ -114,56 +119,25 @@ const r = await page.evaluate(async () => {
   out.pedalLifted = await peakOver(300);
   await settle();
 
-  // --- pile-up: four strikes into a held pedal beat one ---
+  // --- the pedal holds the sympathetic voices, and lifting it ends them ---
   engine.setPedal(1);
   engine.noteOn(48, 118); await wait(260); engine.noteOff(48); await wait(900);
-  out.once = engine.res.E.reduce((a, b) => a + b, 0);
-  await settle(); engine.setPedal(1);
-  for (let i = 0; i < 4; i++) { engine.noteOn(48, 118); await wait(260); engine.noteOff(48); }
-  await wait(900 - 3 * 260);
-  out.fourTimes = engine.res.E.reduce((a, b) => a + b, 0);
+  out.pedalVoices = [...engine.res.voices.values()].filter((v) => v.kind === 'sym').length;
   engine.setPedal(0);
-  await wait(400);
-  out.afterPedalUp = engine.res.E.reduce((a, b) => a + b, 0);
+  await wait(100);
+  out.afterPedalUpVoices = [...engine.res.voices.values()].filter((v) => v.kind === 'sym').length;
   await settle();
 
   // --- a halo under a LONG held note ---
-  //
-  // The thing a strike-only resonance engine gets wrong. A real piano's
-  // sympathetic answer to a held note lasts as long as the note does, because
-  // the struck string goes on driving the bridge the whole time; an engine
-  // that only deposits energy at the attack has a halo that dies on its own
-  // schedule a second or two later whatever is being played, and the longer
-  // the note is held the more obviously it is missing.
-  //
-  // So: hold three treble strings silently, strike a bass note into them, keep
-  // the key DOWN, and read the accumulator half a second in and again eight
-  // seconds in. The treble is the case that matters -- its strings have the
-  // shortest time constants, about a second, so by eight seconds nothing the
-  // strike deposited is left and what is there is the drive or nothing.
-  //
-  // Measured twice, the second time with the sustained drive switched off,
-  // because the number that means anything is the difference between them.
-  const holdHalo = async () => {
-    for (const m of [79, 83, 86]) engine.silentHold(m, true);
-    engine.noteOn(36, 120);
-    await wait(500);
-    const early = engine.res.E.reduce((a, b) => a + b, 0);
-    await wait(7500);                      // still held, eight seconds in
-    const late = engine.res.E.reduce((a, b) => a + b, 0);
-    engine.noteOff(36);
-    for (const m of [79, 83, 86]) engine.silentHold(m, false);
-    await settle();
-    return { early, late };
-  };
-  const shippedSustain = engine.res.sustain;
-  const driven = await holdHalo();
-  engine.res.sustain = 0;
-  const struckOnly = await holdHalo();
-  engine.res.sustain = shippedSustain;
-  out.haloHeldEarly = driven.early;
-  out.haloHeld8s = driven.late;
-  out.haloHeld8sNoDrive = struckOnly.late;
+  // Held treble strings answering a held bass note must still be sounding
+  // eight seconds in: a resonance voice lasts as long as the note driving it.
+  for (const m of [79, 83, 86]) engine.silentHold(m, true);
+  engine.noteOn(36, 120);
+  await wait(8000);
+  out.haloHeld8s = [79, 83, 86].reduce((a, m) => a + engine.res.level[m - engine.res.lo], 0);
+  engine.noteOff(36);
+  for (const m of [79, 83, 86]) engine.silentHold(m, false);
+  await settle();
 
   // --- envelopes -----------------------------------------------------------
   // Each of these measures ONE thing, so everything else that makes noise is
@@ -286,17 +260,17 @@ const r = await page.evaluate(async () => {
   for (const n of [48, 55, 60, 64, 67, 72]) {
     engine.noteOn(n, 96);
     for (let t = 0; t < 320; t += 40) {
-      for (const [m, v] of engine.res.voices) if (v.target > loudestVoice) { loudestVoice = v.target; loudAt = m; }
+      for (const v of engine.res.voices.values()) if (v.kind === 'sym' && v.gain * v.unit > loudestVoice) { loudestVoice = v.gain * v.unit; loudAt = v.midi; }
       await wait(40);
     }
     engine.noteOff(n);
   }
   for (let t = 0; t < 600; t += 40) {
-    for (const [m, v] of engine.res.voices) if (v.target > loudestVoice) { loudestVoice = v.target; loudAt = m; }
+    for (const v of engine.res.voices.values()) if (v.kind === 'sym' && v.gain * v.unit > loudestVoice) { loudestVoice = v.gain * v.unit; loudAt = v.midi; }
     await wait(40);
   }
   out.ringingVoices = engine.res.voices.size;
-  out.loudAt = loudAt; out.resAmount = engine.res.amount;
+  out.loudAt = loudAt; out.resAmount = engine.res.symAmount;
   engine.setPedal(0);
   await settle();
   const struckV = engine.noteOn(60, 96);
@@ -375,23 +349,23 @@ const r = await page.evaluate(async () => {
   curves.setKey('startTrim', 60, 0);
 
   // --- the per-key resonance level curve ------------------------------------
-  // Drawn down over the top of the keyboard, the strings it covers must take
-  // less energy and the ones it does not must be untouched.
+  // Drawn down over the top of the keyboard, the strings it covers must answer
+  // more quietly and the ones it does not must be untouched.
   const ringTop = async () => {
-    engine.res.E.fill(0);
+    engine.res.allOff();
     for (const m of [48, 55, 60]) { engine.noteOn(m, 120); await wait(40); engine.noteOff(m); }
     await wait(300);
     let top = 0, mid = 0;
     for (let i = 0; i < engine.res.n; i++) {
       const k = engine.res.lo + i;
-      if (k >= 96) top = Math.max(top, engine.res.E[i]);
-      else if (k > 60 && k < 90) mid = Math.max(mid, engine.res.E[i]);
+      if (k >= 96) top = Math.max(top, engine.res.level[i]);
+      else if (k > 60 && k < 90) mid = Math.max(mid, engine.res.level[i]);
     }
     return { top, mid };
   };
   // From flat: the shipped defaults carry a drawn curve of their own, and what
   // is being checked here is what drawing one DOES. Put it back afterwards.
-  const shipped = engine.res.keyCurve.toJSON();
+  const shippedCurve = engine.res.keyCurve.toJSON();
   engine.res.keyCurve.reset(); engine.res.refreshKeyCurve();
   engine.setPedal(1);
   const flat = await ringTop();
@@ -401,7 +375,7 @@ const r = await page.evaluate(async () => {
   out.resCurveTop = drawn.top / Math.max(1e-12, flat.top);
   out.resCurveMid = drawn.mid / Math.max(1e-12, flat.mid);
   out.resCurveAt = [60, 96].map((k) => engine.res.keyCurve.at(k));
-  engine.res.keyCurve.fromJSON(shipped); engine.res.refreshKeyCurve();
+  engine.res.keyCurve.fromJSON(shippedCurve); engine.res.refreshKeyCurve();
   engine.setPedal(0);
   await settle();
 
@@ -470,13 +444,9 @@ console.log('  C4 at velocity 25              :', f(r.soft), `(${(20 * Math.log1
 console.log('  ten-note pedalled cluster, ff  :', f(r.cluster), `(${(20 * Math.log10(r.cluster)).toFixed(1)} dBFS rms, limiter off)`);
 console.log('  held C-E-G after a struck C3   :', f(r.sympathetic), `on ${r.ringing} strings`);
 console.log('  same gesture, nothing held     :', f(r.damped));
-console.log('  accumulated energy, 1 strike   :', f(r.once));
-console.log('  accumulated energy, 4 strikes  :', f(r.fourTimes));
-console.log('  halo under a held note, 0.5 s  :', f(r.haloHeldEarly));
-console.log('  ...the same note, 8 s in       :', f(r.haloHeld8s));
-console.log('  ...with the sustained drive off:', f(r.haloHeld8sNoDrive),
-  `(the drive is worth ${(10 * Math.log10(Math.max(r.haloHeld8s, 1e-14) / Math.max(r.haloHeld8sNoDrive, 1e-14))).toFixed(1)} dB at 8 s)`);
-console.log('  after the pedal comes up       :', f(r.afterPedalUp));
+console.log('  sympathetic voices, pedal down :', r.pedalVoices);
+console.log('  ...just after the pedal lifts  :', r.afterPedalUpVoices);
+console.log('  halo under a held note, 8 s in :', f(r.haloHeld8s));
 console.log('  key released, pedal still down :', f(r.pedalHeld));
 console.log('  ...then the pedal comes up     :', f(r.pedalLifted));
 console.log('');
@@ -502,9 +472,9 @@ console.log('  biggest neighbour step, by fade:', r.featherLadder.map((v, i) => 
 console.log('  attack front, aligned / raw    :', r.alignSpread.toFixed(2), '/', r.rawSpread.toFixed(1),
   `ms of spread (target ${r.alignTarget} ms)`);
 console.log('  top-string resonance, drawn -18:',
-  (10 * Math.log10(Math.max(r.resCurveTop, 1e-12))).toFixed(1), 'dB of energy');
+  (20 * Math.log10(Math.max(r.resCurveTop, 1e-12))).toFixed(1), 'dB');
 console.log('  middle strings, same pass      :',
-  (10 * Math.log10(Math.max(r.resCurveMid, 1e-12))).toFixed(2), 'dB (should be 0)');
+  (20 * Math.log10(Math.max(r.resCurveMid, 1e-12))).toFixed(2), 'dB (should be 0)');
 console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
 console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
 console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
@@ -521,18 +491,9 @@ const checks = [
   ['the worst case has headroom', r.cluster < 0.55],
   ['held strings ring', r.sympathetic > Math.max(r.silence * 6, 2e-4)],
   ['damped strings do not', r.damped < r.sympathetic * 0.4],
-  ['resonance piles up', r.fourTimes > r.once * 1.8],
-  // Only that the halo is STILL THERE eight seconds into a held note, which is
-  // what the aftersound decay fit and the energy floor buy. There is no check
-  // on the sustained drive's share of it: measured on a held pedalled chord it
-  // is worth 0.0 dB, because a strike deposits its energy all at once and a
-  // note twenty-five decibels into its own decay cannot compete with what that
-  // strike left behind. It earns its keep only where the resonator's time
-  // constant is far shorter than the driving note's -- a treble string under a
-  // long bass note -- and that is too narrow a case to assert a ratio on. The
-  // number is printed above; it is a diagnostic, not a guarantee.
+  ['the pedal holds sympathetic voices', r.pedalVoices > 0],
+  ['lifting the pedal releases them', r.afterPedalUpVoices === 0],
   ['a held note still has a halo 8 s in', r.haloHeld8s > 0],
-  ['the pedal cuts it', r.afterPedalUp < r.fourTimes * 0.05],
   ['a released key rings on under the pedal', r.pedalHeld > 5e-3],
   ['lifting the pedal stops it', r.pedalLifted < r.pedalHeld * 0.3],
   ['values finite', r.finite],
@@ -558,10 +519,8 @@ const checks = [
   ['...and per-key sample start moves one key', Math.abs(r.trimMoved - 20) < 0.5 && r.trimNeighbour < 0.01],
   ['...and cannot skip past half the recording', r.trimClamped <= 2 + 1e-9],
   ['the resonance curve quietens the keys it covers', r.resCurveTop < 0.2],
-  // A decibel of slack: the two passes are measured a beat apart in real time
-  // and the accumulator is leaking the whole while, which is worth a few
-  // percent on its own. The keys the curve covers come back 120 dB down.
-  ['...and leaves the keys it does not alone', Math.abs(10 * Math.log10(r.resCurveMid)) < 1],
+  // A decibel of slack: the two passes are measured a beat apart in real time.
+  ['...and leaves the keys it does not alone', Math.abs(20 * Math.log10(r.resCurveMid)) < 1],
   ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
   ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],

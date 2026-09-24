@@ -7,6 +7,10 @@
 
 export const LOW = 21, HIGH = 108;
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// The velocity layers whose decay curves are kept for the sympathetic
+// resonance to play (see tools/res-decay.mjs). Mezzo layers: the softest one
+// reaches the room's noise floor too soon to sustain a halo.
+export const RES_LAYERS = [4, 6, 8, 10];
 export const noteName = (m) => NAMES[m % 12] + (Math.floor(m / 12) - 1);
 
 /** The thirty recorded roots: A0, then every third semitone. */
