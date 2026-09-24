@@ -459,6 +459,10 @@ function buildUI() {
   bind('resBloom', (v) => { engine.res.bloom = v; }, (v) => v === 0 ? 'none' : (v * 1000).toFixed(0) + ' ms');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
   bind('dampNoise', (v) => { engine.damperNoise = v; }, db);
+  bind('cutDb', (v) => { engine.cutDb = v; }, (v) => v <= -100 ? 'off' : v.toFixed(0) + ' dB');
+  bind('pedSweep', (v) => { engine.pedalSweep = v / 1000; }, (v) => v === 0 ? 'all at once' : `bass ${v.toFixed(0)} ms after treble`);
+  bind('pedDampCount', (v) => { engine.pedalDamperCount = v; }, (v) => v === 0 ? 'none' : `loudest ${v.toFixed(0)}`);
+  bind('pedDampLevel', (v) => { engine.pedalDamperLevel = v; }, (v) => v === 0 ? 'off' : `${(20 * Math.log10(v)).toFixed(1)} dB of a key release`);
   bind('relTrim', (v) => { engine.relStartTrim = v; }, (v) => v.toFixed(0) + ' ms');
   bind('relRR', (v) => { engine.relRoundRobin = v; }, (v) => '±' + v.toFixed(0) + ' ms');
   bind('relDelay', (v) => { engine.releaseDelay = v; }, (v) => v.toFixed(0) + ' ms');

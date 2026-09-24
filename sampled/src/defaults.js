@@ -195,6 +195,18 @@ export const DEFAULT_SETTINGS = {
           "hi": 77,
           "v": -0.558,
           "feather": 0
+        },
+        {
+          "lo": 84,
+          "hi": 108,
+          "v": -1.494,
+          "feather": 3
+        },
+        {
+          "lo": 71,
+          "hi": 73,
+          "v": -0.378,
+          "feather": 0
         }
       ],
       "layerBias": [
@@ -232,6 +244,12 @@ export const DEFAULT_SETTINGS = {
           "lo": 72,
           "hi": 79,
           "v": -0.47,
+          "feather": 0
+        },
+        {
+          "lo": 71,
+          "hi": 73,
+          "v": -0.68,
           "feather": 0
         }
       ],
@@ -529,10 +547,10 @@ export const DEFAULT_SETTINGS = {
     },
     "noteRelease": {
       "shape": [
-        0.08,
-        0.62,
-        0.32,
-        0.9
+        0.0282,
+        -0.1011,
+        0.1707,
+        0.9427
       ]
     },
     "relAttack": {
@@ -766,6 +784,10 @@ export const DEFAULT_SETTINGS = {
     "hoKey": "0",
     "relNoise": "0.67",
     "dampNoise": "1.22",
+    "cutDb": "-100",
+    "pedSweep": "88",
+    "pedDampCount": "16",
+    "pedDampLevel": "0.95",
     "relTrim": "0",
     "relRR": "0",
     "relDelay": "1"

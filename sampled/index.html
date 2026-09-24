@@ -479,6 +479,10 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
       <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
+      <div class="row"><label>cut notes below</label><input type="range" id="cutDb" min="-100" max="-30" step="1" value="-80"><output id="cutDbV"></output></div>
+      <div class="row"><label>pedal-up sweep</label><input type="range" id="pedSweep" min="0" max="300" step="1" value="40"><output id="pedSweepV"></output></div>
+      <div class="row"><label>pedal-up dampers heard</label><input type="range" id="pedDampCount" min="0" max="30" step="1" value="6"><output id="pedDampCountV"></output></div>
+      <div class="row"><label>pedal-up damper level</label><input type="range" id="pedDampLevel" min="0" max="1.5" step="0.01" value="0.5"><output id="pedDampLevelV"></output></div>
       <div class="row"><label>release start trim</label><input type="range" id="relTrim" min="0" max="200" step="1" value="0"><output id="relTrimV"></output></div>
       <div class="row"><label>round-robin</label><input type="range" id="relRR" min="0" max="200" step="1" value="3"><output id="relRRV"></output></div>
       <div class="row"><label>release delay</label><input type="range" id="relDelay" min="0" max="200" step="1" value="1"><output id="relDelayV"></output></div>
@@ -488,6 +492,15 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="hint">The sustain pedal is continuous, not a switch: half-pedalling shortens a note without
         stopping it, and CC 64 is read across its whole range. The damper-fall sound is picked by velocity and
         scaled by how long the key was held — a string ringing for four seconds has less left in it to stop.
+        <b>Cut notes below</b> fades out a note once it has decayed under that level (dB of full scale, before
+        the master), instead of letting it play its whole recording &mdash; twenty seconds in the bass &mdash;
+        under the pedal or a held key, holding a voice the whole time. The level is estimated from each
+        recording's decay measured at build time. At the far left it is off.
+        <b>Pedal-up sweep</b> is how much later the lowest damper lands than the highest when the pedal comes
+        up: the damper frame reaches the treble strings first and the bass last, spread evenly between them, and
+        the notes, their damper sounds and the sympathetic resonance all follow it. Of the strings a pedal lift
+        stops, the <b>loudest</b> few make a damper sound (<b>dampers heard</b>), at <b>damper level</b> of what a
+        key release plays; a whole frame of them at full level is a wall of noise, not a piano.
         The limiter is a seatbelt, not a sound: it is doing nothing until eighty-eight undamped strings would
         have run out of headroom. <b>Align sample starts</b> lines up the attack of all 1408 recordings:
         each one was measured (<code>sampled/tools/align.mjs</code>) for how far into the file its attack front
