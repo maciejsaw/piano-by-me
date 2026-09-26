@@ -181,8 +181,13 @@ fails pedal level 1 here by ~20 ms. On a real machine expect much higher.
   slower than any machine the piano is played on.
 - If the pedal ladder is still low there: a pooled voice renderer (one
   worklet node for several voices) is the remaining big structural win;
-  or the noteOn main-thread cost under the pedal (8-15 ms creating ~28
-  voices in one call).
+  or the noteOn main-thread cost under the pedal.
+- noteOn profiled (pedal down, one key every 250 ms, ~30 resonance voices):
+  node creation is small (~0.3 ms); most was `estimate`, called for every
+  voice by makeRoom for each new string (N x N). Now cached per voice per
+  time (and `order` keys computed once): mean 1.9-2.2 -> 1.5-1.6 ms, same
+  decisions. Left: fade-in curve + tuning per voice (~0.1 ms, invalidation
+  on envelope edits not worth it); makeRoom still loops over all voices.
 
 ### A/B render test
 Built for the voice/stream (`sampled:ab`, see step 2). A whole-engine A/B
