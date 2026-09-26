@@ -35,6 +35,22 @@ function fromWorker(e) {
   }
 }
 
+/**
+ * Played blocks go back to the worker, which fills them again. Left to the
+ * garbage collector, a hundred voices' worth of stream -- a thousand buffers
+ * a second -- would all be collected HERE, on the audio thread, and a
+ * collection is exactly the kind of pause that is heard as a crackle.
+ */
+function giveBack(blocks) {
+  if (!worker || !blocks.length) return;
+  const bufs = [];
+  for (const b of blocks) {
+    if (b.L.byteLength) bufs.push(b.L.buffer);
+    if (b.R.byteLength && b.R.buffer !== b.L.buffer) bufs.push(b.R.buffer);
+  }
+  if (bufs.length) worker.postMessage({ type: 'free', bufs }, bufs);
+}
+
 class PianoHub extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -133,6 +149,7 @@ class PianoVoice extends AudioWorkletProcessor {
     this.state = 2;
     voices.delete(this.id);
     worker?.postMessage({ type: 'stop', id: this.id });
+    giveBack(this.q); this.q = []; this.qi = 0;
     this.port.postMessage({ type: 'ended', underrun: this.underrun });
   }
 
@@ -176,7 +193,7 @@ class PianoVoice extends AudioWorkletProcessor {
       this.pos = p + rate;
     }
     // Let go of blocks already played, now and then rather than per block.
-    if (this.qi > 8) { this.q.splice(0, this.qi); this.qi = 0; }
+    if (this.qi > 8) { giveBack(this.q.splice(0, this.qi)); this.qi = 0; }
     if (this.pos - this.lastReport >= REPORT) {
       this.lastReport = this.pos;
       worker?.postMessage({ type: 'need', id: this.id, pos: this.pos | 0 });

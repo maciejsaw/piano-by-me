@@ -48,6 +48,7 @@ async function start(install = false) {
   $('startBtn').textContent = 'loading…';
   ctx = new AudioContext({ latencyHint: latencyHint(), sampleRate: 48000 });
   await ctx.resume();
+  keepRunning(ctx);
 
   lib = new Library(ctx, './samples');
   try { await lib.loadManifest(); }
@@ -97,6 +98,30 @@ async function start(install = false) {
   initMidi();
 }
 
+/**
+ * The context can stop underneath the page: the OS suspends audio across a
+ * sleep, and some browsers 'interrupt' it for a call or an output device that
+ * went away. Nothing else here would ever notice -- the piano would just go
+ * silent until a reload. So ask for it back whenever it drops, and again on
+ * the next thing the player does, because a browser may only allow resume()
+ * from a gesture. Nothing in this page suspends the context on purpose.
+ */
+let wakeAudio = () => {};
+function keepRunning(c) {
+  wakeAudio = () => {
+    if (c.state === 'running' || c.state === 'closed') return;
+    c.resume().catch(() => { /* not allowed yet: the next gesture tries again */ });
+  };
+  c.addEventListener('statechange', () => {
+    if (c.state === 'running' || c.state === 'closed') return;
+    console.warn(`sampled: audio context ${c.state}, resuming`);
+    wakeAudio();
+  });
+  for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => wakeAudio(), { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio(); });
+  addEventListener('focus', () => wakeAudio());
+}
+
 // ------------------------------------------------------------- note events --
 function noteOn(midi, vel) {
   if (!engine || midi < LOW || midi > HIGH) return;
@@ -111,6 +136,13 @@ function noteOff(midi, vel = 64) {
   const hit = layerHits.get(midi);
   if (hit) { hit.held = false; hit.at = performance.now(); }
   down.delete(midi); paint(midi); editor?.playing();
+}
+/** Everything off, and the keyboard drawn to match. */
+function panic() {
+  if (!engine) return;
+  engine.panic(); down.clear(); silent.clear();
+  for (let m = LOW; m <= HIGH; m++) paint(m);
+  editor?.playing();
 }
 function toggleSilent(midi) {
   silent.has(midi) ? silent.delete(midi) : silent.add(midi);
@@ -258,31 +290,54 @@ async function initMidi() {
   let access;
   try { access = await navigator.requestMIDIAccess(); }
   catch { $('midiSel').innerHTML = '<option>MIDI permission denied</option>'; return; }
-  const refresh = () => {
+  const refresh = (e) => {
     const inputs = [...access.inputs.values()];
     $('midiSel').innerHTML = inputs.length
       ? inputs.map((i, k) => `<option value="${k}">${i.name}</option>`).join('')
       : '<option>no MIDI device</option>';
-    inputs.forEach((i) => { i.onmidimessage = onMidi; });
+    inputs.forEach((i) => { i.onmidimessage = (m) => onMidi(m, i.id); });
+    if (e?.port?.type === 'input' && e.port.state === 'disconnected') unplugged(e.port.id);
   };
   access.onstatechange = refresh;
   refresh();
 }
-function onMidi(e) {
+// What each MIDI input is holding down, so a keyboard that is unplugged -- or
+// drops off the USB bus mid-phrase -- does not leave its notes and its pedal
+// stuck on: the note-offs it would have sent are never coming.
+const midiHeld = new Map();       // input id -> { notes: Set, pedal }
+function heldBy(id) {
+  let h = midiHeld.get(id);
+  if (!h) midiHeld.set(id, h = { notes: new Set(), pedal: 0 });
+  return h;
+}
+function unplugged(id) {
+  const h = midiHeld.get(id);
+  if (!h) return;
+  midiHeld.delete(id);
+  for (const m of h.notes) noteOff(m);
+  if (h.pedal > 0) setPedal(0);
+}
+function onMidi(e, id) {
   const [st, d1, d2] = e.data;
   const cmd = st & 0xf0;
-  if (cmd === 0x90 && d2 > 0) noteOn(d1, d2);
-  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) noteOff(d1, d2 || 64);
+  const h = heldBy(id);
+  wakeAudio();
+  if (cmd === 0x90 && d2 > 0) { h.notes.add(d1); noteOn(d1, d2); }
+  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) { h.notes.delete(d1); noteOff(d1, d2 || 64); }
   else if (cmd === 0xb0) {
     // Continuous, not a switch: a half-pedalled CC 64 is a real technique and
     // most controllers send the whole range.
-    if (d1 === 64) setPedal(d2 / 127);
-    if (d1 === 123) engine.panic();
+    if (d1 === 64) { h.pedal = d2 / 127; setPedal(h.pedal); }
+    // All sound off, all notes off: what a DAW or a controller's panic button
+    // sends. Reset all controllers lets the pedal up.
+    if (d1 === 120 || d1 === 123) { for (const x of midiHeld.values()) { x.notes.clear(); x.pedal = 0; } panic(); }
+    if (d1 === 121) { h.pedal = 0; setPedal(0); }
   }
 }
 
 // ------------------------------------------------------------------ pedals --
 function setPedal(v) {
+  if (!engine) return;
   engine.setPedal(v);
   $('pedalBtn').classList.toggle('on', v >= 0.5);
   $('pedalBtn').textContent = v < 0.02 ? 'sustain' : v >= 0.98 ? 'sustain ▮▮▮' : `sustain ${(v * 100) | 0}%`;
@@ -302,16 +357,34 @@ const MAP = { z: 0, s: 1, x: 2, d: 3, c: 4, v: 5, g: 6, b: 7, h: 8, n: 9, j: 10,
 let octave = 4;
 addEventListener('keydown', (e) => {
   if (e.repeat || e.metaKey || e.ctrlKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-  if (e.key === ' ') { e.preventDefault(); setPedal(1); return; }
+  if (e.key === ' ') { e.preventDefault(); spaceHeld = true; setPedal(1); return; }
   if (e.key === ',') { octave = Math.max(0, octave - 1); return; }
   if (e.key === '.') { octave = Math.min(7, octave + 1); return; }
-  const k = MAP[e.key.toLowerCase()];
-  if (k !== undefined) { e.preventDefault(); noteOn(12 * octave + 12 + k, 96); }
+  const key = e.key.toLowerCase(), k = MAP[key];
+  if (k !== undefined) {
+    e.preventDefault();
+    const m = 12 * octave + 12 + k;
+    typed.set(key, m);
+    noteOn(m, 96);
+  }
 });
+// Which note each typed key started, so letting go stops that note even if
+// the octave moved in between -- recomputing it at keyup left the first one
+// stuck on.
+const typed = new Map();
+let spaceHeld = false;
 addEventListener('keyup', (e) => {
-  if (e.key === ' ') { setPedal(0); return; }
-  const k = MAP[e.key.toLowerCase()];
-  if (k !== undefined) noteOff(12 * octave + 12 + k);
+  if (e.key === ' ') { spaceHeld = false; setPedal(0); return; }
+  const key = e.key.toLowerCase(), m = typed.get(key);
+  if (m === undefined) return;
+  typed.delete(key);
+  noteOff(m);
+});
+// A window that loses focus with keys down never sees their keyups.
+addEventListener('blur', () => {
+  for (const m of typed.values()) noteOff(m);
+  typed.clear();
+  if (spaceHeld) { spaceHeld = false; setPedal(0); }
 });
 
 // ---------------------------------------------------------------------- UI --
@@ -565,11 +638,7 @@ function buildUI() {
   // from collectSettings(), so it never survives a reload or an export.
   $('resSoloBtn').onclick = () => setSoloRes(!engine.soloRes);
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
-  $('panicBtn').onclick = () => {
-    engine.panic(); down.clear(); silent.clear();
-    for (let m = LOW; m <= HIGH; m++) paint(m);
-    editor?.playing();
-  };
+  $('panicBtn').onclick = panic;
   // What the context actually gave: the hint is a request, and the browser
   // rounds it to a buffer size the device supports.
   const hint = latencyHint();

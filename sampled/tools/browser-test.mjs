@@ -178,12 +178,9 @@ const r = await page.evaluate(async () => {
   envelopes.noteRelease.shape.set(0.08, 0.62, 0.32, 0.9);
   engine.curves.g.damping = 0;
 
-  // Release level against hold time, as a function and then as audio.
-  out.holdShort = envelopes.holdLevel(0);
-  out.holdLong = envelopes.holdLevel(envelopes.hold.seconds);
-  out.holdKeyNoiseOff = envelopes.holdLevel(envelopes.hold.seconds, 0);
-
-  // Same, through the engine -- checked at the gain the engine schedules
+  // Release level against hold time, through the engine (the hold law
+  // itself is checked as arithmetic in unit.mjs).
+  // Checked at the gain the engine schedules
   // rather than at the analyser. A damper thud is impulsive and 40 dB below
   // the note it came off, and measuring one through an 85 ms analyser window
   // immediately after a note-off is not a repeatable thing to do: the first
@@ -297,87 +294,12 @@ const r = await page.evaluate(async () => {
   await wait(10);
   engine.noteOn(60, 100); out.octRestored = await peakOver(400); engine.noteOff(60); await settle();
 
-  // Feathering: the point of the whole tier. A range raised with a fade must
-  // not leave a step at its edge, and must still reach its full value inside.
-  const stepFor = (f) => { curves.setScope('trim', { lo: 84, hi: 108 }, 12, f); return curves.worstStep('trim').step; };
-  out.hardStep = stepFor(0);
-  out.featherStep = stepFor(6);
-  curves.setScope('trim', { lo: 84, hi: 108 }, 12, 6);
-  out.featherInside = curves.at('trim', 96) - curves.at('trim', 60);
-  // Widening the fade has to keep reducing the step, every time. That is the
-  // property; any particular number is just where the raised cosine is
-  // steepest for that width.
-  out.featherLadder = [0, 3, 6, 10, 14].map(stepFor).map((v) => +v.toFixed(2));
-  out.featherMonotonic = out.featherLadder.every((v, i, a) => i === 0 || v < a[i - 1]);
+  // Feathering and the rest of the range arithmetic: unit.mjs.
   curves.reset('trim');
 
-  // --- attack alignment -----------------------------------------------------
-  // Every recording's measured attack front has to land the same distance
-  // after the key goes down, whether the engine gets there by skipping into a
-  // late sample or by holding an early one back.
-  const landings = (on) => {
-    engine.alignStarts = on;
-    const out = [];
-    for (const midi of [21, 33, 45, 60, 72, 84, 96, 108]) {
-      for (const layer of [1, 8, 16]) {
-        const t0 = lib.m.notes[midi]?.layers?.[layer]?.t0;
-        if (t0 == null) continue;
-        const at = engine.startAt(midi, { t0, buf: { duration: 5 } });
-        out.push(t0 - at.offset * 1000 + at.delay * 1000);
-      }
-    }
-    return out;
-  };
-  const spread = (v) => Math.max(...v) - Math.min(...v);
-  out.alignSpread = spread(landings(true));
-  out.rawSpread = spread(landings(false));
-  engine.alignStarts = true;
-  out.alignTarget = lib.m.alignMs ?? null;
-  // Per-key Sample start, on top of the alignment, moving one key alone.
-  const startOf = (midi) => {
-    const t0 = lib.m.notes[midi].layers[8].t0;
-    return engine.startAt(midi, { t0, buf: { duration: 5 } }).offset * 1000;
-  };
-  const before = startOf(60), sibling = startOf(61);
-  curves.setKey('startTrim', 60, 20);
-  out.trimMoved = startOf(60) - before;
-  out.trimNeighbour = Math.abs(startOf(61) - sibling);
-  curves.setKey('startTrim', 60, 0);
-  // It must never skip so far in that the note is a fragment.
-  curves.setKey('startTrim', 60, 100000);
-  out.trimClamped = engine.startAt(60, { t0: 12, buf: { duration: 4 } }).offset;
-  curves.setKey('startTrim', 60, 0);
+  // Attack alignment and per-key sample start are arithmetic: unit.mjs.
 
-  // --- the per-key resonance level curve ------------------------------------
-  // Drawn down over the top of the keyboard, the strings it covers must answer
-  // more quietly and the ones it does not must be untouched.
-  const ringTop = async () => {
-    engine.res.allOff();
-    for (const m of [48, 55, 60]) { engine.noteOn(m, 120); await wait(40); engine.noteOff(m); }
-    await wait(300);
-    let top = 0, mid = 0;
-    for (let i = 0; i < engine.res.n; i++) {
-      const k = engine.res.lo + i;
-      if (k >= 96) top = Math.max(top, engine.res.level[i]);
-      else if (k > 60 && k < 90) mid = Math.max(mid, engine.res.level[i]);
-    }
-    return { top, mid };
-  };
-  // From flat: the shipped defaults carry a drawn curve of their own, and what
-  // is being checked here is what drawing one DOES. Put it back afterwards.
-  const shippedCurve = engine.res.keyCurve.toJSON();
-  engine.res.keyCurve.reset(); engine.res.refreshKeyCurve();
-  engine.setPedal(1);
-  const flat = await ringTop();
-  engine.res.keyCurve.fromJSON({ points: [{ k: 21, db: 0 }, { k: 84, db: 0 }, { k: 96, db: -18 }, { k: 108, db: -18 }] });
-  engine.res.refreshKeyCurve();
-  const drawn = await ringTop();
-  out.resCurveTop = drawn.top / Math.max(1e-12, flat.top);
-  out.resCurveMid = drawn.mid / Math.max(1e-12, flat.mid);
-  out.resCurveAt = [60, 96].map((k) => engine.res.keyCurve.at(k));
-  engine.res.keyCurve.fromJSON(shippedCurve); engine.res.refreshKeyCurve();
-  engine.setPedal(0);
-  await settle();
+  // The per-key resonance level curve is arithmetic: unit.mjs.
 
   // --- the output EQ --------------------------------------------------------
   // Measured on the output node, because the EQ sits after the master bus --
@@ -413,12 +335,17 @@ const r = await page.evaluate(async () => {
   // and reads half the gain -- correct behaviour for a shelf, and a test that
   // asserted +12 dB there would have been asserting the filter is not a shelf.
   engine.eq.set(0, 'freq', 400);
+  // Settled first, and the bypass measured straight after the flat curve it
+  // is compared with: measured last, after the boost, it read ~2 dB off the
+  // first strike of the block every run, which is the block's order and not
+  // the EQ (alternated, the two agree to half a decibel).
+  await settle();
   out.eqFlat = await holdAndMeasure(100);
-  engine.eq.set(0, 'gain', 12);
-  out.eqBoost = await holdAndMeasure(100);
   engine.eq.setEnabled(false);
   out.eqBypass = await holdAndMeasure(100);
   engine.eq.setEnabled(true);
+  engine.eq.set(0, 'gain', 12);
+  out.eqBoost = await holdAndMeasure(100);
   engine.eq.set(0, 'gain', 0);
   engine.eq.set(0, 'freq', 90);
   engine.res.enabled = eqRes;
@@ -454,7 +381,6 @@ console.log('  60 ms in, no attack envelope   :', f(r.attackFast));
 console.log('  60 ms in, 800 ms shaped attack :', f(r.attackSlow));
 console.log('  part-way through a "grip" fall :', f(r.fallGrip));
 console.log('  ...and through a "fast" fall   :', f(r.fallFast));
-console.log('  hold law, 0 s / full / key-off :', r.holdShort.toFixed(3), '/', r.holdLong.toFixed(3), '/', r.holdKeyNoiseOff.toFixed(3));
 console.log('  damper gain, 60 ms hold        :', f(r.relShortHold));
 console.log('  damper gain, 900 ms hold       :', f(r.relLongHold), `(${(20 * Math.log10(r.relLongHold / r.relShortHold)).toFixed(1)} dB)`);
 console.log('  ...with that key trimmed 40 dB :', f(r.relPerKey), `(${(20 * Math.log10(r.relPerKey / r.relShortHold)).toFixed(1)} dB)`);
@@ -467,14 +393,6 @@ console.log('');
 console.log('  C4 inside a range trimmed 40dB :', f(r.octTarget));
 console.log('  C5, outside that range         :', f(r.octNeighbour));
 console.log('  C4 once the range is cleared   :', f(r.octRestored));
-console.log('  +12 dB range, inside it        :', r.featherInside.toFixed(1), 'dB');
-console.log('  biggest neighbour step, by fade:', r.featherLadder.map((v, i) => `${[0, 3, 6, 10, 14][i]}:${v}`).join('  '), 'dB');
-console.log('  attack front, aligned / raw    :', r.alignSpread.toFixed(2), '/', r.rawSpread.toFixed(1),
-  `ms of spread (target ${r.alignTarget} ms)`);
-console.log('  top-string resonance, drawn -18:',
-  (20 * Math.log10(Math.max(r.resCurveTop, 1e-12))).toFixed(1), 'dB');
-console.log('  middle strings, same pass      :',
-  (20 * Math.log10(Math.max(r.resCurveMid, 1e-12))).toFixed(2), 'dB (should be 0)');
 console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
 console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
 console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
@@ -499,8 +417,6 @@ const checks = [
   ['values finite', r.finite],
   ['the attack envelope holds the note back', r.attackSlow < r.attackFast * 0.2],
   ['the damper-fall shape changes the fall', r.fallGrip > r.fallFast * 2],
-  ['the hold law falls with hold time', r.holdLong < r.holdShort * 0.6],
-  ['key noise opts out of the hold law', Math.abs(r.holdKeyNoiseOff - 1) < 1e-6],
   ['a long-held key gives a quieter release', r.relLongHold < r.relShortHold * 0.3],
   ['per-key release level works', Math.abs(20 * Math.log10(r.relPerKey / r.relShortHold) + 40) < 1],
   ['the key thud sits well under the note', 20 * Math.log10(r.keyThudGain / r.ffNoteGain) < -28],
@@ -510,17 +426,6 @@ const checks = [
   ['a range edit moves its own keys', r.octTarget < r.octRestored * 0.2],
   ['...and leaves keys outside it alone', r.octNeighbour > r.octRestored * 0.4],
   ['...and is undone by setting it back', r.octRestored > r.octTarget * 5],
-  ['a feathered range still reaches full value inside', Math.abs(r.featherInside - 12) < 0.1],
-  ['...and a fade cuts the edge step fourfold', r.featherStep <= r.hardStep / 4],
-  ['...with a hard edge dropping it all at once', r.hardStep > 11],
-  ['...and a wider fade always being gentler', r.featherMonotonic],
-  ['aligned attacks land together', r.alignSpread < 0.5],
-  ['...which the recordings do not do on their own', r.rawSpread > 5],
-  ['...and per-key sample start moves one key', Math.abs(r.trimMoved - 20) < 0.5 && r.trimNeighbour < 0.01],
-  ['...and cannot skip past half the recording', r.trimClamped <= 2 + 1e-9],
-  ['the resonance curve quietens the keys it covers', r.resCurveTop < 0.2],
-  // A decibel of slack: the two passes are measured a beat apart in real time.
-  ['...and leaves the keys it does not alone', Math.abs(20 * Math.log10(r.resCurveMid)) < 1],
   ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
   ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],
