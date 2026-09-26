@@ -231,8 +231,11 @@ is per-key numbers, so the renderer can apply it itself:
    only exists while `setTone` or `setPartialFilter` is gliding (tau 20-50
    ms). Measure the difference in dB on a recorded glide and present it;
    default to per-sample if the user does not want any change.
-   **Decided (user, 2026-09-26): every 32 samples while gliding**, taken at
-   the middle of each 32-sample run; constant filters are exact.
+   **Decided (user, 2026-09-26): every 32 samples while gliding.** Measured
+   against Chrome on a glide: stepping the coefficients every 32 samples is
+   -47 dB (partial HP) / -40 dB (tone LP) peak difference; moving them in a
+   straight line between readings 32 samples apart is -95 / -78 dB, for five
+   more multiply-adds a sample -- so that is what the renderer does.
 6. **Wire the engine**:
    - `engine.renderer` chooses the path in noteOn / kill / release, and
      `resonance.start` / `chain` / `release` / `cut` / `revive` /
@@ -272,6 +275,31 @@ is per-key numbers, so the renderer can apply it itself:
 - Tempo of messages: late messages are clamped to "now" exactly like native
   params, so a loaded main thread gives the same smooth-but-late behaviour
   the engine relies on (see the comments in noteOn about `rel`).
+
+## Progress (2026-09-26)
+
+- Stage A skipped (stage 0.2). Stage B steps 1-4 and 6 done, behind
+  `engine.renderer` (default false): `stream-worklet.js` Voice / piano-voices,
+  `automation.js`, `voices.js`, wiring in engine.js and resonance.js.
+- `automation-test.mjs` (in sampled:test): the JS timeline against Chrome's
+  AudioParam on the engine's own call patterns: identical or within -126 dB.
+- `ab-renderer.mjs` (`npm run sampled:ab:renderer`, step 7): one scripted
+  performance through the whole engine, renderer off twice and on twice.
+  Making two runs of the SAME path agree took: a warm-up run (noises load on
+  first use), waiting for the library, Math.random seeded only inside engine
+  calls, event times off the sample grid, a recorder that counts its own
+  frames, and `audioNow()` for fade holds. With resonance off the renderer is
+  within -134 dB of the node-per-voice path; with resonance and the partial
+  filter fixed open, within -99 dB.
+- Found on the way, fixed on the DEFAULT path too:
+  - holdFade stepped the gain the moment it was called (Chrome's
+    cancelScheduledValues takes the whole running curve away): 0.1 dB on a
+    slow resonance fall, up to 6 dB on a quick damper fall. Now the rest of
+    the fall up to the hold is put back as a curve of its own.
+  - Chrome's `currentFrame` is sometimes not moved on between two quanta (1-10
+    times per 13 s under load here); voices count their own frames now.
+- Not exact: Chrome's biquad (-79 dB at 10 Hz, -104 dB at 220 Hz, -139 dB at
+  5.2 kHz against the direct form 1 here: Chrome must compute it another way).
 
 ## Order of work after compaction
 1. Stage 0 (measure, write the numbers here, tell the user).
