@@ -110,8 +110,110 @@ refresh();
 check('...and turns a string off at its floor', strength(104) === 0 && strength(90) > 0,
   `${strength(104)} at the floor`);
 
+// --- sympathetic resonance: what answers, how loud, and for how long --------
+// The real engine on the real manifest, with a stand-in clock and a stand-in
+// for start() that records the voice instead of making audio nodes. So this
+// checks the decisions -- which strings, at what gain, kept or let go -- not
+// the sound, which browser-test.mjs listens to.
+const clock = { currentTime: 0 };
+const lib = { m, layers: m.layers, note: (k) => m.notes[k] };
+const mkRes = (opts = {}) => {
+  const r = new Resonance(clock, lib, new Curves(), () => null, new Envelopes());
+  Object.assign(r, { symAmount: 0.8, sbAmount: 0, selfAmount: 0, maxVoices: 32 }, opts);
+  r.started = [];
+  const param = { setTargetAtTime() {}, setValueCurveAtTime() {}, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {} };
+  r.start = function (kind, midi, g, when, fadeIn, k = 1) {
+    const offset = this.startAt;
+    const v = { kind, midi, key: `n${midi}`, gain: g, unit: 1, t0: when, offset, db0: this.decayDb(midi, offset),
+      drivers: new Set(), k, lvl: { gain: param }, rel: { gain: param }, lp: { frequency: param }, hp: [{ frequency: param }],
+      src: { stop() {}, resume() {} } };
+    this.started.push(v);
+    return v;
+  };
+  return r;
+};
+const sym = (r) => [...r.voices.values()].filter((v) => v.kind === 'sym');
+const gainOf = (r, midi) => r.voices.get(`sym:${midi}`)?.gain ?? 0;
+
+// Partial coincidence: from C3, a fifth and an octave answer, a tritone barely.
+{
+  const r = mkRes(), row = (48 - r.lo) * r.n, w = (k) => r.W[row + k - r.lo];
+  check('resonance: a fifth couples more than a tritone', w(55) > 4 * w(54), `${w(55).toExponential(1)} vs ${w(54).toExponential(1)}`);
+  check('resonance: so does an octave', w(60) > 4 * w(54), `${w(60).toExponential(1)} vs ${w(54).toExponential(1)}`);
+}
+// Only free strings answer, and never the struck one.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([48, 60, 64, 67]));
+  r.excite(48, 110, 0);
+  const got = sym(r).map((v) => v.midi).sort((a, b) => a - b);
+  check('resonance: the undamped strings answer a strike', got.length > 0 && got.every((k) => [60, 64, 67].includes(k)), got.join(' ') || 'none');
+  const none = mkRes(); none.setUndamped(new Set()); none.excite(48, 110, 0);
+  check('...and with every damper down, nothing does', none.voices.size === 0, `${none.voices.size} voices`);
+  const off = mkRes({ enabled: false }); off.setUndamped(new Set([60, 64, 67])); off.excite(48, 110, 0);
+  check('...nor with resonance switched off', off.voices.size === 0, `${off.voices.size} voices`);
+}
+// Harder strikes drive the strings harder, by velocity^VEL_EXP (1.75).
+{
+  const a = mkRes(), b = mkRes();
+  for (const r of [a, b]) r.setUndamped(new Set([67]));
+  a.excite(48, 120, 0); b.excite(48, 40, 0);
+  const ratio = gainOf(a, 67) / gainOf(b, 67);
+  check('resonance: a harder strike drives a string harder', Math.abs(ratio - Math.pow(3, 1.75)) < 1e-9, `x${ratio.toFixed(2)}`);
+}
+// A string rings for as long as the note driving it sounds, then is let go.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([60, 64, 67]));
+  r.excite(48, 110, 0);
+  const n = r.voices.size;
+  clock.currentTime = 1; r.tick(0.04, [{ midi: 48 }]);
+  check('resonance: a string rings on while its driver sounds', r.voices.size === n && n > 0, `${r.voices.size} of ${n}`);
+  clock.currentTime = 1.5; r.tick(0.04, []);
+  check('...and is let go once it stops', r.voices.size === 0 && r.fading.size === n, `${r.voices.size} left, ${r.fading.size} fading`);
+  clock.currentTime = 0;
+}
+// A damper landing on a ringing string stops that string alone.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([60, 67]));
+  r.excite(48, 110, 0);
+  r.setUndamped(new Set([67]));
+  check('resonance: a damper landing stops its own string', !r.voices.has('sym:60') && r.voices.has('sym:67'),
+    sym(r).map((v) => v.midi).join(' '));
+}
+// Struck again under the pedal, a ringing string is pushed harder, not restarted.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([67]));
+  r.excite(48, 100, 0);
+  const g1 = gainOf(r, 67), starts = r.started.length;
+  r.excite(48, 100, 0.2);
+  check('resonance: a second strike tops a string up', gainOf(r, 67) > g1 * 1.2 && r.started.length === starts,
+    `x${(gainOf(r, 67) / g1).toFixed(2)}, ${r.started.length - starts} restarts`);
+}
+// Voices are capped, and the loudest candidates win the slots.
+{
+  const free = new Set(); for (let k = 49; k <= 96; k++) free.add(k);
+  const all = mkRes(); all.setUndamped(free); all.excite(48, 110, 0);
+  const capped = mkRes({ maxVoices: 3 }); capped.setUndamped(free); capped.excite(48, 110, 0);
+  const loudest = sym(all).sort((a, b) => b.gain - a.gain).slice(0, 3).map((v) => v.midi).sort((a, b) => a - b);
+  const kept = sym(capped).map((v) => v.midi).sort((a, b) => a - b);
+  check('resonance: voices are capped at maxVoices', capped.voices.size === 3 && all.voices.size > 3, `${capped.voices.size} of ${all.voices.size}`);
+  check('...keeping the loudest', kept.join() === loudest.join(), kept.join(' '));
+}
+// The soundboard carries to neighbours pedal or not, falling with distance.
+{
+  const r = mkRes({ symAmount: 0, sbAmount: 0.3 });
+  r.setUndamped(new Set());
+  r.excite(60, 110, 0);
+  const near = r.voices.get('sb:61')?.gain ?? 0, far = r.voices.get('sb:72')?.gain ?? 0;
+  check('resonance: the soundboard answers with the dampers down', r.voices.size > 0, `${r.voices.size} voices`);
+  check('...more strongly near the key than far from it', near > far && far >= 0, `${near.toFixed(3)} vs ${far.toFixed(3)}`);
+}
+
 console.log('');
-for (const [name, ok, got] of checks) console.log(`  ${ok ? 'pass' : 'FAIL'}  ${name.padEnd(50)} ${got}`);
+for (const [name, ok, got] of checks) console.log(`  ${ok ? 'pass' : 'FAIL'}  ${name.padEnd(58)} ${got}`);
 const ok = checks.every((c) => c[1]);
 console.log(ok ? '\n  UNIT CHECK PASSED\n' : '\n  UNIT CHECK FAILED\n');
 process.exit(ok ? 0 : 1);
