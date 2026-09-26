@@ -27,11 +27,12 @@ Tests:
 
 | command | time | what |
 |---|---|---|
-| `npm run sampled:test` | ~40 s | unit.mjs (Node, <1 s: alignment, ranges, hold law, resonance decisions) + selftest + smoke.mjs (one page load: notes, pedal, 22 streams no underrun, killed decoders sample-identical) |
+| `npm run sampled:test` | ~40 s | unit.mjs (Node, <1 s: alignment, ranges, hold law, resonance decisions) + automation-test.mjs (~2 s: the JS AudioParam timeline against Chrome's, offline) + selftest + smoke.mjs (one page load: notes, pedal, 22 streams no underrun, killed decoders sample-identical) |
 | `npm run sampled:test:full` | ~90 s | the above + browser-test.mjs (detailed real-time audio checks) |
 | `npm run sampled:perf` | ~50 s | performance: dropouts under load (below) |
 | `npm run sampled:stress` | ~25 s/load | underruns when playing straight after start |
 | `npm run sampled:perf -- --micro` | ~3 min | capacity per voice chain |
+| `npm run sampled:perf -- --nodes` | ~15 min | idle / churned voice nodes, one-node JS renderer prototype (PLAN-voices.md stage 0) |
 | `npm run sampled:ab [-- REF]` | ~60 s | raw voices bit-identical to REF (default HEAD)? |
 
 All green at adb7ec4. `sampled:verify` needs ffmpeg (not in this container).
