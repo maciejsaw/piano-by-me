@@ -301,6 +301,35 @@ is per-key numbers, so the renderer can apply it itself:
 - Not exact: Chrome's biquad (-79 dB at 10 Hz, -104 dB at 220 Hz, -139 dB at
   5.2 kHz against the direct form 1 here: Chrome must compute it another way).
 
+### Results so far (2026-09-26, this container)
+
+Capacity (`perf --micro`, one run, voices held with no dropouts):
+
+| | node per voice | renderer | |
+|---|---|---|---|
+| struck note chain | 41 | 315 | 7.7x |
+| resonance chain, fixed filters | 18 | 62 | 3.4x |
+| resonance chain, gliding filters | 27 | 62 | 2.3x |
+
+Ladder (2 interleaved runs each; this container's background drops make it
+noisy): scores off 6/0, 3/0 vs on 3/1, 3/1 (no pedal / pedal). Audio lost at
+the failing levels is lower with the renderer (pedal: 12-79 ms vs 20-219 ms),
+it gets to higher levels before stopping, and noteOn costs 0.2-0.6 ms of main
+thread instead of 0.7-8 ms.
+
+Sound (`sampled:ab:renderer`): within -86 dB of the node-per-voice path over
+the whole performance, EXCEPT while a resonance string's filter glides
+(setPartialFilter, setTone): there -41 dB. That one is Chrome's: a
+BiquadFilterNode whose frequency glides on a STEREO input runs the glide
+about twice as fast as asked (each channel's kernel moves the setTarget on;
+mono is exact), and its two channels get different filters. The renderer
+glides as written. Checked: isolated, the renderer is -78..-85 dB from an
+exact per-sample filter; Chrome is -2..-4 dB from it and -34..-40 dB from
+the same glide at half the time constant.
+
+Open questions for the user (step 8): the glide (as written, or copy
+Chrome's doubling), and whether to switch the default.
+
 ## Order of work after compaction
 1. Stage 0 (measure, write the numbers here, tell the user).
 2. Stage A if 0.2 says creation hurts, otherwise skip it.

@@ -230,6 +230,7 @@ if (process.env.DEBUG) {
   let shown = 0;
   for (let i = 0; i < Math.max(pb.length, pb2.length) && shown < 10; i++) if (pb[i] !== pb2[i]) { console.log(`  #${i}: B  [${pb[i]}]\n        B2 [${pb2[i]}]`); shown++; }
   console.log(`  ops/plays: B ${pb.length}, B2 ${pb2.length}`);
+  if (process.env.DEBUG === 'ops') for (const l of pb) if (/^op (c|cx|p c) /.test(l)) console.log('   ', l.slice(0, 160));
 }
 const dAA = perQ(A, A2), dBB = perQ(B, B2), dAB = perQ(A, B), dA2B = perQ(A2, B);
 const db = (d) => (d ? (20 * Math.log10(d / peak)).toFixed(1) : '-inf');
