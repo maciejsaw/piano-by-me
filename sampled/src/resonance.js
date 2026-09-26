@@ -327,8 +327,12 @@ export class Resonance {
    * is weighed against them for a slot; then loudest first.
    */
   order(want) {
-    const on = (w) => (this.voices.has(`${w.kind}:${w.target}`) || this.tailOf(`${w.kind}:${w.target}`) ? 1 : 0);
-    want.sort((a, b) => on(b) - on(a) || b.g - a.g);
+    const t = this.soon();
+    for (const w of want) {
+      const id = `${w.kind}:${w.target}`;
+      w.on = this.voices.has(id) || this.tailOf(id, t) ? 1 : 0;
+    }
+    want.sort((a, b) => b.on - a.on || b.g - a.g);
   }
 
   /** A candidate's gain: its coupling `g`, at velocity `vel`, on the string's own level. */
@@ -522,8 +526,15 @@ export class Resonance {
 
   /** Roughly how loud a voice is now: its gain, down its recording's own decay. */
   estimate(v, t) {
+    // Asked for every voice by each new string of a strike (makeRoom), all at
+    // the strike's time: worked out once per voice, again when anything it
+    // depends on has moved.
+    const c = v.est;
+    if (c && c.t === t && c.gain === v.gain && c.level === v.level && c.layer === this.layer) return c.e;
     const age = Math.max(0, t - v.t0);
-    return v.gain * (v.level ?? 1) * Math.pow(10, (this.decayDb(v.midi, v.offset + age) - v.db0) / 20);
+    const e = v.gain * (v.level ?? 1) * Math.pow(10, (this.decayDb(v.midi, v.offset + age) - v.db0) / 20);
+    v.est = { t, gain: v.gain, level: v.level, layer: this.layer, e };
+    return e;
   }
 
   /** A note's measured decay, dB below its peak, `t` s in, for the layer played. */
