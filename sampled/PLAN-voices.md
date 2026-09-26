@@ -86,8 +86,8 @@ within one run.
 | B | prototype + 3 JS biquads, coefficients every 128 samples while moving | **93** |
 | B | prototype + 3 JS biquads, coefficients EVERY sample, always moving | < 8 |
 
-Churn (voice node + 3 gains, 50 ms each, created K per second, 8 s; lost ms
-and drops, two runs; "0/s" is 5 voices held with no churn, the background):
+Churn (voice node + 3 gains, 50 ms each, created K per second; ms lost
+per 8 s in run 1 / run 2; "0/s" is 5 voices held with no churn, the background):
 
 | background | 0/s | 10/s | 30/s | 100/s |
 |---|---|---|---|---|
