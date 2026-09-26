@@ -312,16 +312,15 @@ const Q = 128;
 const f32 = Math.fround;
 
 /**
- * A biquad as Chrome runs one on Linux (Biquad::Process): direct form 1,
- * double coefficients and state, each output rounded to single precision.
- * Coefficients from the spec's formulas, as Chrome computes them, with Q in
- * dB. One channel.
+ * A biquad, one channel: direct form 1 with double coefficients and state,
+ * each output rounded to single precision, like Chrome's Biquad::Process
+ * (within -100 dB of Chrome's BiquadFilterNode above 200 Hz, -79 dB at
+ * 10 Hz). `c` is [b0, b1, b2, a1, a2], normalised.
  */
 class Biquad {
-  constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.reset(); }
-  reset() { this.x1 = 0; this.x2 = 0; this.y1 = 0; this.y2 = 0; }
-  run(buf, from, to) {
-    const { b0, b1, b2, a1, a2 } = this;
+  constructor() { this.x1 = 0; this.x2 = 0; this.y1 = 0; this.y2 = 0; }
+  run(buf, from, to, c) {
+    const b0 = c[0], b1 = c[1], b2 = c[2], a1 = c[3], a2 = c[4];
     let { x1, x2, y1, y2 } = this;
     for (let i = from; i < to; i++) {
       const x = buf[i];
@@ -329,28 +328,44 @@ class Biquad {
       buf[i] = y;
       x2 = x1; x1 = x; y2 = y1; y1 = y;
     }
+    this.end(x1, x2, y1, y2);
+  }
+  /** The same with coefficients moving in a straight line from `c` (at `from`) to `d` (at `to`). */
+  glide(buf, from, to, c, d) {
+    const n = to - from;
+    const s0 = (d[0] - c[0]) / n, s1 = (d[1] - c[1]) / n, s2 = (d[2] - c[2]) / n, s3 = (d[3] - c[3]) / n, s4 = (d[4] - c[4]) / n;
+    let { x1, x2, y1, y2 } = this;
+    for (let i = from, j = 0; i < to; i++, j++) {
+      const x = buf[i];
+      const y = f32((c[0] + s0 * j) * x + (c[1] + s1 * j) * x1 + (c[2] + s2 * j) * x2 - (c[3] + s3 * j) * y1 - (c[4] + s4 * j) * y2);
+      buf[i] = y;
+      x2 = x1; x1 = x; y2 = y1; y1 = y;
+    }
+    this.end(x1, x2, y1, y2);
+  }
+  end(x1, x2, y1, y2) {
     // A silent input with the tail down among the subnormals: flushed, as Chrome does.
     if (x1 === 0 && x2 === 0 && (y1 !== 0 || y2 !== 0) && Math.abs(y1) < 1.1754943508222875e-38 && Math.abs(y2) < 1.1754943508222875e-38) { y1 = 0; y2 = 0; }
     this.x1 = x1; this.x2 = x2; this.y1 = y1; this.y2 = y2;
   }
 }
 
-/** Set `bs` (biquads of one filter, a channel each) to a high- or low-pass at `hz`, Q `q` dB. */
-function passCoefs(bs, high, hz, q) {
+/** A high- or low-pass at `hz`, Q `q` dB, into `c`: the spec's formulas, as Chrome computes them. */
+function passCoefs(c, high, hz, q) {
   const cutoff = Math.max(0, Math.min(1, hz / (0.5 * sampleRate)));
-  let b0, b1, b2, a1, a2;
-  if (cutoff === 1) { b0 = high ? 0 : 1; b1 = b2 = a1 = a2 = 0; }
+  if (cutoff === 1) { c[0] = high ? 0 : 1; c[1] = c[2] = c[3] = c[4] = 0; }
   else if (cutoff > 0) {
     const theta = Math.PI * cutoff, alpha = Math.sin(theta) / (2 * Math.pow(10, q / 20)), cosw = Math.cos(theta);
     const beta = high ? (1 + cosw) / 2 : (1 - cosw) / 2, a0 = 1 + alpha;
-    b0 = beta / a0; b1 = (high ? -2 : 2) * beta / a0; b2 = beta / a0; a1 = -2 * cosw / a0; a2 = (1 - alpha) / a0;
-  } else { b0 = high ? 1 : 0; b1 = b2 = a1 = a2 = 0; }
-  for (const b of bs) { b.b0 = b0; b.b1 = b1; b.b2 = b2; b.a1 = a1; b.a2 = a2; }
+    c[0] = beta / a0; c[1] = (high ? -2 : 2) * beta / a0; c[2] = beta / a0; c[3] = -2 * cosw / a0; c[4] = (1 - alpha) / a0;
+  } else { c[0] = high ? 1 : 0; c[1] = c[2] = c[3] = c[4] = 0; }
 }
 
-// Moving filter frequencies are read once per this many samples, at the
-// middle of each run (the user's choice: Chrome recomputes every sample,
-// which in JS costs more than the voices).
+// A moving filter frequency is read every this many samples, and the
+// coefficients go in a straight line between one reading and the next (the
+// user's choice; Chrome recomputes them every sample, which in JS costs more
+// than the voices do). Within -78 dB of Chrome on a tone glide, -95 dB on the
+// partial filter's.
 const FILTER_RUN = 32;
 const HP_Q = f32(Math.SQRT1_2), LP_Q = f32(0.5);
 
@@ -366,6 +381,8 @@ class Chain {
     this.freq = [new Timeline(hp), new Timeline(hp), new Timeline(lp)];
     this.bq = [0, 1, 2].map(() => [new Biquad(), new Biquad()]);
     this.hz = [NaN, NaN, NaN];
+    this.c = [0, 1, 2].map(() => new Float64Array(5));      // coefficients at this.hz
+    this.d = new Float64Array(5);
     this.fv = new Float32Array(Q);
     this.fed = false;             // input this quantum
     this.ringing = false;         // output last quantum
@@ -374,19 +391,23 @@ class Chain {
   /** Filter this quantum's input (frames from f0) into the strip. */
   run(strip, f0) {
     if (!this.fed && !this.ringing) return;
-    const { L, R } = this;
+    const { L, R, d } = this;
     for (let k = 0; k < 3; k++) {
-      const tl = this.freq[k], bq = this.bq[k], high = k < 2, q = high ? HP_Q : LP_Q;
-      const c = tl.fill(this.fv, f0, Q, sampleRate);
-      if (c === c) {
-        const hz = f32(c);
-        if (hz !== this.hz[k]) { this.hz[k] = hz; passCoefs(bq, high, hz, q); }
-        bq[0].run(L, 0, Q); bq[1].run(R, 0, Q);
+      const tl = this.freq[k], bq = this.bq[k], c = this.c[k], high = k < 2, q = high ? HP_Q : LP_Q;
+      const v = tl.fill(this.fv, f0, Q, sampleRate);
+      if (v === v) {
+        const hz = f32(v);
+        if (hz !== this.hz[k]) { this.hz[k] = hz; passCoefs(c, high, hz, q); }
+        bq[0].run(L, 0, Q, c); bq[1].run(R, 0, Q, c);
       } else {
+        if (this.hz[k] !== this.hz[k]) { this.hz[k] = f32(this.fv[0]); passCoefs(c, high, this.hz[k], q); }
         for (let i = 0; i < Q; i += FILTER_RUN) {
-          const hz = f32(this.fv[i + (FILTER_RUN >> 1)]);
-          if (hz !== this.hz[k]) { this.hz[k] = hz; passCoefs(bq, high, hz, q); }
-          bq[0].run(L, i, i + FILTER_RUN); bq[1].run(R, i, i + FILTER_RUN);
+          const j = i + FILTER_RUN;
+          const hz = f32(j < Q ? this.fv[j] : tl.valueAt((f0 + Q) / sampleRate));
+          if (hz === this.hz[k]) { bq[0].run(L, i, j, c); bq[1].run(R, i, j, c); continue; }
+          passCoefs(d, high, hz, q);
+          bq[0].glide(L, i, j, c, d); bq[1].glide(R, i, j, c, d);
+          c.set(d); this.hz[k] = hz;
         }
       }
     }
