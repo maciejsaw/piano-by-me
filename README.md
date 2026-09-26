@@ -26,9 +26,13 @@ npm run bench             # modelled: CPU cost vs polyphony and quality
 npm run test:browser      # modelled: worklet in real Chromium
 npm run render            # modelled: demo WAVs into modelled/renders/
 
+npm run sampled:test      # sampled, fast (~45 s): unit + selftest + smoke, below
+npm run sampled:unit      # sampled: the engine's arithmetic, in Node (<1 s)
 npm run sampled:selftest  # sampled: does the repitch do what it claims?
+npm run sampled:smoke     # sampled: does it play and stream cleanly, in a real browser?
+npm run sampled:test:full # sampled, slow: the above plus the detailed audio checks
+npm run sampled:stress    # sampled, slow: how often playing straight after start glitches
 npm run sampled:verify    # sampled: decode the built library and measure it
-npm run sampled:test      # sampled: does it play, in a real browser?
 npm run sampled:render -- performance.mid   # -> sampled/renders/
 npm run sampled:fetch && npm run sampled:build   # rebuild the library
 ```
