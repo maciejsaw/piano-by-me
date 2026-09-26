@@ -1,6 +1,6 @@
 // How much can the sampled piano play before it drops out?
 //
-//   npm run sampled:perf [-- --json out.json] [-- --setup "js"]
+//   npm run sampled:perf [-- --json out.json] [-- --setup "js"] [-- --micro]
 //
 // Loads the page, waits until every key and every head is in, then climbs a
 // ladder: at each level a chord is struck over and over for LEVEL_MS, with
@@ -44,7 +44,7 @@ const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CHROME = [process.env.CHROMIUM, '/opt/pw-browsers/chromium'].find((p) => p && existsSync(p));
 const PORT = process.env.PORT || '8143';
 const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
-const JSON_OUT = arg('--json'), SETUP = arg('--setup');
+const JSON_OUT = arg('--json'), SETUP = arg('--setup'), MICRO = process.argv.includes('--micro');
 const LEVELS = 20, LEVEL_MS = 1600, STOP_AFTER = 3, FAIL_MS = 10;
 
 const server = spawn(process.execPath, [join(REPO, 'tools', 'serve.mjs')], { env: { ...process.env, PORT }, stdio: 'ignore' });
@@ -64,10 +64,10 @@ await page.waitForFunction(() => window.piano, null, { timeout: 30000 });
 await page.waitForFunction(() => window.piano.lib.keysReady() >= 88, null, { timeout: 120000 });
 await page.waitForFunction(() => window.piano.lib.streamer.headsBundle !== null, null, { timeout: 120000 });
 
-const results = await page.evaluate(async ({ setup, LEVELS, LEVEL_MS, STOP_AFTER, FAIL_MS }) => {
-  const { ctx, engine, lib } = window.piano;
-  if (setup) new Function('engine', 'piano', setup)(engine, window.piano);
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// The dropout probe, shared by both modes: installs itself in the page as
+// window.__probe() -> Promise<{ lost, drops }> since the last call.
+await page.evaluate(async () => {
+  const { ctx } = window.piano;
 
   const src = `
     class PerfProbe extends AudioWorkletProcessor {
@@ -96,7 +96,16 @@ const results = await page.evaluate(async ({ setup, LEVELS, LEVEL_MS, STOP_AFTER
   const probe = new AudioWorkletNode(ctx, 'perf-probe');
   const mute = ctx.createGain(); mute.gain.value = 0;
   probe.connect(mute).connect(ctx.destination);
-  const readProbe = () => new Promise((r) => { probe.port.onmessage = (e) => r(e.data); probe.port.postMessage(0); });
+  window.__probe = () => new Promise((r) => { probe.port.onmessage = (e) => r(e.data); probe.port.postMessage(0); });
+});
+
+if (MICRO) await micro();
+
+const results = MICRO ? [] : await page.evaluate(async ({ setup, LEVELS, LEVEL_MS, STOP_AFTER, FAIL_MS }) => {
+  const { ctx, engine, lib } = window.piano;
+  if (setup) new Function('engine', 'piano', setup)(engine, window.piano);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const readProbe = window.__probe;
 
   // Every sample voice alive, fading ones included: what the audio thread runs.
   const { StreamSource } = await import('/sampled/src/stream.js');
@@ -184,3 +193,77 @@ for (const l of results) {
 if (errors.length) console.log(`  page errors: ${errors.join(' | ')}`);
 console.log('');
 if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ at: new Date().toISOString(), setup: SETUP, levels: LEVELS, results }, null, 2));
+
+// --micro: what one voice costs the audio thread, by chain. N silent voices
+// of a chain are started (real streams on real keys, output muted), held
+// for a second, and the probe read; N goes up by half each step until the
+// probe fails. The N reached is the chain's capacity on this machine.
+//   node      the voice worklet alone
+//   note      + level, attack, release gains (a struck note's chain)
+//   res       + 2 high-pass + 1 low-pass biquad, fixed frequencies (a resonance voice)
+//   res-auto  res, with the filter frequencies moved by setTargetAtTime as
+//             the resonance does (partial filter, tone)
+async function micro() {
+  const rows = await page.evaluate(async ({ FAIL_MS }) => {
+    const { ctx, lib } = window.piano;
+    const { StreamSource } = await import('/sampled/src/stream.js');
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const readProbe = window.__probe;
+    const sink = ctx.createGain(); sink.gain.value = 0; sink.connect(ctx.destination);
+    const keys = [];
+    for (let m = 21; m <= 108; m++) { const b = lib.best(m, lib.layers[0]); if (b) keys.push(b); }
+    const chain = (kind, src, i) => {
+      let at = src.node;
+      const nodes = [];
+      const link = (n) => { at.connect(n); at = n; nodes.push(n); };
+      if (kind !== 'node') {
+        if (kind.startsWith('res')) {
+          for (let j = 0; j < 2; j++) { const h = ctx.createBiquadFilter(); h.type = 'highpass'; h.Q.value = Math.SQRT1_2; h.frequency.value = 10; link(h); }
+          const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.5; lp.frequency.value = 3400; link(lp);
+          if (kind === 'res-auto') {
+            const t = ctx.currentTime;
+            nodes[0].frequency.setTargetAtTime(200 + i, t, 0.05); nodes[1].frequency.setTargetAtTime(200 + i, t, 0.05);
+            lp.frequency.setTargetAtTime(3400, t, 0.02);
+          }
+          link(ctx.createGain()); link(ctx.createGain());
+        } else { link(ctx.createGain()); link(ctx.createGain()); link(ctx.createGain()); }
+      }
+      at.connect(sink);
+      return nodes;
+    };
+    const out = [];
+    for (const kind of ['node', 'note', 'res', 'res-auto']) {
+      let best = 0;
+      for (let n = 8; n <= 512; n = Math.ceil(n * 1.5)) {
+        const trial = async () => {
+        const voices = [];
+        for (let i = 0; i < n; i++) {
+          const b = keys[i % keys.length];
+          const src = new StreamSource(lib.streamer, b.key, b.frames);
+          const nodes = chain(kind, src, i);
+          src.start(ctx.currentTime + 0.05, 0);
+          voices.push({ src, nodes });
+        }
+        await wait(400); await readProbe();         // creation is not the load being measured
+        await wait(1000);
+        const p = await readProbe();
+        for (const v of voices) { v.src.stop(); for (const x of v.nodes) x.disconnect(); }
+        await wait(500); await readProbe();
+        return p;
+        };
+        // As in the ladder: a failure counts only if it happens twice running.
+        let p = await trial();
+        if (p.lost >= FAIL_MS) p = await trial();
+        const ok = p.lost < FAIL_MS;
+        console.log(`PERF   ${kind.padEnd(8)} ${String(n).padStart(3)} voices  lost ${p.lost.toFixed(0).padStart(4)} ms  drops ${p.drops}${ok ? '' : '  FAIL'}`);
+        if (!ok) break;
+        best = n;
+      }
+      out.push({ kind, capacity: best });
+    }
+    return out;
+  }, { FAIL_MS });
+  console.log('');
+  for (const r of rows) console.log(`  CAPACITY ${r.kind.padEnd(8)} ${r.capacity} voices`);
+  if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ at: new Date().toISOString(), micro: rows }, null, 2));
+}
