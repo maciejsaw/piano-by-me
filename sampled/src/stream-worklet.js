@@ -153,6 +153,51 @@ class PianoVoice extends AudioWorkletProcessor {
     this.port.postMessage({ type: 'ended', underrun: this.underrun });
   }
 
+  /**
+   * Samples this.pos... into L/R[i, stop), at rate 1 from a whole-sample
+   * position: runs of the head or of a block copied as they are. The same
+   * numbers read() gives, sample for sample, underruns included.
+   */
+  copy(L, R, i, stop) {
+    let k = this.pos;
+    while (i < stop) {
+      if (k < this.hf) {
+        const h = this.head, m = Math.min(stop - i, this.hf - k);
+        for (let j = k << 1, e = i + m; i < e; i++, j += 2) { L[i] = h[j] * I16; R[i] = h[j + 1] * I16; }
+        k += m;
+        continue;
+      }
+      const q = this.q;
+      while (this.qi < q.length && k >= q[this.qi].start + q[this.qi].frames) this.qi++;
+      const b = q[this.qi];
+      if (b && k >= b.start) {
+        const a = k - b.start, m = Math.min(stop - i, b.frames - a);
+        L.set(b.L.subarray(a, a + m), i); R.set(b.R.subarray(a, a + m), i);
+        i += m; k += m;
+      } else {
+        // Not here: silence up to the next block that is, and counted.
+        const m = Math.min(stop - i, b ? b.start - k : stop - i);
+        L.fill(0, i, i + m); R.fill(0, i, i + m);
+        this.underrun += m;
+        i += m; k += m;
+      }
+    }
+    this.pos = k;
+    return i;
+  }
+
+  /** The fade-in over the samples just written, L/R[from, to). */
+  fade(L, R, from, to) {
+    const c = this.fadeCurve;
+    for (let i = from; i < to && this.fadeI < this.fadeN; i++) {
+      const u = this.fadeI++ / this.fadeN;
+      let w;
+      if (c) { const x = u * (c.length - 1), j = x | 0; w = c[j] + (c[Math.min(c.length - 1, j + 1)] - c[j]) * (x - j); }
+      else w = 0.5 - 0.5 * Math.cos(Math.PI * u);
+      L[i] *= w; if (R !== L) R[i] *= w;
+    }
+  }
+
   process(inputs, outputs, params) {
     if (this.state === 2) return false;
     const out = outputs[0];
@@ -171,26 +216,33 @@ class PianoVoice extends AudioWorkletProcessor {
     // The samples are 48 kHz; a context at another rate reads them faster or
     // slower to keep the pitch.
     const rate = params.playbackRate[0] * (48000 / sampleRate);
-    const last = this.total - 1;
-    for (; i < n; i++) {
-      if (f0 + i >= this.stopFrame || this.pos >= last) { this.finish(); return false; }
-      const p = this.pos, k = p | 0, fr = p - k;
-      this.read(k);
-      if (fr === 0) { L[i] = this.l; R[i] = this.r; }
-      else {
-        const l0 = this.l, r0 = this.r;
-        this.read(k + 1);
-        L[i] = l0 + (this.l - l0) * fr;
-        R[i] = r0 + (this.r - r0) * fr;
+    const fading = this.fadeI < this.fadeN, from = i;
+    // Where this quantum ends: at the stop, the end of the file, or n.
+    let end = n;
+    if (this.stopFrame < f0 + n) end = Math.max(i, this.stopFrame - f0);
+    if (rate === 1 && this.pos === Math.floor(this.pos) && R !== L) {
+      // Whole samples, straight through: copied in runs, not one by one.
+      const stop = Math.min(end, i + Math.max(0, this.total - 1 - this.pos));
+      i = this.copy(L, R, i, stop);
+      if (fading) this.fade(L, R, from, i);
+      if (i < n) { this.finish(); return false; }
+    } else {
+      const last = this.total - 1;
+      for (; i < n; i++) {
+        if (i >= end || this.pos >= last) break;
+        const p = this.pos, k = p | 0, fr = p - k;
+        this.read(k);
+        if (fr === 0) { L[i] = this.l; R[i] = this.r; }
+        else {
+          const l0 = this.l, r0 = this.r;
+          this.read(k + 1);
+          L[i] = l0 + (this.l - l0) * fr;
+          R[i] = r0 + (this.r - r0) * fr;
+        }
+        this.pos = p + rate;
       }
-      if (this.fadeI < this.fadeN) {
-        const c = this.fadeCurve, u = this.fadeI++ / this.fadeN;
-        let w;
-        if (c) { const x = u * (c.length - 1), j = x | 0; w = c[j] + (c[Math.min(c.length - 1, j + 1)] - c[j]) * (x - j); }
-        else w = 0.5 - 0.5 * Math.cos(Math.PI * u);
-        L[i] *= w; if (R !== L) R[i] *= w;
-      }
-      this.pos = p + rate;
+      if (fading) this.fade(L, R, from, i);
+      if (i < n) { this.finish(); return false; }
     }
     // Let go of blocks already played, now and then rather than per block.
     if (this.qi > 8) { giveBack(this.q.splice(0, this.qi)); this.qi = 0; }

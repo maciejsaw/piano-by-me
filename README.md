@@ -33,6 +33,8 @@ npm run sampled:smoke     # sampled: does it play and stream cleanly, in a real 
 npm run sampled:test:full # sampled, slow: the above plus the detailed audio checks
 npm run sampled:stress    # sampled, slow: how often playing straight after start glitches
 npm run sampled:perf      # sampled (30-90 s): how much it plays before dropouts (a score to raise)
+npm run sampled:perf -- --micro  # sampled (~3 min): what one voice costs the audio thread, by chain
+npm run sampled:ab        # sampled (~60 s): is every sample the same as at HEAD (or a REF)?
 npm run sampled:verify    # sampled: decode the built library and measure it
 npm run sampled:render -- performance.mid   # -> sampled/renders/
 npm run sampled:fetch && npm run sampled:build   # rebuild the library

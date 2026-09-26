@@ -31,6 +31,8 @@ Tests:
 | `npm run sampled:test:full` | ~90 s | the above + browser-test.mjs (detailed real-time audio checks) |
 | `npm run sampled:perf` | ~50 s | performance: dropouts under load (below) |
 | `npm run sampled:stress` | ~25 s/load | underruns when playing straight after start |
+| `npm run sampled:perf -- --micro` | ~3 min | capacity per voice chain |
+| `npm run sampled:ab [-- REF]` | ~60 s | raw voices bit-identical to REF (default HEAD)? |
 
 All green at adb7ec4. `sampled:verify` needs ffmpeg (not in this container).
 
@@ -105,33 +107,53 @@ before.json` (2-3 runs), make the change, same again, compare the median
 SCORE of each ladder and the live-voice counts. `npm run sampled:test` must
 stay green.
 
-### Step 1 -- find the per-voice cost (no code change to the piano)
-A micro-ramp in the same style (a `perf.mjs --micro` mode, <30 s): start N
-silent sample voices of one chain type, raise N (10, 20, 40, 80, 160...)
-until the probe fails; the N reached is that chain's capacity. Chains:
-  a. AudioWorkletNode (piano-voice) alone
-  b. + 3 gains (note chain)
-  c. + 2 high-pass + 1 low-pass biquad, static frequency (resonance chain)
-  d. c with a live `setTargetAtTime` on the filter frequencies
-This decides whether the fix is "fewer worklet nodes" or "no automated
-biquads". Record the capacities here.
+### Step 1 -- per-voice cost: DONE (`npm run sampled:perf -- --micro`)
+N silent voices of one chain, N x1.5 per step until the probe fails
+(twice running). Capacities in this container (3 runs, noisy):
 
-### Step 2 -- no-sound-change optimisations (can go ahead, then report)
-Depending on step 1:
-- If automated biquads dominate: after a `setTargetAtTime` settles, pin the
-  value with `cancelScheduledValues` + `setValueAtTime` (the value it has
-  reached), so the filter goes back to k-rate coefficients. Audibly
-  identical (the approach is complete to <0.1%). Verify with an A/B render
-  (below).
-- If worklet node count dominates: the pooled voice renderer -- one
-  AudioWorkletNode per KEY (88, created once, each feeding that key's strip
-  exactly as today) that mixes every sample voice on that string, with the
-  per-voice gains, fades and biquads computed inside. Routing stays
-  identical. Biggest refactor; needs the A/B render test first. Consider
-  an intermediate step: keep per-voice nodes but move resonance voices'
-  HP/HP/LP/lvl/rel into the voice worklet (1 node instead of 6).
-- Disconnect finished voices' native nodes explicitly on `onended` (they
-  are left for GC today).
+| chain | capacity | |
+|---|---|---|
+| empty AudioWorkletNode (no-op, for scale) | 140-210 | Chrome's fixed per-node cost |
+| voice worklet alone | 62 (58-90 after the loop rewrite, 58-67 before) | |
+| + 3 gains (note chain) | 41-62 | gains are nearly free |
+| + 2 HP + 1 LP biquad, fixed (resonance chain) | 27-41 | biquads ~ double a voice |
+| same, frequencies moving (setTargetAtTime) | 8-27 | only while moving: Chrome treats a converged target as constant |
+| resonance chain stopped, filters left connected | ~0 | Chrome idles them; disconnecting gains nothing |
+
+Conclusions: a voice's cost is ~1/3 Chrome's per-AudioWorkletNode
+overhead, ~2/3 the biquads + our JS. No single no-sound-change lever is
+big. **The ladder fails on voice COUNT** -- one key repeated every 800 ms,
+no pedal, runs 18-41 sample voices while the engine counts 1 note + 8
+resonance, because every strike starts fresh resonance voices while the
+last strike's are still fading (1.2-3 s). Lowering `maxVoices` to 16 does
+not move the score (fading voices are outside the cap); `sbAmount = 0`
+raises no-pedal from 1 to 6, pedal stays 0.
+
+### Step 2 -- no-sound-change optimisations
+- DONE: voice worklet inner loop. At rate 1 from a whole-sample position
+  (every struck note unless detuned) the head / blocks are copied in runs
+  instead of read() per sample; the fade is a separate pass. Verified
+  bit-identical by `npm run sampled:ab` (25 voices covering every path).
+- DONE: `sampled/tools/ab.mjs` (`npm run sampled:ab [-- REF]`, ~60 s, slow
+  set): raw voices recorded with the working tree and with REF's
+  sampled/src (served from `git show`, so worklets are covered), compared
+  sample by sample. Catches a 1e-6 gain change (-176 dB). It checks the
+  voice/stream only, not the engine graph (the engine's timing and
+  Math.random make whole-engine renders non-deterministic).
+- DROPPED: pinning settled filter automation (Chrome already does), and
+  disconnecting ended voices' nodes (measured: no cost left).
+- Remaining ideas, all BIG refactors with small-to-moderate gain:
+  a pooled renderer (one worklet node mixing several voices -- saves the
+  per-node third), JS biquads inside the voice worklet (probably slower than
+  native).
+
+### Step 2b -- near-exact, but NOT bit-exact: ask first
+- **Shared resonance filters per string**: voices on one string (the
+  active one + the fading ones from earlier strikes) share one HP/HP/LP
+  chain, with the level/release gains moved in front of it. Filters are
+  linear, so this is exact except where a gain moves (fades, top-ups):
+  estimated error ~ -50 dB or lower, only during fades. Saves 3 biquads per
+  extra voice on a string.
 
 ### Step 3 -- sound-affecting fixes: DISCUSS WITH THE USER FIRST
 Present each with its perf gain and what changes audibly:
@@ -146,17 +168,19 @@ Present each with its perf gain and what changes audibly:
 - Note voices can exceed MAX_VOICES (75 vs 64) because `prune()` skips held
   keys -- probably fine, mention it.
 
-### A/B render test (needed before step 2's refactors)
-Engine methods take a `when`, so a gesture can be scheduled sample-exactly.
-Build `sampled/tools/ab.mjs`: schedule a fixed gesture (chords, pedal,
-releases; no pedal-up jitter -- `PEDAL_JITTER` uses Math.random, stub it),
-record engine output through the recorder worklet, compare against a
-recording from a git worktree of the previous commit (worklets cannot be
-swapped by request routing; workers can). Report max difference in dB
-below the signal. Keep it < 30 s if possible; otherwise slow set.
+### A/B render test
+Built for the voice/stream (`sampled:ab`, see step 2). A whole-engine A/B
+(for 2b / 3) still needs: gestures scheduled with `when`, Math.random
+seeded (PEDAL_JITTER, relOffset), and the resonance tick made
+deterministic -- or a comparison by spectrum/level instead of samples.
 
-### Step 1b -- the sporadic spikes at low load
-10-33 ms lost with 2-4 voices and resonance off, not every time. Suspects:
+### Step 1b -- the sporadic spikes at low load (not reproducible here)
+10-33 ms lost with 2-4 voices and resonance off, not every time. Measured:
+a bare Chrome page with only the probe gets ~1 spike / 45 s, the idle
+piano 3-4 / 15 s -- but the container's own audio headroom swings 8x
+between runs (a CPU-burn worklet: 30k-250k iterations per quantum on a
+bare page), so it cannot be pinned down here. Retry on a real machine.
+Suspects:
 garbage collection on the audio thread (the worklet scope holds ~80 MB of
 heads and receives many messages), AudioWorkletNode creation/teardown per
 note (graph changes take a lock the audio thread waits on), the main-thread
