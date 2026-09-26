@@ -32,6 +32,7 @@ npm run sampled:selftest  # sampled: does the repitch do what it claims?
 npm run sampled:smoke     # sampled: does it play and stream cleanly, in a real browser?
 npm run sampled:test:full # sampled, slow: the above plus the detailed audio checks
 npm run sampled:stress    # sampled, slow: how often playing straight after start glitches
+npm run sampled:perf      # sampled (~50 s): dropouts under fast chords, runs, pedal
 npm run sampled:verify    # sampled: decode the built library and measure it
 npm run sampled:render -- performance.mid   # -> sampled/renders/
 npm run sampled:fetch && npm run sampled:build   # rebuild the library

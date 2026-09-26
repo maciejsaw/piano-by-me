@@ -18,6 +18,7 @@
     "sampled:unit": "node sampled/tools/unit.mjs",
     "sampled:smoke": "node sampled/tools/smoke.mjs",
     "sampled:stress": "node sampled/tools/stress.mjs",
+    "sampled:perf": "node sampled/tools/perf.mjs",
     "sampled:render": "node sampled/tools/render.mjs"
   },
   "repository": {
