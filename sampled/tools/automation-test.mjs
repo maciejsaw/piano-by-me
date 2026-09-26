@@ -76,6 +76,8 @@ const rows = await page.evaluate(async () => {
     ['fall by target', 1, [[0, [['value', 1]]], [q(0.3), [['setTargetAtTime', 0, 0.31, 0.02]]]]],
     ['solo ramp', 1, [[0, [['value', 1]]], [q(0.3), [['cancelScheduledValues', q(0.3)], ['setValueAtTime', 1, q(0.3)], ['linearRampToValueAtTime', 0, q(0.3) + 0.02]]],
       [q(0.6), [['cancelScheduledValues', q(0.6)], ['setValueAtTime', 0, q(0.6)], ['linearRampToValueAtTime', 1, q(0.6) + 0.02]]]]],
+    ['two targets at one time (Hz)', 1, [[0, [['value', 900]]], [q(0.2), [['setTargetAtTime', 1320, q(0.2) + 0.1, 0.05], ['setTargetAtTime', 440, q(0.2) + 0.1, 0.05]]]]],
+    ['target to 10 Hz', 1, [[0, [['value', 900]]], [q(0.2), [['setTargetAtTime', 10, q(0.2) + 0.1, 0.05]]]]],
     ['filter glide (Hz)', 1, [[0, [['value', 10]]], [q(0.2), [['setTargetAtTime', 180, 0.21, 0.05]]], [q(0.5), [['setTargetAtTime', 90, 0.5, 0.05]]]]],
   ];
 
