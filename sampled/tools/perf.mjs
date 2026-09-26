@@ -110,7 +110,8 @@ const results = MICRO || NODES ? [] : await page.evaluate(async ({ setup, LEVELS
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const readProbe = window.__probe;
 
-  // Every sample voice alive, fading ones included: what the audio thread runs.
+  // Every sample voice alive, fading ones included: what the audio thread runs
+  // (node per voice counted here, the one-worklet renderer's by its own list).
   const { StreamSource } = await import('/sampled/src/stream.js');
   let live = 0;
   const realStart = StreamSource.prototype.start;
@@ -140,7 +141,7 @@ const results = MICRO || NODES ? [] : await page.evaluate(async ({ setup, LEVELS
       let peakLive = 0, peakVoices = 0, peakRes = 0;
       const sample = setInterval(() => {
         const s = engine.stats();
-        peakLive = Math.max(peakLive, live); peakVoices = Math.max(peakVoices, s.voices); peakRes = Math.max(peakRes, s.resonating);
+        peakLive = Math.max(peakLive, live + (engine.voiceRenderer?.live.size ?? 0)); peakVoices = Math.max(peakVoices, s.voices); peakRes = Math.max(peakRes, s.resonating);
       }, 20);
       if (pedal) engine.setPedal(1);
       const until = performance.now() + LEVEL_MS;

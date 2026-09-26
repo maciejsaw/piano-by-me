@@ -9,7 +9,7 @@
 //   node sampled/tools/automation-test.mjs      (part of npm run sampled:test)
 //
 // Fails if any case is off by more than LIMIT_DB, relative to the case's
-// largest value.
+// largest value, or if Chrome's own gain steps where holdFade holds a fade.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -36,11 +36,13 @@ const rows = await page.evaluate(async () => {
   const fall = new Float32Array(64).map((_, i) => Math.pow(1 - i / 63, 2));
   const rise = new Float32Array(64).map((_, i) => Math.sin(Math.PI / 2 * i / 63));
   const from = (v) => fall.map((x) => x * v);
-  // holdFade (envelopes.js): cancel from t, ramp to the curve's value there.
-  const hold = (t, curve, t0, dur) => {
-    const u = Math.min(1, Math.max(0, (t - t0) / dur)), x = u * (curve.length - 1), k = Math.floor(x);
-    const v = curve[k] + (curve[Math.min(curve.length - 1, k + 1)] - curve[k]) * (x - k);
-    return [['cancelScheduledValues', t], ['linearRampToValueAtTime', v, t]];
+  // The calls holdFade (envelopes.js) makes, called at `now`.
+  const { holdFade } = await import('/sampled/src/envelopes.js');
+  const hold = (now, t, curve, t0, dur) => {
+    const calls = [];
+    const rec = new Proxy({}, { get: (_, m) => (...a) => calls.push([m, ...a]) });
+    holdFade(rec, { t0, dur, curve }, t, now);
+    return calls;
   };
   // [name, seconds, [[at, [[method, ...args] | ['value', v]]]]]
   const cases = [
@@ -50,11 +52,11 @@ const rows = await page.evaluate(async () => {
     ['damper fall, called late', 1.5, [[0, [['value', 1]]], [q(0.5), [['setValueCurveAtTime', fall, q(0.5) - 0.004, 0.12]]]]],
     ['fall, held, fall again', 2.5, [[0, [['value', 1]]],
       [q(0.5), [['setValueCurveAtTime', fall, 0.51, 0.4]]],
-      [q(0.6), hold(q(0.6) + 0.02, fall, 0.51, 0.4)],
+      [q(0.6), hold(q(0.6), q(0.6) + 0.02, fall, 0.51, 0.4)],
       [q(1.5), [['setValueCurveAtTime', from(0.5625), 1.51, 0.3]]]]],
     ['fall held after 3 s', 4.5, [[0, [['value', 1]]],
       [q(3.0), [['setValueCurveAtTime', fall, 3.01, 0.4]]],
-      [q(3.1), hold(q(3.1) + 0.02, fall, 3.01, 0.4)],
+      [q(3.1), hold(q(3.1), q(3.1) + 0.02, fall, 3.01, 0.4)],
       [q(4.0), [['setValueCurveAtTime', from(0.6), 4.01, 0.3]]]]],
     ['top-ups', 3, [[0, [['value', 0.2]]],
       [q(0.3), [['setTargetAtTime', 0.35, 0.31, 0.04]]],
@@ -63,14 +65,14 @@ const rows = await page.evaluate(async () => {
     ['release as a ramp', 1.5, [[0, [['value', 1]]], [q(0.4), [['setValueAtTime', 0.8, 0.41], ['linearRampToValueAtTime', 0, 0.91]]]]],
     ['tail cut short', 2, [[0, [['value', 1]]],
       [q(0.5), [['setValueCurveAtTime', fall, 0.51, 1.0]]],
-      [q(0.8), [...hold(q(0.8) + 0.02, fall, 0.51, 1.0), ['linearRampToValueAtTime', 0, q(0.8) + 0.12]]]]],
+      [q(0.8), [...hold(q(0.8), q(0.8) + 0.02, fall, 0.51, 1.0), ['linearRampToValueAtTime', 0, q(0.8) + 0.12]]]]],
     ['revived twice, then cut', 3, [[0, [['value', 1]]],
       [q(0.3), [['setValueCurveAtTime', fall, 0.31, 0.6]]],
-      [q(0.4), hold(q(0.4) + 0.02, fall, 0.31, 0.6)],
+      [q(0.4), hold(q(0.4), q(0.4) + 0.02, fall, 0.31, 0.6)],
       [q(1.0), [['setValueCurveAtTime', from(0.7), 1.01, 0.6]]],
-      [q(1.2), hold(q(1.2) + 0.02, from(0.7), 1.01, 0.6)],
+      [q(1.2), hold(q(1.2), q(1.2) + 0.02, from(0.7), 1.01, 0.6)],
       [q(2.0), [['setValueCurveAtTime', from(0.3), 2.01, 0.6]]],
-      [q(2.1), [...hold(q(2.1) + 0.02, from(0.3), 2.01, 0.6), ['linearRampToValueAtTime', 0, q(2.1) + 0.12]]]]],
+      [q(2.1), [...hold(q(2.1), q(2.1) + 0.02, from(0.3), 2.01, 0.6), ['linearRampToValueAtTime', 0, q(2.1) + 0.12]]]]],
     ['fall by target', 1, [[0, [['value', 1]]], [q(0.3), [['setTargetAtTime', 0, 0.31, 0.02]]]]],
     ['solo ramp', 1, [[0, [['value', 1]]], [q(0.3), [['cancelScheduledValues', q(0.3)], ['setValueAtTime', 1, q(0.3)], ['linearRampToValueAtTime', 0, q(0.3) + 0.02]]],
       [q(0.6), [['cancelScheduledValues', q(0.6)], ['setValueAtTime', 0, q(0.6)], ['linearRampToValueAtTime', 1, q(0.6) + 0.02]]]]],
@@ -111,13 +113,25 @@ const rows = await page.evaluate(async () => {
       const c = tl.fill(blk, f0, n, SR);
       for (let i = 0; i < n; i++) js[f0 + i] = c === c ? c : blk[i];
     }
+    // Where a fade is held (a call with a cancel in it), Chrome's own output
+    // must not step: in the 2 ms after the call, no sample-to-sample change
+    // more than twice the largest in the 2 ms before it.
+    let step = 1;
+    for (const [at, calls] of steps) {
+      if (!at || !calls.some((c) => c[0] === 'cancelScheduledValues') || calls.some((c) => c[0] === 'setValueAtTime')) continue;
+      const i0 = Math.round(at * SR), w = Math.round(0.002 * SR);
+      let before = 0, after = 0;
+      for (let i = i0 - w; i < i0; i++) before = Math.max(before, Math.abs(ref[i] - ref[i - 1]));
+      for (let i = i0; i < i0 + w; i++) after = Math.max(after, Math.abs(ref[i] - ref[i - 1]));
+      step = Math.max(step, after / Math.max(before, 1e-9));
+    }
     let peak = 0, diff = 0, at = 0;
     for (let i = 0; i < N; i++) {
       peak = Math.max(peak, Math.abs(ref[i]));
       const d = Math.abs(ref[i] - js[i]);
       if (d > diff) { diff = d; at = i; }
     }
-    out.push({ name, db: diff ? 20 * Math.log10(diff / peak) : -Infinity, at: at / SR, ref: ref[at], js: js[at] });
+    out.push({ name, step, db: diff ? 20 * Math.log10(diff / peak) : -Infinity, at: at / SR, ref: ref[at], js: js[at] });
   }
   return out;
 });
@@ -127,9 +141,10 @@ server.kill();
 let bad = 0;
 console.log('');
 for (const r of rows) {
-  const ok = r.db <= LIMIT_DB;
+  const ok = r.db <= LIMIT_DB && r.step <= 2;
   if (!ok) bad++;
   console.log(`  ${ok ? 'pass' : 'FAIL'}  ${r.name.padEnd(28)} ${r.db === -Infinity ? 'identical' : `${r.db.toFixed(1)} dB`}`
+    + (r.step > 1 ? `, step at a hold x${r.step.toFixed(2)}` : '')
     + (ok ? '' : `   (at ${r.at.toFixed(5)} s: Chrome ${r.ref}, timeline ${r.js})`));
 }
 console.log(bad ? `\n  AUTOMATION: ${bad} FAILED\n` : '\n  AUTOMATION MATCHES CHROME\n');
