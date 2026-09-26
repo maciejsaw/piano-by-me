@@ -14,7 +14,7 @@
 //   - times in the past are clamped to `now` when the call is made;
 //   - cancelScheduledValues(t) removes every event at or after t AND a value
 //     curve still running at t -- so a ramp scheduled next starts from the
-//     event before that curve (holdFade relies on it);
+//     event before that curve (holdFade puts the rest of it back);
 //   - a call that would land inside a value curve throws NotSupportedError.
 
 const SET = 0, LIN = 1, TGT = 2, CURVE = 3;
@@ -36,6 +36,12 @@ export class Timeline {
     this.last = value;          // the last value fill() gave
     this.ev = [];               // sorted: SET/TGT/CURVE by start, LIN by end
     this.dirty = false;
+  }
+
+  /** Back to a bare param at `value`, for reuse. */
+  reset(value) {
+    this.base = value; this.baseT = 0; this.last = value;
+    this.ev.length = 0; this.dirty = false; this.lastEv = null;
   }
 
   /** The event list as the spec orders it: by time, a later call after an earlier one at the same time. */

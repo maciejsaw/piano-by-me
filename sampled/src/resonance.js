@@ -210,6 +210,7 @@ export class Resonance {
     this.n = this.hi - this.lo + 1;
     this.enabled = true;
     this.lookahead = 0;           // seconds; the engine sets its own
+    this.renderer = () => null;   // the engine's one-worklet voice renderer, when it is on
 
     // Sympathetic (free strings, partial coincidence).
     this.symAmount = 0.3;
@@ -496,12 +497,15 @@ export class Resonance {
    */
   soon() { return this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01; }
 
+  /** Where the audio clock is now (see Engine.audioNow). */
+  audioNow() { return this.ctx.currentTime; }
+
   /** Stop the fall of the tail on `id` where it has got to, and drive it again. */
   revive(id, when) {
     const t = Math.max(when, this.soon());
     const v = this.tailOf(id, t);
     if (!v) return null;
-    const level = holdFade(v.rel.gain, v.fade, t);
+    const level = holdFade(v.rel.gain, v.fade, t, this.audioNow());
     v.src.resume();
     v.level = level;
     v.fade = null;
@@ -517,7 +521,7 @@ export class Resonance {
     const t = this.soon();
     v.resumable = false;
     if (!v.fade) return;                      // on a plain ramp: let it finish
-    holdFade(v.rel.gain, v.fade, t);
+    holdFade(v.rel.gain, v.fade, t, this.audioNow());
     v.rel.gain.linearRampToValueAtTime(0, t + fall);
     v.fade = null;
     v.stopAt = Math.min(v.stopAt, t + fall + 0.03);
@@ -560,20 +564,22 @@ export class Resonance {
     // while the library loads -- each file is peak-normalised.
     const unit = this.lib.entry(midi, this.layer)?.gain ?? got.entry.gain;
 
-    const src = new StreamSource(this.lib.streamer, got.key, got.frames);
-    src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
-    const lvl = ctx.createGain();
-    lvl.gain.value = g * unit;
-    // Sits at 1 until release() runs its fall from that known value.
-    const rel = ctx.createGain();
-    rel.gain.value = 1;
     const id = `${kind}:${midi}`;
     // `gain` moves with top-ups (see drive).
-    const v = { kind, midi, key: got.key, src, lvl, rel, gain: g, unit, t0: when, offset,
+    const v = { kind, midi, key: got.key, gain: g, unit, t0: when, offset,
       db0: this.decayDb(midi, offset), drivers: new Set(), k };
-    const c = this.chain(id, v);
+    const r = this.renderer();
+    const c = this.chain(id, v, r);
     v.chain = c; v.hp = c.hp; v.lp = c.lp;
-    src.connect(lvl).connect(rel).connect(c.hp[0]);
+    let src, lvl, rel;
+    if (r) { src = r.voice(got.key, got.frames, midi, c); ({ lvl, rel } = src); }
+    else { src = new StreamSource(this.lib.streamer, got.key, got.frames); lvl = ctx.createGain(); rel = ctx.createGain(); }
+    v.src = src; v.lvl = lvl; v.rel = rel;
+    src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
+    lvl.gain.value = g * unit;
+    // Sits at 1 until release() runs its fall from that known value.
+    rel.gain.value = 1;
+    if (!r) src.connect(lvl).connect(rel).connect(c.hp[0]);
     src.start(when, offset, fadeIn, this.fadeInCurve());
     src.onended = () => {
       // The recording ran out: nothing left to fade.
@@ -581,7 +587,7 @@ export class Resonance {
       this.fading.delete(v);
       rel.disconnect();
       if (--c.users === 0) {
-        c.lp.disconnect();
+        if (c.renderer) c.free(); else c.lp.disconnect();
         if (this.chains.get(id) === c) this.chains.delete(id);
       }
     };
@@ -598,10 +604,17 @@ export class Resonance {
    * a voice that needs another one gets filters of its own, and is the one a
    * later voice there joins.
    */
-  chain(id, v) {
+  chain(id, v, r = null) {
     const cut = this.partialCut(v);
     let c = this.chains.get(id);
-    if (!c || c.cut !== cut) {
+    if (!c || c.cut !== cut || !c.renderer !== !r) {
+      if (r) {
+        c = r.chain(v.midi, cut, this.tone);
+        c.cut = cut; c.users = 0;
+        this.chains.set(id, c);
+        c.users++;
+        return c;
+      }
       const ctx = this.ctx;
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
@@ -689,7 +702,7 @@ export class Resonance {
       const id = `${v.kind}:${v.midi}`;
       if (this.voices.has(id)) continue;
       const alive = [...v.drivers].filter((d) => live.has(d));
-      const level = holdFade(v.rel.gain, v.fade, t);
+      const level = holdFade(v.rel.gain, v.fade, t, this.audioNow());
       v.src.resume();
       v.level = level;
       v.fade = null;

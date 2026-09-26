@@ -12,13 +12,21 @@
 //                 playbackRate. It plays the head straight out of memory the
 //                 instant it starts, and asks the worker for the rest, which
 //                 arrives long before the head runs out.
+//   piano-voices  the other way to play them: ONE node for every voice, with
+//                 what used to be native nodes after each voice -- its gains,
+//                 a resonance string's filters, the key's strip -- done here
+//                 in JS (voices.js is its main-thread half; engine.renderer
+//                 chooses). Chrome charges every node a fixed cost per render
+//                 quantum, and under the pedal that was most of the load.
 //
 // Heads are kept as 16-bit: at the level of a sample's first quarter second
 // that is 96 dB below the note, and it halves the only thing held here for
 // good.
 
+import { Timeline } from './automation.js';
+
 const heads = new Map();      // key -> { data: Int16Array (stereo, interleaved), frames }
-const voices = new Map();     // id -> PianoVoice
+const voices = new Map();     // id -> Voice, playing
 let worker = null;            // MessagePort to the stream worker
 let hubPort = null;           // the hub's own port, to tell the main thread about heads
 
@@ -65,6 +73,21 @@ class PianoHub extends AudioWorkletProcessor {
 }
 
 const I16 = 1 / 32768;
+
+/**
+ * The first frame of the quantum a processor is rendering. Chrome's
+ * `currentFrame` now and then is not moved on between two render quanta (a
+ * quantum recorded by it landed in the slot of the one before, a few times
+ * a minute under load), and a voice timed by it starts, stops or reads its
+ * gains a quantum out. A quantum is always 128 frames after the last one
+ * this processor rendered, unless currentFrame says later (it was not called
+ * for a while).
+ */
+function frameOf(p) {
+  const f = p.frame === undefined ? currentFrame : Math.max(currentFrame, p.frame + 128);
+  p.frame = f;
+  return f;
+}
 // How often a voice tells the worker where it has got to: ~100 ms.
 const REPORT = 4800;
 
@@ -279,9 +302,250 @@ class PianoVoice extends AudioWorkletProcessor {
 
   process(inputs, outputs, params) {
     const out = outputs[0];
-    return this.voice.render(out[0], out[1] ?? out[0], currentFrame, params.playbackRate[0]);
+    return this.voice.render(out[0], out[1] ?? out[0], frameOf(this), params.playbackRate[0]);
+  }
+}
+
+// ---------------------------------------------------------- piano-voices --
+
+const Q = 128;
+const f32 = Math.fround;
+
+/**
+ * A biquad as Chrome runs one on Linux (Biquad::Process): direct form 1,
+ * double coefficients and state, each output rounded to single precision.
+ * Coefficients from the spec's formulas, as Chrome computes them, with Q in
+ * dB. One channel.
+ */
+class Biquad {
+  constructor() { this.b0 = 1; this.b1 = 0; this.b2 = 0; this.a1 = 0; this.a2 = 0; this.reset(); }
+  reset() { this.x1 = 0; this.x2 = 0; this.y1 = 0; this.y2 = 0; }
+  run(buf, from, to) {
+    const { b0, b1, b2, a1, a2 } = this;
+    let { x1, x2, y1, y2 } = this;
+    for (let i = from; i < to; i++) {
+      const x = buf[i];
+      const y = f32(b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2);
+      buf[i] = y;
+      x2 = x1; x1 = x; y2 = y1; y1 = y;
+    }
+    // A silent input with the tail down among the subnormals: flushed, as Chrome does.
+    if (x1 === 0 && x2 === 0 && (y1 !== 0 || y2 !== 0) && Math.abs(y1) < 1.1754943508222875e-38 && Math.abs(y2) < 1.1754943508222875e-38) { y1 = 0; y2 = 0; }
+    this.x1 = x1; this.x2 = x2; this.y1 = y1; this.y2 = y2;
+  }
+}
+
+/** Set `bs` (biquads of one filter, a channel each) to a high- or low-pass at `hz`, Q `q` dB. */
+function passCoefs(bs, high, hz, q) {
+  const cutoff = Math.max(0, Math.min(1, hz / (0.5 * sampleRate)));
+  let b0, b1, b2, a1, a2;
+  if (cutoff === 1) { b0 = high ? 0 : 1; b1 = b2 = a1 = a2 = 0; }
+  else if (cutoff > 0) {
+    const theta = Math.PI * cutoff, alpha = Math.sin(theta) / (2 * Math.pow(10, q / 20)), cosw = Math.cos(theta);
+    const beta = high ? (1 + cosw) / 2 : (1 - cosw) / 2, a0 = 1 + alpha;
+    b0 = beta / a0; b1 = (high ? -2 : 2) * beta / a0; b2 = beta / a0; a1 = -2 * cosw / a0; a2 = (1 - alpha) / a0;
+  } else { b0 = high ? 1 : 0; b1 = b2 = a1 = a2 = 0; }
+  for (const b of bs) { b.b0 = b0; b.b1 = b1; b.b2 = b2; b.a1 = a1; b.a2 = a2; }
+}
+
+// Moving filter frequencies are read once per this many samples, at the
+// middle of each run (the user's choice: Chrome recomputes every sample,
+// which in JS costs more than the voices).
+const FILTER_RUN = 32;
+const HP_Q = f32(Math.SQRT1_2), LP_Q = f32(0.5);
+
+/**
+ * A resonance string's filters (resonance.js chain): two high-passes and a
+ * low-pass, stereo, shared by the voices on that string, into its key's
+ * strip past the direct mute.
+ */
+class Chain {
+  constructor(id, strip, hp, lp) {
+    this.id = id; this.strip = strip;
+    this.L = new Float32Array(Q); this.R = new Float32Array(Q);
+    this.freq = [new Timeline(hp), new Timeline(hp), new Timeline(lp)];
+    this.bq = [0, 1, 2].map(() => [new Biquad(), new Biquad()]);
+    this.hz = [NaN, NaN, NaN];
+    this.fv = new Float32Array(Q);
+    this.fed = false;             // input this quantum
+    this.ringing = false;         // output last quantum
+  }
+
+  /** Filter this quantum's input (frames from f0) into the strip. */
+  run(strip, f0) {
+    if (!this.fed && !this.ringing) return;
+    const { L, R } = this;
+    for (let k = 0; k < 3; k++) {
+      const tl = this.freq[k], bq = this.bq[k], high = k < 2, q = high ? HP_Q : LP_Q;
+      const c = tl.fill(this.fv, f0, Q, sampleRate);
+      if (c === c) {
+        const hz = f32(c);
+        if (hz !== this.hz[k]) { this.hz[k] = hz; passCoefs(bq, high, hz, q); }
+        bq[0].run(L, 0, Q); bq[1].run(R, 0, Q);
+      } else {
+        for (let i = 0; i < Q; i += FILTER_RUN) {
+          const hz = f32(this.fv[i + (FILTER_RUN >> 1)]);
+          if (hz !== this.hz[k]) { this.hz[k] = hz; passCoefs(bq, high, hz, q); }
+          bq[0].run(L, i, i + FILTER_RUN); bq[1].run(R, i, i + FILTER_RUN);
+        }
+      }
+    }
+    let any = false;
+    const sL = strip.IL, sR = strip.IR;
+    for (let i = 0; i < Q; i++) {
+      const l = L[i], r = R[i];
+      if (l !== 0 || r !== 0) { any = true; sL[i] += l; sR[i] += r; }
+    }
+    if (any) strip.fedI = true;
+    this.ringing = any;
+    this.fed = false;
+    L.fill(0); R.fill(0);
+  }
+}
+
+/** A key's strip: struck voices through `direct` (the solo mute), resonance past it, then the swap and matrix. */
+class Strip {
+  constructor() {
+    this.DL = new Float32Array(Q); this.DR = new Float32Array(Q);
+    this.IL = new Float32Array(Q); this.IR = new Float32Array(Q);
+    this.direct = new Timeline(1);
+    this.m = [1, 0, 0, 1];        // LL RL LR RR, as engine.refreshStrips sets its gains
+    this.fedD = false; this.fedI = false;
+  }
+}
+
+/** A voice with its gains: level, attack, release, multiplied, as the native chain of three. */
+class Slot {
+  constructor(renderer) {
+    this.voice = new Voice(0, '', 0, (underrun) => renderer.ended.push(this.id, underrun));
+    this.g = [new Timeline(1), new Timeline(1), new Timeline(1)];
+    this.gv = [new Float32Array(Q), new Float32Array(Q), new Float32Array(Q)];
+    this.id = 0; this.strip = 0; this.chain = null; this.rate = 1;
+  }
+  reset(id, key, total, strip, chain) {
+    this.voice.reset(id, key, total);
+    for (const t of this.g) t.reset(1);
+    this.id = id; this.strip = strip; this.chain = chain; this.rate = 1;
+  }
+}
+
+class PianoVoices extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.slots = new Map();       // id -> Slot, created and not yet ended
+    this.live = [];               // the same, in an array to run through
+    this.spare = [];
+    for (let i = 0; i < 64; i++) this.spare.push(new Slot(this));
+    this.chains = new Map();      // id -> Chain
+    this.strips = [];
+    for (let m = 0; m < 128; m++) this.strips.push(new Strip());
+    this.L = new Float32Array(Q); this.R = new Float32Array(Q);
+    this.gain = new Float32Array(Q);
+    this.cs = new Float64Array(3);
+    this.ended = [];              // id, underrun, ... this quantum
+    this.port.onmessage = (e) => { for (const op of e.data) this.op(op); };
+  }
+
+  param(kind, id, k) {
+    if (kind === 'v') return this.slots.get(id)?.g[k];
+    if (kind === 'c') return this.chains.get(id)?.freq[k];
+    return this.strips[id]?.direct;
+  }
+
+  op(o) {
+    switch (o[0]) {
+      case 'v': {                 // ['v', id, key, total, strip, chain id or 0]
+        const s = this.spare.pop() ?? new Slot(this);
+        s.reset(o[1], o[2], o[3], o[4], o[5] ? this.chains.get(o[5]) ?? null : null);
+        this.slots.set(o[1], s); this.live.push(s);
+        break;
+      }
+      case 's': this.slots.get(o[1])?.voice.begin(o[2], o[3], o[4], o[5]); break;
+      case 'x': this.slots.get(o[1])?.voice.stop(o[2]); break;
+      case 'r': this.slots.get(o[1])?.voice.resume(); break;
+      case 'rate': { const s = this.slots.get(o[1]); if (s) s.rate = f32(Math.max(0.25, Math.min(4, o[2]))); break; }
+      case 'p': {                 // ['p', kind, id, index, method, args, now]
+        const tl = this.param(o[1], o[2], o[3]);
+        if (tl) try { tl[o[4]](...o[5], o[6]); } catch { /* refused, as the native param refused it */ }
+        break;
+      }
+      case 'c': this.chains.set(o[1], new Chain(o[1], o[2], o[3], o[4])); break;   // ['c', id, strip, hp Hz, lp Hz]
+      case 'cx': this.chains.delete(o[1]); break;
+      case 'm': this.strips[o[1]].m = [o[2], o[3], o[4], o[5]]; break;
+    }
+  }
+
+  process(inputs, outputs) {
+    const out = outputs[0], OL = out[0], OR = out[1] ?? out[0];
+    const f0 = frameOf(this), sr = sampleRate;
+    const L = this.L, R = this.R, G = this.gain;
+    const live = this.live;
+    for (let n = 0; n < live.length; n++) {
+      const s = live[n], v = s.voice;
+      let alive = true;
+      try {
+        if (v.state === 0 || f0 + Q <= v.startFrame) continue;
+        L.fill(0); R.fill(0);
+        alive = v.render(L, R, f0, s.rate);
+        // Gains, as the three native ones would multiply them.
+        const cs = this.cs;
+        let g = 1, flat = true;
+        for (let k = 0; k < 3; k++) {
+          const c = cs[k] = s.g[k].fill(s.gv[k], f0, Q, sr);
+          if (c === c) g *= c; else flat = false;
+        }
+        let dL, dR;
+        if (s.chain) { dL = s.chain.L; dR = s.chain.R; s.chain.fed = true; }
+        else { const st = this.strips[s.strip]; dL = st.DL; dR = st.DR; st.fedD = true; }
+        if (flat) {
+          if (g !== 0) for (let i = 0; i < Q; i++) { dL[i] += L[i] * g; dR[i] += R[i] * g; }
+        } else {
+          G.fill(g);
+          for (let k = 0; k < 3; k++) {
+            if (cs[k] === cs[k]) continue;
+            const gv = s.gv[k];
+            for (let i = 0; i < Q; i++) G[i] *= gv[i];
+          }
+          for (let i = 0; i < Q; i++) { dL[i] += L[i] * G[i]; dR[i] += R[i] * G[i]; }
+        }
+      } catch {
+        // One voice's failure ends that voice, not all of them.
+        alive = false;
+        try { if (v.state !== 2) v.finish(); } catch { this.ended.push(s.id, 0); }
+      }
+      if (!alive) {
+        this.slots.delete(s.id);
+        live[n] = live[live.length - 1]; live.pop(); n--;
+        s.chain = null;
+        if (this.spare.length < 256) this.spare.push(s);
+      }
+    }
+    for (const c of this.chains.values()) c.run(this.strips[c.strip], f0);
+    const strips = this.strips;
+    for (let m = 0; m < 128; m++) {
+      const st = strips[m];
+      if (!st.fedD && !st.fedI) continue;
+      const { DL, DR, IL, IR } = st;
+      if (st.fedD) {
+        const d = st.direct.fill(G, f0, Q, sr);
+        if (d === d) { if (d !== 1) for (let i = 0; i < Q; i++) { DL[i] *= d; DR[i] *= d; } }
+        else for (let i = 0; i < Q; i++) { DL[i] *= G[i]; DR[i] *= G[i]; }
+      }
+      // The recordings' channels arrive swapped: g0/g2 take the right, g1/g3 the left.
+      const [m0, m1, m2, m3] = st.m;
+      for (let i = 0; i < Q; i++) {
+        const l = DL[i] + IL[i], r = DR[i] + IR[i];
+        OL[i] += m0 * r + m1 * l;
+        OR[i] += m2 * r + m3 * l;
+      }
+      DL.fill(0); DR.fill(0); IL.fill(0); IR.fill(0);
+      st.fedD = false; st.fedI = false;
+    }
+    if (this.ended.length) { this.port.postMessage(this.ended); this.ended = []; }
+    return true;
   }
 }
 
 registerProcessor('piano-hub', PianoHub);
 registerProcessor('piano-voice', PianoVoice);
+registerProcessor('piano-voices', PianoVoices);

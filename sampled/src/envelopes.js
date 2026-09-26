@@ -135,18 +135,31 @@ export function fadeAt(fade, t) {
 
 /**
  * Freeze `param` where `fade` has got to at `t` (in the future), cancelling the
- * rest of it.
+ * rest of it. `now` is where the audio clock is now.
  *
- * Not cancelAndHoldAtTime: on a value curve Chrome's jumps by a fifth of full
- * scale the moment it is called, before settling on the right value, and that
- * is the click a resumed voice made. Cancelling from `t` leaves the curve
- * running up to `t`, and a ramp ending there on the curve's own value joins it
- * without a step -- measured offline, the largest sample-to-sample change is
- * the curve's own slope.
+ * Chrome's cancelScheduledValues(t) takes away a value curve that is still
+ * running at t -- all of it, at once, not just the part after t -- and what
+ * the param does until t is then a ramp from whatever event came before
+ * the curve: a step, the moment the call reaches the audio thread, of up to
+ * 6 dB on a quick damper fall. (cancelAndHoldAtTime would be the call for
+ * this, but Chrome's jumps back to the curve's start.) So the part of the
+ * fall still to come before `t` is put back, as a curve of its own read off
+ * the original: the fall carries on exactly as it was until `t` and stays
+ * there.
  */
-export function holdFade(param, fade, t) {
+export function holdFade(param, fade, t, now) {
   const v = fadeAt(fade, t);
   param.cancelScheduledValues(t);
-  param.linearRampToValueAtTime(v, t);
+  // Only a fall still running at `t` was taken away; one that has ended by
+  // then is left as it was, and one that starts after `t` is simply gone.
+  const a = Math.max(now, fade.t0);
+  if (fade.t0 + fade.dur > t && t - a > 1e-4) {
+    // Sixteen points per point of the original, whose corners fall between
+    // them: off by at most ~1e-5 of full scale, wherever `now` lands.
+    const n = Math.max(2, Math.min(4096, Math.ceil((t - a) / fade.dur * (fade.curve.length - 1) * 16) + 1));
+    const seg = new Float32Array(n);
+    for (let i = 0; i < n; i++) seg[i] = fadeAt(fade, a + (t - a) * i / (n - 1));
+    param.setValueCurveAtTime(seg, a, t - a);
+  }
   return v;
 }
