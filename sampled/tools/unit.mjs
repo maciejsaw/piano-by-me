@@ -207,9 +207,67 @@ const gainOf = (r, midi) => r.voices.get(`sym:${midi}`)?.gain ?? 0;
   const r = mkRes({ symAmount: 0, sbAmount: 0.3 });
   r.setUndamped(new Set());
   r.excite(60, 110, 0);
-  const near = r.voices.get('sb:61')?.gain ?? 0, far = r.voices.get('sb:72')?.gain ?? 0;
+  const near = r.voices.get('sb:61')?.gain ?? 0, far = r.voices.get('sb:66')?.gain ?? 0;
   check('resonance: the soundboard answers with the dampers down', r.voices.size > 0, `${r.voices.size} voices`);
-  check('...more strongly near the key than far from it', near > far && far >= 0, `${near.toFixed(3)} vs ${far.toFixed(3)}`);
+  check('...more strongly near the key than far from it', near > far && far > 0, `${near.toFixed(3)} vs ${far.toFixed(3)}`);
+  const dist = [...r.voices.values()].map((v) => Math.abs(v.midi - 60));
+  check('...from the nearest sbMax strings only', r.voices.size === r.sbMax && Math.max(...dist) <= 6, `${r.voices.size} voices, up to ${Math.max(...dist)} keys away`);
+}
+// Struck again while its strings are still falling, they are picked up where
+// the fall has got to, not doubled by new voices.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([60, 64, 67]));
+  r.excite(48, 100, 0);
+  const n = r.voices.size, starts = r.started.length;
+  clock.currentTime = 0.5; r.tick(0.04, []);
+  const falling = r.fading.size;
+  clock.currentTime = 0.8; r.excite(48, 100, 0.8);
+  check('resonance: a string on its fall is picked up by the next strike', falling === n && r.voices.size === n
+    && r.started.length === starts && r.fading.size === 0, `${falling} falling, ${r.voices.size} back, ${r.started.length - starts} new`);
+  clock.currentTime = 0;
+}
+// Tails on their fall count toward maxVoices; the quietest is cut for a new one.
+{
+  const free = new Set(); for (let k = 49; k <= 96; k++) free.add(k);
+  const r = mkRes({ maxVoices: 4 });
+  r.setUndamped(free);
+  r.excite(48, 60, 0);
+  clock.currentTime = 0.5; r.tick(0.04, []);
+  r.excite(53, 120, 0.5);
+  const tails = r.tails().length, cut = r.fading.size - tails;
+  check('resonance: tails on their fall count toward maxVoices', r.voices.size + tails <= 4 && r.voices.size > 0 && cut > 0,
+    `${r.voices.size} driven + ${tails} tails of 4, ${cut} cut short`);
+  clock.currentTime = 0;
+}
+// Panic stops the tails on their fall too, not only the driven voices.
+{
+  const r = mkRes();
+  r.setUndamped(new Set([60, 64, 67]));
+  r.excite(48, 100, 0);
+  clock.currentTime = 0.5; r.tick(0.04, []);
+  const before = [...r.fading].map((v) => v.stopAt);
+  r.allOff();
+  const after = [...r.fading].map((v) => v.stopAt);
+  check('resonance: panic cuts the tails still falling', after.length > 0 && after.every((t, i) => t < before[i] && t <= 0.5 + 0.2),
+    `stop in ${Math.max(...after.map((t) => t - 0.5)).toFixed(2)} s, was ${Math.max(...before.map((t) => t - 0.5)).toFixed(2)} s`);
+  clock.currentTime = 0;
+}
+// A quick pedal change brings back no more than maxVoices, the loudest.
+{
+  const free = new Set(); for (let k = 49; k <= 96; k++) free.add(k);
+  const r = mkRes({ maxVoices: 6 });
+  r.setUndamped(free);
+  r.excite(48, 110, 0);
+  clock.currentTime = 0.3; r.setUndamped(new Set(), [{ midi: 48 }]);
+  r.maxVoices = 3;
+  clock.currentTime = 0.35;
+  const at = r.soon(), loud = [...r.fading].sort((a, b) => r.loudness(b, at) - r.loudness(a, at)).slice(0, 3).map((v) => v.midi).sort((a, b) => a - b);
+  r.setUndamped(free, [{ midi: 48 }]);
+  const back = sym(r).map((v) => v.midi).sort((a, b) => a - b);
+  check('resonance: a pedal change brings back at most maxVoices', r.voices.size === 3, `${r.voices.size} of 6`);
+  check('...the loudest', back.join() === loud.join(), back.join(' '));
+  clock.currentTime = 0;
 }
 
 console.log('');

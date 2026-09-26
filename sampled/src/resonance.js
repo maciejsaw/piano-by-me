@@ -181,6 +181,8 @@ const STEAL = 2;
 const TOPUP_MIN = 1.06;
 // Time constant of a top-up: quick, since a string pushed again answers at once.
 const TOPUP_TAU = 0.04;
+// How fast a tail on its fall is cut short when its slot is needed.
+const CUT = 0.1;
 
 // The distance at which the fall-off starts to bite, in semitones.
 const NEAR_REF = 2;
@@ -223,6 +225,10 @@ export class Resonance {
     this.sbFalloff = 9;           // dB per doubling of distance (see distanceDb)
     this.sbStep = 1;              // every string (1), every 2nd, every 3rd... out from the key
     this.sbRelease = 1.2;
+    // Only the nearest strings take part: past about six keys either way a
+    // string adds little (~7% of the soundboard's energy, -0.3 dB) and costs
+    // a voice like any other.
+    this.sbMax = 12;
     // Self (the struck key's own recording under the note).
     this.selfAmount = 0;
     this.selfRelease = 0.4;
@@ -243,6 +249,7 @@ export class Resonance {
 
     this.voices = new Map();      // `${kind}:${midi}` -> voice, while driven
     this.fading = new Set();      // released voices, until they have stopped
+    this.chains = new Map();      // `${kind}:${midi}` -> the filters its voices share (see chain)
     this.undamped = new Set();
     this.level = new Float64Array(this.n);   // per string, for the display
     this.keyCurve = new ResCurve(this.lo, this.hi);
@@ -320,7 +327,7 @@ export class Resonance {
    * is weighed against them for a slot; then loudest first.
    */
   order(want) {
-    const on = (w) => (this.voices.has(`${w.kind}:${w.target}`) ? 1 : 0);
+    const on = (w) => (this.voices.has(`${w.kind}:${w.target}`) || this.tailOf(`${w.kind}:${w.target}`) ? 1 : 0);
     want.sort((a, b) => on(b) - on(a) || b.g - a.g);
   }
 
@@ -351,10 +358,16 @@ export class Resonance {
       }
     }
     if (this.sbAmount > 0) {
+      const from = want.length;
       for (let ri = 0; ri < n; ri++) {
         const r = this.lo + ri;
         if (r === midi || Math.abs(r - midi) % this.sbStep) continue;
         add('sb', r, this.sbAmount * Math.pow(10, distanceDb(Math.abs(r - midi), this.sbFalloff) / 20));
+      }
+      // The loudest sbMax of them.
+      if (want.length - from > this.sbMax) {
+        const sb = want.splice(from).sort((a, b) => b.g - a.g);
+        want.push(...sb.slice(0, this.sbMax));
       }
     }
     if (this.selfAmount > 0) add('self', midi, this.selfAmount);
@@ -372,10 +385,15 @@ export class Resonance {
    * voice out while the new one faded in, on every answering string at once,
    * and a repeated note under the pedal pumped. Only when the recording has
    * decayed too far to be turned up is it crossfaded into a fresh start.
+   *
+   * The same goes for a string still on its fall from the last strike (its
+   * note let go, a damper landing): the fall stops where it has got to and
+   * the string is pushed from there, as a real one would be -- instead of a
+   * second voice blooming in on the same string beside the dying one.
    */
   drive(kind, midi, g, from, when, k = 1) {
     const id = `${kind}:${midi}`;
-    const cur = this.voices.get(id);
+    const cur = this.voices.get(id) ?? this.revive(id, when);
     if (cur) {
       cur.drivers.add(from);
       // Driven lower down its partials than before: open the filter to them.
@@ -409,6 +427,7 @@ export class Resonance {
 
   setPartialFilter(v, when = this.ctx.currentTime) {
     const f = this.partialCut(v);
+    if (v.chain) v.chain.cut = f;
     for (const hp of v.hp) hp.frequency.setTargetAtTime(f, when, 0.05);
   }
 
@@ -418,17 +437,87 @@ export class Resonance {
     for (const v of this.voices.values()) this.setPartialFilter(v);
   }
 
-  /** Free a voice for one of gain `g`, if it is well louder than the quietest. */
+  /**
+   * Free a voice for one of gain `g`, if it is well louder than the quietest.
+   * Tails on their fall count as well as driven voices -- they cost the same
+   * to play -- and are cut short (CUT) when one of them is the quietest.
+   */
   makeRoom(g, when) {
-    if (this.voices.size < this.maxVoices) return true;
+    const tails = this.tails();
+    if (this.voices.size + tails.length < this.maxVoices) return true;
     let low = null, lowG = Infinity;
-    for (const [id, v] of this.voices) {
+    for (const v of this.voices.values()) {
       const e = this.estimate(v, when);
-      if (e < lowG) { lowG = e; low = id; }
+      if (e < lowG) { lowG = e; low = v; }
+    }
+    for (const v of tails) {
+      const e = this.loudness(v, when);
+      if (e < lowG) { lowG = e; low = v; }
     }
     if (lowG * STEAL >= g) return false;
-    this.release(low, this.crossfade, 0, true);
+    if (this.fading.has(low)) this.cut(low);
+    else this.release(`${low.kind}:${low.midi}`, this.crossfade, 0, true);
     return true;
+  }
+
+  /**
+   * Released voices on their kind's fall (not those on a quick crossfade or
+   * cut, which are gone in a moment): they count toward maxVoices.
+   */
+  tails() {
+    const out = [];
+    for (const v of this.fading) if (v.resumable) out.push(v);
+    return out;
+  }
+
+  /** The tail on string `id` that a strike can pick up again, if any. */
+  tailOf(id, t = this.soon()) {
+    let got = null;
+    for (const v of this.fading) {
+      if (!v.resumable || !v.fade || t > v.stopAt - 0.04 || `${v.kind}:${v.midi}` !== id) continue;
+      if (!got || v.t0 > got.t0) got = v;
+    }
+    return got;
+  }
+
+  /** How loud a voice is now, down its fall if it is on one. */
+  loudness(v, t) {
+    return v.fade ? this.estimate(v, t) / (v.level ?? 1) * fadeAt(v.fade, t) : this.estimate(v, t);
+  }
+
+  /**
+   * The earliest a change can be scheduled and still be in the audio thread's
+   * future even at the largest buffer size: a hold placed in its past would
+   * cut a fade short instead.
+   */
+  soon() { return this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01; }
+
+  /** Stop the fall of the tail on `id` where it has got to, and drive it again. */
+  revive(id, when) {
+    const t = Math.max(when, this.soon());
+    const v = this.tailOf(id, t);
+    if (!v) return null;
+    const level = holdFade(v.rel.gain, v.fade, t);
+    v.src.resume();
+    v.level = level;
+    v.fade = null;
+    v.resumable = false;
+    v.drivers = new Set();
+    this.fading.delete(v);
+    this.voices.set(id, v);
+    return v;
+  }
+
+  /** A tail's slot is needed: finish its fall in `fall` seconds from where it is. */
+  cut(v, fall = CUT) {
+    const t = this.soon();
+    v.resumable = false;
+    if (!v.fade) return;                      // on a plain ramp: let it finish
+    holdFade(v.rel.gain, v.fade, t);
+    v.rel.gain.linearRampToValueAtTime(0, t + fall);
+    v.fade = null;
+    v.stopAt = Math.min(v.stopAt, t + fall + 0.03);
+    try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
   }
 
   /** Roughly how loud a voice is now: its gain, down its recording's own decay. */
@@ -462,31 +551,59 @@ export class Resonance {
 
     const src = new StreamSource(this.lib.streamer, got.key, got.frames);
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
-    // Two second-order high-passes, 24 dB/octave: steep enough that a string
-    // driven at its 2nd partial loses its fundamental, not just some of it.
-    const hp = [ctx.createBiquadFilter(), ctx.createBiquadFilter()];
-    for (const h of hp) { h.type = 'highpass'; h.Q.value = Math.SQRT1_2; }
     const lvl = ctx.createGain();
     lvl.gain.value = g * unit;
     // Sits at 1 until release() runs its fall from that known value.
     const rel = ctx.createGain();
     rel.gain.value = 1;
-    src.connect(hp[0]).connect(hp[1]).connect(lp).connect(lvl).connect(rel).connect(this.strip(midi));
-    src.start(when, offset, fadeIn, this.fadeInCurve());
-
+    const id = `${kind}:${midi}`;
     // `gain` moves with top-ups (see drive).
-    const v = { kind, midi, key: got.key, src, lp, hp, lvl, rel, gain: g, unit, t0: when, offset,
+    const v = { kind, midi, key: got.key, src, lvl, rel, gain: g, unit, t0: when, offset,
       db0: this.decayDb(midi, offset), drivers: new Set(), k };
-    for (const h of hp) h.frequency.value = this.partialCut(v);
+    const c = this.chain(id, v);
+    v.chain = c; v.hp = c.hp; v.lp = c.lp;
+    src.connect(lvl).connect(rel).connect(c.hp[0]);
+    src.start(when, offset, fadeIn, this.fadeInCurve());
     src.onended = () => {
       // The recording ran out: nothing left to fade.
-      const id = `${kind}:${midi}`;
       if (this.voices.get(id) === v) this.voices.delete(id);
       this.fading.delete(v);
+      rel.disconnect();
+      if (--c.users === 0) {
+        c.lp.disconnect();
+        if (this.chains.get(id) === c) this.chains.delete(id);
+      }
     };
     return v;
+  }
+
+  /**
+   * The filters of the voices on one string: a new voice there while the last
+   * is still on its crossfade or its fall goes through the same ones, rather
+   * than three more filters of its own -- a biquad costs the audio thread
+   * about as much as the voice itself. Filters are linear, so the sum through
+   * one set is the sum of each through its own; the level and release gains
+   * sit in front of them for that. Shared only at the same partial cut-off:
+   * a voice that needs another one gets filters of its own, and is the one a
+   * later voice there joins.
+   */
+  chain(id, v) {
+    const cut = this.partialCut(v);
+    let c = this.chains.get(id);
+    if (!c || c.cut !== cut) {
+      const ctx = this.ctx;
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
+      // Two second-order high-passes, 24 dB/octave: steep enough that a string
+      // driven at its 2nd partial loses its fundamental, not just some of it.
+      const hp = [ctx.createBiquadFilter(), ctx.createBiquadFilter()];
+      for (const h of hp) { h.type = 'highpass'; h.Q.value = Math.SQRT1_2; h.frequency.value = cut; }
+      hp[0].connect(hp[1]).connect(lp).connect(this.strip(v.midi));
+      c = { hp, lp, cut, users: 0 };
+      this.chains.set(id, c);
+    }
+    c.users++;
+    return c;
   }
 
   /** The fade-in shape (Envelopes: resonance fade-in), 0 -> 1, or null for the worklet's raised cosine. */
@@ -543,19 +660,24 @@ export class Resonance {
    * but only those still louder than `resumeDb`. The quiet ones finish.
    */
   resumeFreed(free, live) {
-    // Far enough ahead to be in the audio thread's future even at the largest
-    // buffer size: a hold placed in its past would cut the fade short instead.
-    const t = this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01;
-    for (const v of [...this.fading]) {
+    const t = this.soon();
+    // Loudest first, and no more than maxVoices driven: the rest finish.
+    const back = [];
+    for (const v of this.fading) {
       if (!v.resumable || !v.fade || t > v.stopAt - 0.04) continue;
-      const id = `${v.kind}:${v.midi}`;
-      if (this.voices.has(id)) continue;
       if (v.kind === 'sym' && !free.has(v.midi)) continue;
-      const alive = [...v.drivers].filter((d) => live.has(d));
-      if (!alive.length) continue;
+      if (![...v.drivers].some((d) => live.has(d))) continue;
       // How loud it would come back: where its fall has got to, on how loud
       // it was when the damper landed.
-      if (this.estimate(v, t) / (v.level ?? 1) * fadeAt(v.fade, t) < Math.pow(10, this.resumeDb / 20)) continue;
+      const e = this.loudness(v, t);
+      if (e >= Math.pow(10, this.resumeDb / 20)) back.push([e, v]);
+    }
+    back.sort((a, b) => b[0] - a[0]);
+    for (const [, v] of back) {
+      if (this.voices.size >= this.maxVoices) break;
+      const id = `${v.kind}:${v.midi}`;
+      if (this.voices.has(id)) continue;
+      const alive = [...v.drivers].filter((d) => live.has(d));
       const level = holdFade(v.rel.gain, v.fade, t);
       v.src.resume();
       v.level = level;
@@ -574,7 +696,7 @@ export class Resonance {
    * @param sounding  [{ midi }] -- the notes still ringing freely
    */
   tick(dt, sounding = []) {
-    if (!this.enabled) { if (this.voices.size) this.allOff(); return; }
+    if (!this.enabled) { if (this.voices.size || this.tails().length) this.allOff(); return; }
     const live = new Set();
     for (const s of sounding) live.add(s.midi);
     const now = this.ctx.currentTime;
@@ -590,7 +712,9 @@ export class Resonance {
     }
   }
 
+  /** Everything, tails on their fall included: panic, or resonance switched off. */
   allOff() {
+    for (const v of this.fading) if (v.fade && v.stopAt > this.soon() + 0.1) this.cut(v, 0.05);
     for (const id of [...this.voices.keys()]) this.release(id, 0.05);
   }
 
@@ -598,7 +722,7 @@ export class Resonance {
   setTone(hz) {
     this.tone = hz;
     const now = this.ctx.currentTime;
-    for (const v of this.voices.values()) v.lp.frequency.setTargetAtTime(hz, now, 0.02);
+    for (const c of this.chains.values()) c.lp.frequency.setTargetAtTime(hz, now, 0.02);
   }
 
   /** The strings with a voice of any kind. */

@@ -147,26 +147,42 @@ raises no-pedal from 1 to 6, pedal stays 0.
   per-node third), JS biquads inside the voice worklet (probably slower than
   native).
 
-### Step 2b -- near-exact, but NOT bit-exact: ask first
-- **Shared resonance filters per string**: voices on one string (the
-  active one + the fading ones from earlier strikes) share one HP/HP/LP
-  chain, with the level/release gains moved in front of it. Filters are
-  linear, so this is exact except where a gain moves (fades, top-ups):
-  estimated error ~ -50 dB or lower, only during fades. Saves 3 biquads per
-  extra voice on a string.
+### Step 3 -- sound-affecting fixes: DONE (approved by the user: "Do 1-5")
+All in resonance.js, unit-checked in unit.mjs:
+1. **Revive**: a strike on a string whose voice is still on its fall
+   (released by tick or a damper; `resumable`) stops the fall where it is
+   (`holdFade`) and drives that voice again (top-up from there, 40 ms), not
+   a second voice blooming in beside it. Too far decayed -> crossfaded into
+   a fresh start as before.
+2. **Tails count toward maxVoices** (`tails()`: released, `resumable`).
+   `makeRoom` weighs driven voices and tails together (tails by where
+   their fall has got to, `loudness`); a tail that is the quietest is cut
+   in CUT = 0.1 s (`cut`).
+3. **Shared filters**: one HP/HP/LP chain per `kind:midi` (`chain()`),
+   shared by overlapping voices at the same partial cut-off (crossfade
+   restarts, ~15% of resonance voices); the lvl/rel gains now sit in front
+   of the filters. Exact except while a gain moves.
+4. **Soundboard cap**: `sbMax = 12`, the loudest (nearest 6 either side);
+   the rest were ~7% of the soundboard's energy (-0.3 dB).
+5. **resumeFreed** brings back the loudest first and never more than
+   maxVoices driven.
+Plus a bug found on the way: **panic / resonance off left tails ringing up
+to 3 s** (allOff released only driven voices); now cut in 50 ms.
 
-### Step 3 -- sound-affecting fixes: DISCUSS WITH THE USER FIRST
-Present each with its perf gain and what changes audibly:
-- **Enforce the resonance cap in `resumeFreed()`** (a bug; changes which
-  strings ring in dense pedalling).
-- **Revive a fading voice for the same string on a re-strike** instead of
-  starting a new one (physically what a string does; fewer voices; the
-  string no longer re-blooms from silence on each strike).
-- **Count fading voices toward `maxVoices`**, stealing the quietest fading
-  one first (with a short fade).
-- **Limit soundboard voices** (e.g. nearest N strings, or its own cap).
-- Note voices can exceed MAX_VOICES (75 vs 64) because `prune()` skips held
-  keys -- probably fine, mention it.
+Result: live sample voices = the engine's count (pedal level 1: 30 live
+for 2 notes + 28 resonance; was 44-94). Scores in this container: no pedal
+2-4 (was 0-1), pedal 0 (level 1 loses 31-89 ms, was 235-874): 28-32
+resonance voices is about this container's whole capacity for resonance
+chains (27-41, step 1). `resMax` (UI, default 32) is the knob; 16 still
+fails pedal level 1 here by ~20 ms. On a real machine expect much higher.
+
+### Next
+- Measure on a real Mac (`npm run sampled:perf`): this container is far
+  slower than any machine the piano is played on.
+- If the pedal ladder is still low there: a pooled voice renderer (one
+  worklet node for several voices) is the remaining big structural win;
+  or the noteOn main-thread cost under the pedal (8-15 ms creating ~28
+  voices in one call).
 
 ### A/B render test
 Built for the voice/stream (`sampled:ab`, see step 2). A whole-engine A/B
