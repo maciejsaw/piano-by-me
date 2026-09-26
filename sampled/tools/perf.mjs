@@ -207,8 +207,11 @@ if (JSON_OUT && !MICRO && !NODES) writeFileSync(JSON_OUT, JSON.stringify({ at: n
 //   res       + 2 high-pass + 1 low-pass biquad, fixed frequencies (a resonance voice)
 //   res-auto  res, with the filter frequencies moved by setTargetAtTime as
 //             the resonance does (partial filter, tone)
+//   r-note, r-res, r-res-auto   the same voices in the one-worklet renderer
+//             (voices.js) instead of a node chain each
+// --kinds a,b picks some of them.
 async function micro() {
-  const rows = await page.evaluate(async ({ FAIL_MS }) => {
+  const rows = await page.evaluate(async ({ FAIL_MS, KINDS }) => {
     const { ctx, lib } = window.piano;
     const { StreamSource } = await import('/sampled/src/stream.js');
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -235,14 +238,31 @@ async function micro() {
       at.connect(sink);
       return nodes;
     };
+    // The one-worklet renderer (voices.js): the same voices, its own node.
+    const { VoiceRenderer } = await import('/sampled/src/voices.js');
+    const rv = new VoiceRenderer(lib.streamer);
+    rv.connect(sink);
     const out = [];
-    for (const kind of ['node', 'note', 'res', 'res-auto']) {
+    for (const kind of KINDS) {
       let best = 0;
       for (let n = 8; n <= 512; n = Math.ceil(n * 1.5)) {
         const trial = async () => {
         const voices = [];
         for (let i = 0; i < n; i++) {
           const b = keys[i % keys.length];
+          if (kind.startsWith('r-')) {
+            // A resonance voice gets a string's filters of its own, as `res` does.
+            const c = kind === 'r-note' ? null : rv.chain(21 + (i % 88), 10, 3400);
+            if (c && kind === 'r-res-auto') {
+              const t = ctx.currentTime;
+              for (const h of c.hp) h.frequency.setTargetAtTime(200 + i, t, 0.05);
+              c.lp.frequency.setTargetAtTime(3400, t, 0.02);
+            }
+            const src = rv.voice(b.key, b.frames, 21 + (i % 88), c);
+            src.start(ctx.currentTime + 0.05, 0);
+            voices.push({ src, nodes: [], c });
+            continue;
+          }
           const src = new StreamSource(lib.streamer, b.key, b.frames);
           const nodes = chain(kind, src, i);
           src.start(ctx.currentTime + 0.05, 0);
@@ -253,22 +273,23 @@ async function micro() {
         const p = await readProbe();
         for (const v of voices) { v.src.stop(); for (const x of v.nodes) x.disconnect(); }
         await wait(500); await readProbe();
+        for (const v of voices) v.c?.free();
         return p;
         };
         // As in the ladder: a failure counts only if it happens twice running.
         let p = await trial();
         if (p.lost >= FAIL_MS) p = await trial();
         const ok = p.lost < FAIL_MS;
-        console.log(`PERF   ${kind.padEnd(8)} ${String(n).padStart(3)} voices  lost ${p.lost.toFixed(0).padStart(4)} ms  drops ${p.drops}${ok ? '' : '  FAIL'}`);
+        console.log(`PERF   ${kind.padEnd(10)} ${String(n).padStart(3)} voices  lost ${p.lost.toFixed(0).padStart(4)} ms  drops ${p.drops}${ok ? '' : '  FAIL'}`);
         if (!ok) break;
         best = n;
       }
       out.push({ kind, capacity: best });
     }
     return out;
-  }, { FAIL_MS });
+  }, { FAIL_MS, KINDS: (arg('--kinds') ?? 'node,note,res,res-auto,r-note,r-res,r-res-auto').split(',') });
   console.log('');
-  for (const r of rows) console.log(`  CAPACITY ${r.kind.padEnd(8)} ${r.capacity} voices`);
+  for (const r of rows) console.log(`  CAPACITY ${r.kind.padEnd(10)} ${r.capacity} voices`);
   if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ at: new Date().toISOString(), micro: rows }, null, 2));
 }
 
