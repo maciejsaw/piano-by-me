@@ -231,6 +231,8 @@ is per-key numbers, so the renderer can apply it itself:
    only exists while `setTone` or `setPartialFilter` is gliding (tau 20-50
    ms). Measure the difference in dB on a recorded glide and present it;
    default to per-sample if the user does not want any change.
+   **Decided (user, 2026-09-26): every 32 samples while gliding**, taken at
+   the middle of each 32-sample run; constant filters are exact.
 6. **Wire the engine**:
    - `engine.renderer` chooses the path in noteOn / kill / release, and
      `resonance.start` / `chain` / `release` / `cut` / `revive` /

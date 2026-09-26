@@ -68,16 +68,21 @@ const I16 = 1 / 32768;
 // How often a voice tells the worker where it has got to: ~100 ms.
 const REPORT = 4800;
 
-class PianoVoice extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [{ name: 'playbackRate', defaultValue: 1, minValue: 0.25, maxValue: 4, automationRate: 'k-rate' }];
+/**
+ * One sample voice: the playback of one recording, from its head and then its
+ * stream, into the arrays it is given. `piano-voice` is a processor holding
+ * one of these.
+ */
+class Voice {
+  /** `onEnd(underrun)`: called once, when the voice has finished. */
+  constructor(id, key, total, onEnd) {
+    this.onEnd = onEnd;
+    this.reset(id, key, total);
   }
 
-  constructor(options) {
-    super();
-    const o = options.processorOptions;
-    this.id = o.id; this.key = o.key;
-    this.total = o.total;               // samples in the file (best knowledge until the worker says)
+  reset(id, key, total) {
+    this.id = id; this.key = key;
+    this.total = total;                 // samples in the file (best knowledge until the worker says)
     this.state = 0;                     // 0 waiting for start, 1 playing, 2 done
     this.startFrame = 0; this.stopFrame = Infinity;
     this.pos = 0;                       // read position in the file, samples
@@ -87,17 +92,15 @@ class PianoVoice extends AudioWorkletProcessor {
     this.underrun = 0;
     this.l = 0; this.r = 0;             // read() results, to avoid allocating
     this.fadeN = 0; this.fadeI = 0;     // fade-in, in output samples, and how far through
+    this.fadeCurve = null;
     this.waiting = false;               // started past the head, first block not here yet
-    this.port.onmessage = (e) => {
-      const d = e.data;
-      if (d.type === 'start') this.begin(d.when, d.offset, d.fade, d.curve);
-      else if (d.type === 'stop') this.stopFrame = Math.min(this.stopFrame, Math.round(d.when * sampleRate));
-      // A damper lifted again before its fall ended: the scheduled stop is
-      // off. Too late if the voice has already finished; the caller only asks
-      // while the stop is still well in the future.
-      else if (d.type === 'resume') this.stopFrame = Infinity;
-    };
   }
+
+  stop(when) { this.stopFrame = Math.min(this.stopFrame, Math.round(when * sampleRate)); }
+  // A damper lifted again before its fall ended: the scheduled stop is off.
+  // Too late if the voice has already finished; the caller only asks while
+  // the stop is still well in the future.
+  resume() { this.stopFrame = Infinity; }
 
   begin(when, offset, fade = 0, curve = null) {
     if (this.state !== 0) return;
@@ -150,7 +153,7 @@ class PianoVoice extends AudioWorkletProcessor {
     voices.delete(this.id);
     worker?.postMessage({ type: 'stop', id: this.id });
     giveBack(this.q); this.q = []; this.qi = 0;
-    this.port.postMessage({ type: 'ended', underrun: this.underrun });
+    this.onEnd(this.underrun);
   }
 
   /**
@@ -198,12 +201,15 @@ class PianoVoice extends AudioWorkletProcessor {
     }
   }
 
-  process(inputs, outputs, params) {
+  /**
+   * The quantum starting at frame `f0` into L/R, which must be zeroed: only
+   * the samples played are written. `playbackRate` as the parameter reads.
+   * False once the voice has finished.
+   */
+  render(L, R, f0, playbackRate) {
     if (this.state === 2) return false;
-    const out = outputs[0];
-    const L = out[0], R = out[1] ?? out[0];
     if (this.state === 0) return true;
-    const n = L.length, f0 = currentFrame;
+    const n = L.length;
     if (f0 + n <= this.startFrame) return true;
     let i = f0 < this.startFrame ? this.startFrame - f0 : 0;
     if (this.waiting) {
@@ -215,7 +221,7 @@ class PianoVoice extends AudioWorkletProcessor {
     }
     // The samples are 48 kHz; a context at another rate reads them faster or
     // slower to keep the pitch.
-    const rate = params.playbackRate[0] * (48000 / sampleRate);
+    const rate = playbackRate * (48000 / sampleRate);
     const fading = this.fadeI < this.fadeN, from = i;
     // Where this quantum ends: at the stop, the end of the file, or n.
     let end = n;
@@ -251,6 +257,29 @@ class PianoVoice extends AudioWorkletProcessor {
       worker?.postMessage({ type: 'need', id: this.id, pos: this.pos | 0 });
     }
     return true;
+  }
+}
+
+class PianoVoice extends AudioWorkletProcessor {
+  static get parameterDescriptors() {
+    return [{ name: 'playbackRate', defaultValue: 1, minValue: 0.25, maxValue: 4, automationRate: 'k-rate' }];
+  }
+
+  constructor(options) {
+    super();
+    const o = options.processorOptions;
+    this.voice = new Voice(o.id, o.key, o.total, (underrun) => this.port.postMessage({ type: 'ended', underrun }));
+    this.port.onmessage = (e) => {
+      const d = e.data;
+      if (d.type === 'start') this.voice.begin(d.when, d.offset, d.fade, d.curve);
+      else if (d.type === 'stop') this.voice.stop(d.when);
+      else if (d.type === 'resume') this.voice.resume();
+    };
+  }
+
+  process(inputs, outputs, params) {
+    const out = outputs[0];
+    return this.voice.render(out[0], out[1] ?? out[0], currentFrame, params.playbackRate[0]);
   }
 }
 
