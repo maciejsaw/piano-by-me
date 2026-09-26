@@ -276,7 +276,7 @@ async function micro() {
 //   idle   capacity of voice nodes that exist but have not started (a pool's
 //          spares), output connected and not; an empty worklet for scale
 //   churn  voice nodes created and ended K times a second (note chain,
-//          0.3 s each), with nothing else playing and with a steady load of
+//          50 ms each), with nothing else playing and with a steady load of
 //          60% of the note chain's capacity; lost ms per 8 s, against the
 //          same live count held without churn
 //   proto  capacity of ONE worklet node playing N voices in plain JS: copy
@@ -506,7 +506,7 @@ async function nodes(parts) {
     }
 
     if (parts.includes('churn')) {
-      const SECS = 8, LIFE = 0.3;
+      const SECS = 8, LIFE = 0.05;
       const bgN = Math.floor(noteCap * 0.6);
       out.churn = [];
       for (const bg of [0, bgN]) {

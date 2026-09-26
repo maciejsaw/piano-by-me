@@ -68,6 +68,51 @@ the numbers in this file:
 Record results, decide A and/or B, and tell the user the numbers before
 starting on B.
 
+### Stage 0 results (`npm run sampled:perf -- --nodes`, this container, 2026-09-26)
+
+Capacity = most of that kind held for a second without dropouts. Headroom
+swung ~2x between runs (the note chain read 27, 41 and 62), so compare
+within one run.
+
+| run | what | capacity |
+|---|---|---|
+| A | empty worklet node | 315 |
+| A | voice node, not started, connected | 315 |
+| A | voice node, not started, NOT connected | 140 |
+| B | note chain (voice node + 3 gains), node per voice | 27 |
+| B | resonance chain (+ 2 HP + LP, fixed), node per voice | 27 |
+| B | prototype, one node, N voices: copy + 3 gain ramps + key matrix | **473** |
+| B | prototype + 3 JS biquads per voice, fixed | **93** |
+| B | prototype + 3 JS biquads, coefficients every 128 samples while moving | **93** |
+| B | prototype + 3 JS biquads, coefficients EVERY sample, always moving | < 8 |
+
+Churn (voice node + 3 gains, 50 ms each, created K per second, 8 s; lost ms
+and drops, two runs; "0/s" is 5 voices held with no churn, the background):
+
+| background | 0/s | 10/s | 30/s | 100/s |
+|---|---|---|---|---|
+| none | 99 / 7 | 7 / 0 | 29 / 12 | 65 / 105 |
+| 60% of note capacity held | 31 / 80 | 16 / 16 | 15 / 35 | 40 / 37 |
+
+Reading:
+- **0.1** An idle voice node costs what an empty node costs (~1/300 of the
+  budget), if connected; disconnected costs twice that. 16 spares ~5%.
+- **0.2** Churn does not stand out from this container's background: the
+  no-churn baseline loses as much as 10-30 creations a second. 100/s with
+  nothing else playing may cost something (65 and 105 ms), but not
+  reproducibly above the noise. **Stage A: skip** -- no measured gain, and a
+  pool costs ~5% at idle. (The low-load glitches have another cause, or one
+  this container cannot resolve; a real Mac would tell.)
+- **0.3** One node playing voices in JS: **17x** the note chain and **3.4x**
+  the resonance chain -- well past the 1.5x gate. The prototype is idealised
+  (synthetic buffers, no stream bookkeeping, no automation timeline), so
+  expect less in the real thing; the margin is large. **Stage B: go.**
+- **0.4** JS biquads cost ~1/5 of the rest of a voice at fixed frequency;
+  recomputing coefficients per 128 samples costs nothing measurable, but
+  per sample (sin, cos, pow each sample) is unaffordable in JS. So step 5
+  is a real choice: per block (or per 16-32 samples) while gliding, or keep
+  moving-filter chains native.
+
 ## Stage A -- voice node pool (small; only if Stage 0.2 says creation hurts)
 
 Reuse `piano-voice` nodes instead of creating one per note.
