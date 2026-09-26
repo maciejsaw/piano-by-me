@@ -1,30 +1,39 @@
-// How much can the sampled piano play before it drops out? A fast
-// performance test: load, wait until everything is in, then play a few
-// seconds of each of the hardest things a player does and measure what broke.
+// How much can the sampled piano play before it drops out?
 //
 //   npm run sampled:perf [-- --json out.json] [-- --setup "js"]
 //
-// --setup runs a line of JavaScript in the page first, with `engine` in
-// scope, for A/B experiments: --setup "engine.res.enabled = false".
+// Loads the page, waits until every key and every head is in, then climbs a
+// ladder: at each level a chord is struck over and over for LEVEL_MS, with
+// more keys and faster repeats than the level before -- from 1 key every
+// 800 ms up to 21 keys every 35 ms, geometrically. Its tails are counted
+// with it. The ladder stops after STOP_AFTER failed levels, so a struggling
+// build is measured quickly. Done twice: without the pedal and with it held.
 //
-// Per scenario:
-//   lost ms     audio the output device did not get in time (a dropout),
-//               measured by a probe worklet: every render callback compares
-//               the audio clock with the wall clock, and a render that falls
-//               behind never catches up, so the growth of that lag IS the
-//               total dropout time. Checked against a deliberate CPU hog:
-//               3 ms per 2.67 ms render quantum loses ~130 ms per second.
-//   glitches    separate dropouts of 5 ms or more
-//   underruns   stream blocks that arrived after they were needed (silence
-//               inside a note, which the probe cannot see)
-//   voices      peak note voices / resonance voices, as the engine counts them
-//   live        peak sample voices actually running, fading ones included
-//   noteOn ms   main-thread cost of one engine.noteOn, median and worst
-//   long tasks  main-thread tasks over 50 ms during the scenario
+// A level FAILS if it loses FAIL_MS or more of audio, or a stream underruns,
+// twice running: a failed level is played again, and one that passes the
+// second time is reported as flaky rather than failed. (Isolated 3-4 ms
+// steps, and the odd larger spike, happen even with two voices sounding and
+// resonance off: background, not load. Real overload loses tens to hundreds
+// of ms per level, every time.)
 //
-// A measurement, not pass/fail: compare against the last run on the same
-// machine. The numbers from a headless container are pessimistic, and that
-// is useful -- a change that helps here helps everywhere.
+// The SCORE of a ladder is the last level before the first failure. The goal
+// is to push it up.
+//
+// Dropouts are measured by a probe AudioWorklet. On every render callback it
+// takes lag = wall clock - audio clock and keeps the minimum per 50 ms
+// window (callbacks come in bursts, so the raw lag saw-tooths by a few ms;
+// the windowed minimum is flat). A render that falls behind never catches
+// up, so a step up in that minimum IS audio lost, and a step of 3 ms or more
+// is a dropout (counted, and shown as `drops`). Checked: idle reads 0; a CPU
+// hog of 2.5 ms per 2.67 ms render quantum reads ~120 ms lost per second.
+//
+// Also per level: stream underruns (silence inside a note, which the probe
+// cannot see), peak sample voices actually running (fading ones included)
+// against what the engine counts, and the main-thread cost of noteOn.
+//
+// --setup runs a line of JavaScript in the page first, with `engine` and
+// `piano` in scope, for A/B experiments: --setup "engine.res.enabled = false".
+// A measurement, not pass/fail: compare runs on the same machine.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -36,6 +45,8 @@ const CHROME = [process.env.CHROMIUM, '/opt/pw-browsers/chromium'].find((p) => p
 const PORT = process.env.PORT || '8143';
 const arg = (k) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : null);
 const JSON_OUT = arg('--json'), SETUP = arg('--setup');
+const LEVELS = 20, LEVEL_MS = 1600, STOP_AFTER = 3, FAIL_MS = 10;
+
 const server = spawn(process.execPath, [join(REPO, 'tools', 'serve.mjs')], { env: { ...process.env, PORT }, stdio: 'ignore' });
 await new Promise((r) => setTimeout(r, 500));
 const browser = await chromium.launch({
@@ -45,6 +56,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
+page.on('console', (m) => { if (m.text().startsWith('PERF ')) console.log(m.text().slice(5)); });
 await page.goto(`http://localhost:${PORT}/sampled/`, { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => { document.getElementById('installChk').checked = false; });
 await page.click('#startBtn');
@@ -52,25 +64,30 @@ await page.waitForFunction(() => window.piano, null, { timeout: 30000 });
 await page.waitForFunction(() => window.piano.lib.keysReady() >= 88, null, { timeout: 120000 });
 await page.waitForFunction(() => window.piano.lib.streamer.headsBundle !== null, null, { timeout: 120000 });
 
-const results = await page.evaluate(async (setup) => {
+const results = await page.evaluate(async ({ setup, LEVELS, LEVEL_MS, STOP_AFTER, FAIL_MS }) => {
   const { ctx, engine, lib } = window.piano;
   if (setup) new Function('engine', 'piano', setup)(engine, window.piano);
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // The probe: lag = wall clock - audio clock, per render callback. Its floor
-  // rises by exactly the time lost each time rendering falls behind.
   const src = `
     class PerfProbe extends AudioWorkletProcessor {
       constructor() {
         super();
-        this.reset();
-        this.port.onmessage = () => { this.port.postMessage({ lost: this.floor - this.base, glitches: this.glitches }); this.reset(); };
+        this.floor = null; this.win = Infinity; this.left = 2400;
+        this.lost = 0; this.drops = 0;
+        this.port.onmessage = () => {
+          this.port.postMessage({ lost: this.lost, drops: this.drops });
+          this.lost = 0; this.drops = 0;
+        };
       }
-      reset() { this.base = Infinity; this.floor = Infinity; this.glitches = 0; }
       process() {
         const lag = Date.now() - currentFrame / sampleRate * 1000;
-        if (lag < this.base) { this.base = lag; this.floor = lag; }
-        else if (lag > this.floor + 5) { this.glitches++; this.floor = lag; }
+        if (lag < this.win) this.win = lag;
+        if ((this.left -= 128) <= 0) {
+          if (this.floor === null || this.win < this.floor) this.floor = this.win;
+          else if (this.win > this.floor + 3) { this.lost += this.win - this.floor; this.drops++; this.floor = this.win; }
+          this.win = Infinity; this.left = 2400;
+        }
         return true;
       }
     }
@@ -91,65 +108,79 @@ const results = await page.evaluate(async (setup) => {
     this.node.port.onmessage = (e) => { if (e.data.type === 'ended') live--; prev?.call(this.node.port, e); };
     return realStart.apply(this, a);
   };
-  let longTasks = 0;
-  try { new PerformanceObserver((l) => { longTasks += l.getEntries().length; }).observe({ entryTypes: ['longtask'] }); } catch { /* unsupported */ }
 
-  const CHORD = [36, 40, 43, 48, 52, 55, 60, 64, 67, 72];
-  const RUN = []; for (let m = 48; m <= 84; m++) if ([0, 2, 4, 5, 7, 9, 11].includes(m % 12)) RUN.push(m);
-  const scenarios = [
-    ['idle, nothing playing', false, async () => { await wait(3000); }],
-    ['10-key chord x20, no pedal', false, async (on, off) => {
-      for (let i = 0; i < 20; i++) { for (const m of CHORD) on(m, 100); await wait(110); for (const m of CHORD) off(m); await wait(40); }
-    }],
-    ['10-key chord x20, pedal', true, async (on, off) => {
-      for (let i = 0; i < 20; i++) { for (const m of CHORD) on(m, 100); await wait(110); for (const m of CHORD) off(m); await wait(40); }
-    }],
-    ['fast run 25/s, pedal', true, async (on, off) => {
-      const seq = [...RUN, ...RUN.slice().reverse(), ...RUN, ...RUN.slice().reverse()];
-      for (const m of seq) { on(m, 90); await wait(40); off(m); }
-    }],
-    ['one key x40 at 20/s', false, async (on, off) => {
-      for (let i = 0; i < 40; i++) { on(60, 60 + (i % 5) * 12); await wait(35); off(60); await wait(15); }
-    }],
-  ];
+  // Spread across the keyboard, so the chord grows in range as well as size.
+  const POOL = [48, 52, 55, 60, 64, 67, 36, 72, 43, 76, 40, 79, 57, 84, 45, 62, 69, 38, 74, 50, 88];
+  // Geometric in both, from 1 key every 800 ms to 21 keys every 35 ms.
+  const level = (k) => {
+    const u = (k - 1) / (LEVELS - 1);
+    return { keys: POOL.slice(0, Math.round(Math.pow(21, u))), every: Math.round(800 * Math.pow(35 / 800, u)) };
+  };
 
-  const out = [];
-  for (const [name, pedal, play] of scenarios) {
-    engine.panic(); await wait(1500);
-    await readProbe();                                 // start clean
-    const u0 = lib.streamer.underruns;
-    longTasks = 0;
-    const times = []; let peak = 0, peakRes = 0, peakLive = 0;
-    const sample = setInterval(() => { const s = engine.stats(); peak = Math.max(peak, s.voices); peakRes = Math.max(peakRes, s.resonating); peakLive = Math.max(peakLive, live); }, 20);
-    const on = (m, v) => { const t = performance.now(); engine.noteOn(m, v); times.push(performance.now() - t); };
-    const off = (m) => engine.noteOff(m);
-    if (pedal) engine.setPedal(1);
-    await play(on, off);
-    await wait(1000);                                  // the tails are part of the load
-    engine.setPedal(0);
-    await wait(300);
-    clearInterval(sample);
-    const p = await readProbe();
-    times.sort((a, b) => a - b);
-    out.push({
-      name, lost: p.lost, glitches: p.glitches, underruns: lib.streamer.underruns - u0,
-      voices: peak, resVoices: peakRes, live: peakLive, noteOnMedian: times[times.length >> 1], noteOnMax: times[times.length - 1],
-      notes: times.length, longTasks,
-    });
+  const ladders = [];
+  for (const pedal of [false, true]) {
+    const rows = [];
+    let failed = 0;
+    engine.panic(); await wait(1500); await readProbe();
+    const play = async (k) => {
+      const { keys, every } = level(k);
+      const u0 = lib.streamer.underruns, times = [];
+      let peakLive = 0, peakVoices = 0, peakRes = 0;
+      const sample = setInterval(() => {
+        const s = engine.stats();
+        peakLive = Math.max(peakLive, live); peakVoices = Math.max(peakVoices, s.voices); peakRes = Math.max(peakRes, s.resonating);
+      }, 20);
+      if (pedal) engine.setPedal(1);
+      const until = performance.now() + LEVEL_MS;
+      while (performance.now() < until) {
+        for (const m of keys) { const t = performance.now(); engine.noteOn(m, 96); times.push(performance.now() - t); }
+        await wait(every * 0.7);
+        for (const m of keys) engine.noteOff(m);
+        await wait(every * 0.3);
+      }
+      if (pedal) engine.setPedal(0);
+      await wait(600);                               // the tails are part of the load
+      clearInterval(sample);
+      const p = await readProbe();
+      engine.panic(); await wait(300); await readProbe();   // start the next level clean
+      times.sort((a, b) => a - b);
+      const row = { level: k, keys: keys.length, every, lost: p.lost, drops: p.drops,
+        underruns: lib.streamer.underruns - u0, live: peakLive, voices: peakVoices, resVoices: peakRes,
+        noteOnMedian: times[times.length >> 1] ?? 0 };
+      row.failed = p.lost >= FAIL_MS || row.underruns > 0;
+      return row;
+    };
+    for (let k = 1; k <= LEVELS && failed < STOP_AFTER; k++) {
+      let row = await play(k);
+      // A one-off spike is not the level's load: a failure counts only if the
+      // level fails again straight away.
+      if (row.failed) {
+        const again = await play(k);
+        if (!again.failed) { again.flaky = row.lost; row = again; }
+      }
+      rows.push(row);
+      if (row.failed) failed++;
+      console.log(`PERF   ${pedal ? 'pedal   ' : 'no pedal'} level ${String(k).padStart(2)}: ${String(row.keys).padStart(2)} keys every ${String(row.every).padStart(3)} ms`
+        + `  lost ${row.lost.toFixed(0).padStart(5)} ms  drops ${String(row.drops).padStart(3)}  underruns ${row.underruns}`
+        + `  live ${String(row.live).padStart(3)} (engine ${row.voices} + ${row.resVoices})  noteOn ${row.noteOnMedian.toFixed(2)} ms`
+        + (row.failed ? '  FAIL' : row.flaky != null ? `  (passed on retry; first try lost ${row.flaky.toFixed(0)} ms)` : ''));
+    }
+    const first = rows.find((r) => r.failed);
+    ladders.push({ pedal, score: first ? first.level - 1 : rows.length, rows });
   }
   engine.panic();
-  return out;
-}, SETUP);
+  return ladders;
+}, { setup: SETUP, LEVELS, LEVEL_MS, STOP_AFTER, FAIL_MS });
 await browser.close();
 server.kill();
 
-const pad = (s, n) => String(s).padStart(n);
-console.log(`\n  ${'scenario'.padEnd(28)}${pad('lost ms', 9)}${pad('glitches', 10)}${pad('underruns', 11)}${pad('voices', 12)}${pad('live', 7)}${pad('noteOn ms', 13)}${pad('long tasks', 12)}`);
-for (const r of results) {
-  console.log(`  ${r.name.padEnd(28)}${pad(r.lost.toFixed(0), 9)}${pad(r.glitches, 10)}${pad(r.underruns, 11)}`
-    + `${pad(`${r.voices} + ${r.resVoices}`, 12)}${pad(r.live, 7)}${pad(r.notes ? `${r.noteOnMedian.toFixed(2)} / ${r.noteOnMax.toFixed(1)}` : '-', 13)}${pad(r.longTasks, 12)}`);
-}
-const total = results.reduce((a, r) => a + r.lost, 0);
+console.log('');
 if (SETUP) console.log(`  setup: ${SETUP}`);
-console.log(`\n  total lost: ${total.toFixed(0)} ms${errors.length ? `   page errors: ${errors.join(' | ')}` : ''}\n`);
-if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
+for (const l of results) {
+  const r = l.rows[l.score - 1];
+  console.log(`  SCORE ${l.pedal ? 'pedal   ' : 'no pedal'} ${String(l.score).padStart(2)} / ${LEVELS}`
+    + (r ? `   (clean up to ${r.keys} keys every ${r.every} ms, ${r.live} voices running)` : '   (dropped at the first level)'));
+}
+if (errors.length) console.log(`  page errors: ${errors.join(' | ')}`);
+console.log('');
+if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ at: new Date().toISOString(), setup: SETUP, levels: LEVELS, results }, null, 2));

@@ -34,41 +34,46 @@ Tests:
 
 All green at adb7ec4. `sampled:verify` needs ffmpeg (not in this container).
 
-## The performance test (`sampled/tools/perf.mjs`)
+## The performance test (`sampled/tools/perf.mjs`, `npm run sampled:perf`)
 
-Loads the page, waits for every key and every head, then per scenario:
-idle 3 s; a 10-key chord struck 20x at ~7/s without pedal; the same with
-pedal; a 3-octave run at 25 notes/s with pedal; one key 40x at 20/s. Each
-followed by 1 s of tails.
+A ramp. After load (every key and every head in) it climbs 20 levels, each
+a chord struck repeatedly for 1.6 s plus 0.6 s of tails, geometric in both
+size and speed: level 1 = 1 key every 800 ms ... level 20 = 21 keys every
+35 ms. Two ladders: without pedal, and with the pedal held for the level.
 
-Dropouts are measured by a probe AudioWorklet: `lag = Date.now() -
-currentFrame/sampleRate*1000` per render callback. A render that falls
-behind never catches up, so the rise of the lag floor = audio lost. Validated
-with a deliberate CPU hog (3 ms per 2.67 ms quantum -> ~130 ms lost per s;
-0-2 ms -> ~1-2 ms noise). Chrome 141 headless has no `playbackStats` /
-`renderCapacity`, even with experimental flags.
+- A level FAILS if it loses >= 10 ms of audio or a stream underruns, twice
+  running (a failed level is replayed once; passing the replay = "flaky").
+- A ladder stops after 3 failed levels, so a bad build finishes in ~30 s.
+- **SCORE = last level before the first failure. The goal is to raise it.**
+- Per level it prints lost ms, drops (steps >= 3 ms), underruns, peak live
+  sample voices (every running StreamSource, fading included) vs the
+  engine's own count, and median noteOn cost.
+- `--setup "js"` runs code in the page first (`engine`, `piano` in scope)
+  for A/B experiments; `--json file` saves the rows.
 
-Also reported: stream underruns, peak voices as the engine counts them,
-**peak live sample voices** (every running StreamSource, fading included),
-noteOn main-thread cost, long tasks. `--setup "js"` runs code in the page
-first for A/B experiments (`engine`, `piano` in scope).
+Dropout probe: an AudioWorklet computes `lag = Date.now() -
+currentFrame/sampleRate*1000` each render callback and keeps the minimum per
+50 ms window (raw lag saw-tooths 3-6 ms because callbacks come in bursts --
+a first version without the window counted that as hundreds of false
+drops). A render that falls behind never catches up, so a step up of the
+windowed minimum = audio lost. Validated standalone: idle 0 ms; CPU hog 2.5
+ms per 2.67 ms quantum -> ~120 ms lost per s. Chrome 141 headless has no
+`playbackStats` / `renderCapacity`, even with experimental flags.
 
-### Baseline (this container, 4 cores, adb7ec4 + perf.mjs)
+**Noise:** even at 2-4 voices with resonance off there are sporadic 10-33
+ms spikes (hence the replay rule). Run it 2-3 times and compare medians.
 
-| scenario | lost ms | live voices | engine count |
+### Baseline scores (this container, 4 cores)
+
+| build | no pedal | pedal | notes |
 |---|---|---|---|
-| idle | 5-45 | 0 | 0 + 0 |
-| 10-key chord x20, no pedal | ~3800 | 240 | 10 + 59 |
-| 10-key chord x20, pedal | ~3950 | 301 | 75 + 45 |
-| fast run 25/s, pedal | ~4100 | 245 | 64 + 50 |
-| one key x40 at 20/s | 500-1900 | 84 | 1 + 16 |
+| as shipped (6bbdb55) | 0-1 | 0 | pedal level 1 (1 key / 800 ms) loses 235-874 ms with 44-94 live voices; no-pedal level 4 (2 keys / 488 ms) 92 live voices, 721 ms lost |
+| `--setup "engine.res.enabled = false"` | 6-12 | 7-9 | fails around 18-50 live note voices |
 
-Same, `--setup "engine.res.sbAmount = 0"` (no soundboard): 1676 / 1936 /
-2318 / 12 ms lost, live 85 / 127 / 101 / 8.
-Same, `--setup "engine.res.enabled = false"`: 138 / 210 / 56 / 11 ms lost,
-live 35 / 85 / 67 / 6.
-
-Noise between runs is large (x1.5); compare totals and several runs.
+The older scenario version of the test (commit 6bbdb55) gave, as shipped:
+~3.8-4.1 s lost per 4 s burst of chords/runs, 240-300 live voices while
+the engine counted ~60; with soundboard off about half; with resonance off
+~0.5 s total. Those findings still stand:
 
 ## What the numbers say
 
@@ -95,15 +100,21 @@ Noise between runs is large (x1.5); compare totals and several runs.
 
 ## Next steps, in order
 
+Workflow for every performance change: `npm run sampled:perf -- --json
+before.json` (2-3 runs), make the change, same again, compare the median
+SCORE of each ladder and the live-voice counts. `npm run sampled:test` must
+stay green.
+
 ### Step 1 -- find the per-voice cost (no code change to the piano)
-A micro-benchmark page (or a `perf.mjs --micro` mode): N silent voices of
-each chain type, N = 25/50/100/200, measure lost ms:
+A micro-ramp in the same style (a `perf.mjs --micro` mode, <30 s): start N
+silent sample voices of one chain type, raise N (10, 20, 40, 80, 160...)
+until the probe fails; the N reached is that chain's capacity. Chains:
   a. AudioWorkletNode (piano-voice) alone
   b. + 3 gains (note chain)
-  c. + 2 HP + LP static frequency (resonance chain)
-  d. same with a live `setTargetAtTime` on the filter frequency
+  c. + 2 high-pass + 1 low-pass biquad, static frequency (resonance chain)
+  d. c with a live `setTargetAtTime` on the filter frequencies
 This decides whether the fix is "fewer worklet nodes" or "no automated
-biquads". Keep it fast (<30 s). Record results here.
+biquads". Record the capacities here.
 
 ### Step 2 -- no-sound-change optimisations (can go ahead, then report)
 Depending on step 1:
@@ -143,6 +154,14 @@ record engine output through the recorder worklet, compare against a
 recording from a git worktree of the previous commit (worklets cannot be
 swapped by request routing; workers can). Report max difference in dB
 below the signal. Keep it < 30 s if possible; otherwise slow set.
+
+### Step 1b -- the sporadic spikes at low load
+10-33 ms lost with 2-4 voices and resonance off, not every time. Suspects:
+garbage collection on the audio thread (the worklet scope holds ~80 MB of
+heads and receives many messages), AudioWorkletNode creation/teardown per
+note (graph changes take a lock the audio thread waits on), the main-thread
+40 ms UI/resonance ticker. Try: `window.piano.ui = false`; many notes with
+no new nodes (reuse); count spikes vs node creations per second.
 
 ### Lower priority
 - `SharedArrayBuffer` ring buffers for streaming (needs COOP/COEP headers
