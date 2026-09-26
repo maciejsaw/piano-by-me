@@ -180,7 +180,8 @@ fails pedal level 1 here by ~20 ms. On a real machine expect much higher.
 - Measure on a real Mac (`npm run sampled:perf`): this container is far
   slower than any machine the piano is played on.
 - If the pedal ladder is still low there: a pooled voice renderer (one
-  worklet node for several voices) is the remaining big structural win;
+  worklet node for several voices) is the remaining big structural win --
+  full plan in `sampled/PLAN-voices.md` (voice node pool + one renderer);
   or the noteOn main-thread cost under the pedal.
 - noteOn profiled (pedal down, one key every 250 ms, ~30 resonance voices):
   node creation is small (~0.3 ms); most was `estimate`, called for every
