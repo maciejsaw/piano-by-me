@@ -1,8 +1,7 @@
 // The picture above the keyboard: every note played rises from its key as a
 // bar, long while the key is held, and drifts up and away after -- one
 // colour for white keys, one for black. Under the bars, each string the resonance is
-// sounding glows from the keyboard up, as tall as it is loud, over a faint
-// wash on every string whose damper is off.
+// sounding glows faintly from the keyboard up, as tall as it is loud.
 //
 // Laid out on the same key positions as the keyboard (keyboard.js), so a bar
 // stands exactly over its key. Draws only while something moves or rings.
@@ -33,14 +32,16 @@ export function keyGeometry(lo, hi) {
 }
 
 // Two colours only: a note on a white key, a note on a black key.
-const WHITE_NOTE = '#efe6d6', BLACK_NOTE = '#d9a441';
+// Each a shade with a little yellow in it, strongest at the keys and gone
+// by the top of the picture.
+const WHITE_NOTE = [250, 236, 200], BLACK_NOTE = [232, 184, 92];
 
-export function createStage(canvas, { lo, hi, res, undamped }) {
+export function createStage(canvas, { lo, hi, res }) {
   const g = canvas.getContext('2d');
   const geo = keyGeometry(lo, hi);
   const notes = [];                  // { m, t0, t1 (null while held) }
   const heldNote = new Map();        // m -> its note, while down
-  let raf = 0, lastRes = false, lastOff = -1;
+  let raf = 0, lastRes = false;
 
   const now = () => performance.now() / 1000;
 
@@ -53,27 +54,8 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
     if (canvas.height !== h) canvas.height = h;
     const t = now();
 
-    // Background: see-through at the top, so whatever is behind the canvas
-    // shows, darkening toward the keys; a guide at every C.
+    // No background: the canvas is clear, so whatever is behind it shows.
     g.clearRect(0, 0, w, h);
-    const bg = g.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, 'rgba(10,9,8,0.15)'); bg.addColorStop(1, 'rgba(10,9,8,0.6)');
-    g.fillStyle = bg; g.fillRect(0, 0, w, h);
-    g.fillStyle = 'rgba(236,229,218,0.045)';
-    for (let m = lo; m <= hi; m++) if (m % 12 === 0) g.fillRect(Math.round(geo.get(m).x * w), 0, Math.max(1, dpr), h);
-
-    // Strings with their dampers off.
-    const off = undamped();
-    if (off?.size) {
-      for (const m of off) {
-        const k = geo.get(m);
-        if (!k) continue;
-        const grad = g.createLinearGradient(0, h, 0, h * 0.55);
-        grad.addColorStop(0, 'rgba(217,164,65,0.10)'); grad.addColorStop(1, 'rgba(217,164,65,0)');
-        g.fillStyle = grad;
-        g.fillRect(k.x * w, h * 0.55, k.w * w, h * 0.45);
-      }
-    }
 
     // Resonance: a glow per sounding string, on a 48 dB scale.
     const r = res();
@@ -89,16 +71,26 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
         ringing = true;
         const top = h - v * h * 0.8;
         const grad = g.createLinearGradient(0, h, 0, top);
-        grad.addColorStop(0, `rgba(240,190,90,${(0.25 + 0.55 * v).toFixed(3)})`);
+        grad.addColorStop(0, `rgba(240,190,90,${(0.1 + 0.3 * v).toFixed(3)})`);
         grad.addColorStop(1, 'rgba(240,190,90,0)');
         g.fillStyle = grad;
-        const cx = (k.x + k.w / 2) * w, bw = Math.max(2 * dpr, k.w * w * 0.9);
+        const cx = (k.x + k.w / 2) * w, bw = Math.max(1 * dpr, k.w * w * 0.3);
         g.fillRect(cx - bw / 2, top, bw, h - top);
       }
     }
 
     // Notes, rising.
     const px = SPEED * dpr;
+    const fadeUp = ([r, gg, b]) => {
+      const f = g.createLinearGradient(0, h, 0, 0);
+      f.addColorStop(0, `rgba(${r},${gg},${b},0.95)`);
+      f.addColorStop(0.6, `rgba(${r},${gg},${b},0.35)`);
+      f.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+      return f;
+    };
+    const fills = [fadeUp(WHITE_NOTE), fadeUp(BLACK_NOTE)];
+    g.shadowColor = 'rgba(255,200,90,0.55)';
+    g.shadowBlur = 8 * dpr;
     let live = false;
     for (let i = notes.length - 1; i >= 0; i--) {
       const n = notes[i];
@@ -107,19 +99,18 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
       if (bottom < 0) { notes.splice(i, 1); continue; }
       live = true;
       const k = geo.get(n.m);
-      const bw = Math.max(3 * dpr, k.w * w - 2 * dpr), x = k.x * w + (k.w * w - bw) / 2;
-      // Fades as it rises away.
-      g.globalAlpha = Math.max(0.1, 1 - (h - bottom) / h) * 0.9;
-      g.fillStyle = k.black ? BLACK_NOTE : WHITE_NOTE;
-      roundRect(g, x, top, bw, Math.max(2 * dpr, bottom - top), Math.min(bw / 2, 2 * dpr));
+      const bw = Math.max(2 * dpr, k.w * w * 0.55), x = k.x * w + (k.w * w - bw) / 2;
+      // A thin bar with a soft glow, fading toward the top.
+      g.fillStyle = fills[k.black ? 1 : 0];
+      roundRect(g, x, top, bw, Math.max(2 * dpr, bottom - top), bw / 2);
       g.fill();
-      g.globalAlpha = 1;
     }
+    g.shadowBlur = 0;
 
-    // Only the rising notes need every frame; resonance and dampers are
-    // polled, and tick() asks for a frame when they have something to show.
+    // Only the rising notes need every frame; resonance is
+    // polled, and tick() asks for a frame when it has something to show.
     if (live) start();
-    lastRes = ringing; lastOff = off?.size ?? 0;
+    lastRes = ringing;
   }
 
   function start() { if (!raf) raf = requestAnimationFrame(frame); }
@@ -140,11 +131,11 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
       start();
     },
     clear() { for (const n of notes) if (n.t1 == null) n.t1 = now(); heldNote.clear(); start(); },
-    /** From the resonance poll: a frame if anything rings, or just stopped, or the dampers changed. */
+    /** From the resonance poll: a frame if anything rings, or just stopped. */
     tick() {
       const r = res();
       const ringing = !!r && r.level.some((e) => e > 0);
-      if (ringing || lastRes || (undamped()?.size ?? 0) !== lastOff) start();
+      if (ringing || lastRes) start();
     },
   };
 }

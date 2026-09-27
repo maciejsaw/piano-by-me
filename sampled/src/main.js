@@ -437,7 +437,7 @@ const knobs = [];
 function buildUI() {
   stage = createStage($('stage'), {
     lo: LOW, hi: HIGH,
-    res: () => engine?.res, undamped: () => engine?.undamped,
+    res: () => engine?.res,
   });
   kb = buildKeyboard($('kbInner'), {
     lo: LOW, hi: HIGH,
