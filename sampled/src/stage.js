@@ -1,6 +1,6 @@
 // The picture above the keyboard: every note played rises from its key as a
-// bar, long while the key is held, brighter the harder it was struck, and
-// drifts up and away after. Under the bars, each string the resonance is
+// bar, long while the key is held, and drifts up and away after -- one
+// colour for white keys, one for black. Under the bars, each string the resonance is
 // sounding glows from the keyboard up, as tall as it is loud, over a faint
 // wash on every string whose damper is off.
 //
@@ -32,17 +32,13 @@ export function keyGeometry(lo, hi) {
   return geo;
 }
 
-/** A velocity's colour: cool and dim for pianissimo, warm gold for fortissimo. */
-function tint(vel, a) {
-  const t = Math.max(0, Math.min(1, (vel - 1) / 126));
-  const h = 210 - 172 * t, s = 45 + 40 * t, l = 52 + 14 * t;
-  return `hsla(${h.toFixed(0)},${s.toFixed(0)}%,${l.toFixed(0)}%,${a.toFixed(3)})`;
-}
+// Two colours only: a note on a white key, a note on a black key.
+const WHITE_NOTE = '#efe6d6', BLACK_NOTE = '#d9a441';
 
 export function createStage(canvas, { lo, hi, res, undamped }) {
   const g = canvas.getContext('2d');
   const geo = keyGeometry(lo, hi);
-  const notes = [];                  // { m, vel, t0, t1 (null while held) }
+  const notes = [];                  // { m, t0, t1 (null while held) }
   const heldNote = new Map();        // m -> its note, while down
   let raf = 0, lastRes = false, lastOff = -1;
 
@@ -57,9 +53,11 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
     if (canvas.height !== h) canvas.height = h;
     const t = now();
 
-    // Background: a soft vertical fade, a guide at every C.
+    // Background: see-through at the top, so whatever is behind the canvas
+    // shows, darkening toward the keys; a guide at every C.
+    g.clearRect(0, 0, w, h);
     const bg = g.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, '#0f0d0b'); bg.addColorStop(1, '#1a1612');
+    bg.addColorStop(0, 'rgba(10,9,8,0.15)'); bg.addColorStop(1, 'rgba(10,9,8,0.6)');
     g.fillStyle = bg; g.fillRect(0, 0, w, h);
     g.fillStyle = 'rgba(236,229,218,0.045)';
     for (let m = lo; m <= hi; m++) if (m % 12 === 0) g.fillRect(Math.round(geo.get(m).x * w), 0, Math.max(1, dpr), h);
@@ -110,17 +108,12 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
       live = true;
       const k = geo.get(n.m);
       const bw = Math.max(3 * dpr, k.w * w - 2 * dpr), x = k.x * w + (k.w * w - bw) / 2;
-      const fade = Math.max(0.15, 1 - (h - bottom) / h);
-      const grad = g.createLinearGradient(0, top, 0, bottom);
-      grad.addColorStop(0, tint(n.vel, 0.95 * fade));
-      grad.addColorStop(1, tint(n.vel, 0.35 * fade));
-      g.fillStyle = grad;
-      roundRect(g, x, top, bw, Math.max(2 * dpr, bottom - top), Math.min(bw / 2, 4 * dpr));
+      // Fades as it rises away.
+      g.globalAlpha = Math.max(0.1, 1 - (h - bottom) / h) * 0.9;
+      g.fillStyle = k.black ? BLACK_NOTE : WHITE_NOTE;
+      roundRect(g, x, top, bw, Math.max(2 * dpr, bottom - top), Math.min(bw / 2, 2 * dpr));
       g.fill();
-      if (n.t1 == null) {        // held: a bright lip where it meets the key
-        g.fillStyle = tint(n.vel, 1);
-        g.fillRect(x, h - 2 * dpr, bw, 2 * dpr);
-      }
+      g.globalAlpha = 1;
     }
 
     // Only the rising notes need every frame; resonance and dampers are
@@ -132,9 +125,9 @@ export function createStage(canvas, { lo, hi, res, undamped }) {
   function start() { if (!raf) raf = requestAnimationFrame(frame); }
 
   return {
-    noteOn(m, vel) {
+    noteOn(m) {
       if (!geo.has(m)) return;
-      const n = { m, vel, t0: now(), t1: null };
+      const n = { m, t0: now(), t1: null };
       heldNote.get(m) && (heldNote.get(m).t1 = n.t0);
       heldNote.set(m, n);
       notes.push(n);

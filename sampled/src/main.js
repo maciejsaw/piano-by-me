@@ -134,7 +134,7 @@ function keepRunning(c) {
 /** The simple view's knobs, each standing in for a slider in the full view. */
 function buildKnobs() {
   const root = $('knobs');
-  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall']]) {
+  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['symAmt', 'Resonance']]) {
     const k = knob($(id), label, $(id + 'V'));
     root.appendChild(k.el);
     knobs.push(k);
@@ -166,7 +166,7 @@ function noteOn(midi, vel) {
   if (!engine || midi < LOW || midi > HIGH) return;
   const v = engine.noteOn(midi, vel);
   if (v) layerHits.set(midi, { layer: v.layer, vel, at: performance.now(), held: true });
-  stage?.noteOn(midi, vel);
+  stage?.noteOn(midi);
   lastVel = vel; lastVelAt = performance.now();
   down.add(midi); paint(midi); editor?.playing();
 }
