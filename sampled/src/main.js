@@ -44,6 +44,7 @@ const layerHits = new Map();
 async function start(install = false) {
   $('startBtn').disabled = true;
   $('installChk').disabled = true;
+  $('rendererChk').disabled = true;
   $('uninstallBtn').disabled = true;
   $('startBtn').textContent = 'loading…';
   ctx = new AudioContext({ latencyHint: latencyHint(), sampleRate: 48000 });
@@ -55,6 +56,7 @@ async function start(install = false) {
   catch (e) {
     $('startBtn').disabled = false;
     $('installChk').disabled = false;
+    $('rendererChk').disabled = false;
     $('uninstallBtn').disabled = false;
     $('startBtn').textContent = 'Start audio';
     $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b><br>
@@ -77,6 +79,9 @@ async function start(install = false) {
 
   await loadWorklets(ctx);
   engine = new Engine(ctx, lib, curves, envelopes);
+  // The start screen's choice: one worklet for every voice (voices.js), or a
+  // node per voice.
+  engine.renderer = $('rendererChk').checked;
   restore();
   buildUI();
   restoreControls();       // second pass: sliders, EQ bands and toggles
@@ -1053,10 +1058,15 @@ const startFailed = (e) => {
   $('startView').hidden = false; $('installView').hidden = true;
   $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b>`;
   $('startBtn').disabled = false; $('startBtn').textContent = 'Start audio';
-  $('installChk').disabled = false; $('uninstallBtn').disabled = false;
+  $('installChk').disabled = false; $('rendererChk').disabled = false; $('uninstallBtn').disabled = false;
 };
 // The box is only honoured while it is showing: hidden means already
 // installed, or nowhere to put it.
+// Remembered between visits, like the rest of the settings.
+try { $('rendererChk').checked = localStorage.getItem('sampled.renderer') === '1'; } catch { /* no storage */ }
+$('rendererChk').onchange = () => {
+  try { localStorage.setItem('sampled.renderer', $('rendererChk').checked ? '1' : '0'); } catch { /* no storage */ }
+};
 $('startBtn').onclick = () => start(!$('installOffer').hidden && $('installChk').checked).catch(startFailed);
 
 /**

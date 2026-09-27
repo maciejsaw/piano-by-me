@@ -139,6 +139,10 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
     <input type="checkbox" id="installChk" checked>
     <span id="installLbl">Download samples to disk for better performance — takes about 2.6 GB on your disk</span>
   </label>
+  <label class="installOpt">
+    <input type="checkbox" id="rendererChk">
+    <span>Play every voice in one audio node (experimental) — holds several times more voices before dropouts; resonance filter glides follow their set times, where the usual path runs them about twice as fast</span>
+  </label>
   <button class="primary" id="startBtn">Start audio</button>
   <div><button id="uninstallBtn" class="small" hidden></button></div>
   <p id="loadMsg" style="font-size:11px">The library streams as you play: the first notes are
