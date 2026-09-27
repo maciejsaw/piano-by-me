@@ -94,8 +94,8 @@ export function createVelMapEditor(canvas, map, { grid = [], label = (y) => y.to
   function draw() {
     const w = canvas.width = canvas.clientWidth * dpr();
     const h = canvas.height = canvas.clientHeight * dpr();
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = '#2b261d'; ctx.fillStyle = '#6d6458';
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#19202f'; ctx.fillStyle = '#4f5c76';
     ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.textAlign = 'left';
     for (const g of grid) {
       const y = yOf(g, h);
@@ -108,23 +108,23 @@ export function createVelMapEditor(canvas, map, { grid = [], label = (y) => y.to
       ctx.fillText(`${v}`, x + 3, h - 3);
     }
     if (zero != null) {
-      ctx.strokeStyle = '#4a4134';
+      ctx.strokeStyle = '#323b4c';
       ctx.beginPath(); ctx.moveTo(0, yOf(zero, h)); ctx.lineTo(w, yOf(zero, h)); ctx.stroke();
     }
     const mv = markVel();
     if (mv) {
-      ctx.strokeStyle = 'rgba(111,168,220,0.6)'; ctx.lineWidth = 1.5 * dpr();
+      ctx.strokeStyle = 'rgba(141,161,190,0.6)'; ctx.lineWidth = 1.5 * dpr();
       ctx.beginPath(); ctx.moveTo(xOf(mv, w), 0); ctx.lineTo(xOf(mv, w), h); ctx.stroke();
-      ctx.fillStyle = 'rgba(111,168,220,0.9)';
+      ctx.fillStyle = 'rgba(141,161,190,0.9)';
       ctx.beginPath(); ctx.arc(xOf(mv, w), yOf(map.at(mv), h), 3.5 * dpr(), 0, 7); ctx.fill();
     }
-    ctx.strokeStyle = map.enabled ? '#d9a441' : '#6d6458'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    ctx.strokeStyle = map.enabled ? '#d8c4a2' : '#4f5c76'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
     for (let v = 1; v <= 127; v++) {
       const x = xOf(v, w), y = yOf(map.at(v), h);
       v === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
-    ctx.fillStyle = map.enabled ? '#ffeec0' : '#8b8172';
+    ctx.fillStyle = map.enabled ? '#eee4d3' : '#787c85';
     for (const p of map.points) {
       ctx.beginPath(); ctx.arc(xOf(p.v, w), yOf(p.y, h), 4 * dpr(), 0, 7); ctx.fill();
     }
