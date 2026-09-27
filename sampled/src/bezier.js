@@ -119,9 +119,9 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
     const w = canvas.width = canvas.clientWidth * devicePixelRatio;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
 
-    ctx.strokeStyle = '#2b261d'; ctx.lineWidth = 1;
+    ctx.strokeStyle = '#19202f'; ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
       ctx.beginPath(); ctx.moveTo(w * i / 4, 0); ctx.lineTo(w * i / 4, h); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, h * i / 4); ctx.lineTo(w, h * i / 4); ctx.stroke();
@@ -129,14 +129,14 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
 
     if (opts.falling) {
       ctx.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
-      ctx.fillStyle = '#6d6458';
+      ctx.fillStyle = '#4f5c76';
       ctx.textAlign = 'left'; ctx.fillText('full', 4 * devicePixelRatio, 11 * devicePixelRatio);
       ctx.textAlign = 'right'; ctx.fillText('silent', w - 4 * devicePixelRatio, h - 4 * devicePixelRatio);
     }
 
     const ghost = opts.ghost?.();
     if (ghost && ghost.length > 1) {
-      ctx.strokeStyle = '#4a6f8a'; ctx.lineWidth = 1.5 * devicePixelRatio;
+      ctx.strokeStyle = '#5c6778'; ctx.lineWidth = 1.5 * devicePixelRatio;
       ctx.setLineDash([4 * devicePixelRatio, 3 * devicePixelRatio]);
       ctx.beginPath();
       ghost.forEach(([gx, gy], i) => { const [px, py] = toPx(gx, gy, w, h); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
@@ -145,13 +145,13 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
     }
 
     // handle arms
-    ctx.strokeStyle = '#514736'; ctx.lineWidth = 1 * devicePixelRatio;
+    ctx.strokeStyle = '#363f51'; ctx.lineWidth = 1 * devicePixelRatio;
     for (const [hx, hy, ax, ay] of [[bez.x1, bez.y1, 0, 0], [bez.x2, bez.y2, 1, 1]]) {
       ctx.beginPath();
       ctx.moveTo(...toPx(ax, ay, w, h)); ctx.lineTo(...toPx(hx, hy, w, h)); ctx.stroke();
     }
 
-    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * devicePixelRatio;
+    ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 2 * devicePixelRatio;
     ctx.beginPath();
     for (let i = 0; i <= 96; i++) {
       const t = i / 96;
@@ -160,7 +160,7 @@ export function createBezierEditor(canvas, bez, onChange, opts = {}) {
     }
     ctx.stroke();
 
-    for (const [hx, hy, col] of [[bez.x1, bez.y1, '#6fa8dc'], [bez.x2, bez.y2, '#e08a6a']]) {
+    for (const [hx, hy, col] of [[bez.x1, bez.y1, '#8da1be'], [bez.x2, bez.y2, '#e08a6a']]) {
       const [px, py] = toPx(hx, hy, w, h);
       ctx.fillStyle = col;
       ctx.beginPath(); ctx.arc(px, py, R * devicePixelRatio, 0, 7); ctx.fill();

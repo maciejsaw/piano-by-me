@@ -790,11 +790,11 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     const w = canvas.width = canvas.clientWidth * dpr();
     const h = canvas.height;
     const kw = w / (hi - lo + 1);
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
     // The keys, and the undamped region that has no choice but to ring.
     for (let k = lo; k <= hi; k++) {
       const x = xOf(k, w);
-      if (k > topDamped) { ctx.fillStyle = '#231d12'; ctx.fillRect(x, 0, kw + 1, h); }
+      if (k > topDamped) { ctx.fillStyle = '#131822'; ctx.fillRect(x, 0, kw + 1, h); }
       if (BLACK.has(k % 12)) { ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(x, 0, kw + 1, h); }
     }
     // What is ringing right now, faintly, behind the curve.
@@ -811,13 +811,13 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.textAlign = 'left';
     for (let d = RES_CEIL; d >= RES_FLOOR; d -= 12) {
       const y = yOf(d, h);
-      ctx.strokeStyle = d === 0 ? '#5a4a32' : '#302a20';
+      ctx.strokeStyle = d === 0 ? '#384154' : '#1c2434';
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      ctx.fillStyle = '#6d6458';
+      ctx.fillStyle = '#4f5c76';
       ctx.fillText(d === RES_FLOOR ? 'off' : `${d > 0 ? '+' : ''}${d}`, 3 * dpr(), Math.min(h - 2, y + 10 * dpr()));
     }
     // Octave lines, labelled at every C.
-    ctx.strokeStyle = '#2b261d'; ctx.fillStyle = '#5c5449';
+    ctx.strokeStyle = '#19202f'; ctx.fillStyle = '#424d63';
     for (let k = lo; k <= hi; k++) {
       if (k % 12 !== 0) continue;
       const x = xOf(k, w);
@@ -827,21 +827,21 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     // The damper break, named -- everything right of it is always free.
     if (topDamped >= lo && topDamped < hi) {
       const x = xOf(topDamped + 1, w);
-      ctx.strokeStyle = '#7fbf7f'; ctx.setLineDash([4 * dpr(), 4 * dpr()]);
+      ctx.strokeStyle = '#d6c6a8'; ctx.setLineDash([4 * dpr(), 4 * dpr()]);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = '#7fbf7f'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#d6c6a8'; ctx.textAlign = 'left';
       ctx.fillText('no dampers →', x + 4 * dpr(), 11 * dpr());
     }
     // The curve, then its handles.
-    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
     for (let k = lo; k <= hi; k++) {
       const x = xOf(k, w), y = yOf(rc.at(k), h);
       k === lo ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
     for (const p of rc.points) {
-      ctx.fillStyle = '#ffeec0';
+      ctx.fillStyle = '#eee4d3';
       ctx.beginPath(); ctx.arc(xOf(p.k, w), yOf(p.db, h), 4 * dpr(), 0, 7); ctx.fill();
     }
   }
