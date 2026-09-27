@@ -14,6 +14,12 @@ import { volumeMap, hardnessMap, createVelMapEditor } from './velocity.js';
 // The sampled piano's output EQ, unchanged: the same four bands on the same
 // kind of master bus.
 import { Eq, BANDS } from '../../sampled/src/eq.js';
+// And its keyboard, the notes rising above it, the knobs and the (i) tooltips,
+// so the two instruments look and play alike.
+import { buildKeyboard as makeKeyboard } from '../../sampled/src/keyboard.js';
+import { createStage } from '../../sampled/src/stage.js';
+import { knob } from '../../sampled/src/knobs.js';
+import { tipify } from '../../sampled/src/tips.js';
 
 const $ = (id) => document.getElementById(id);
 const LOW = 21, HIGH = 108;
@@ -83,6 +89,7 @@ const post = (m) => node && node.port.postMessage(m);
 function noteOn(midi, vel) {
   if (midi < LOW || midi > HIGH) return;
   down.add(midi); paintKey(midi);
+  stage.noteOn(midi);
   const v127 = Math.max(1, Math.min(127, vel * 127));
   const shape = { hardness: velHardness.at(v127) };
   if (velVolume.enabled) shape.levelDb = velVolume.at(v127);
@@ -92,6 +99,7 @@ function noteOn(midi, vel) {
 }
 function noteOff(midi) {
   down.delete(midi); paintKey(midi);
+  stage.noteOff(midi);
   post({ type: 'noteOff', midi });
 }
 function toggleSilent(midi) {
@@ -102,48 +110,26 @@ function toggleSilent(midi) {
 }
 
 // -------------------------------------------------------------- keyboard ---
-const WHITE = [0, 2, 4, 5, 7, 9, 11];
-const isBlack = (m) => !WHITE.includes(m % 12);
-const keyEl = new Map();
-
+// Click (or touch) to play, higher on the key for harder; shift-click holds a
+// key's dampers up without striking it.
+let kb = null;
+const stage = createStage($('stage'), { lo: LOW, hi: HIGH, res: () => null });
 function buildKeyboard() {
-  const inner = $('kbInner');
-  inner.innerHTML = '';
-  const W = 15;
-  let x = 0;
-  const xs = new Map();
-  for (let m = LOW; m <= HIGH; m++) {
-    if (!isBlack(m)) { xs.set(m, x); x += W; }
-  }
-  inner.style.width = x + 'px';
-  for (let m = LOW; m <= HIGH; m++) {
-    const el = document.createElement('div');
-    if (isBlack(m)) {
-      el.className = 'bk';
-      el.style.left = (xs.get(m + 1) - W * 0.3) + 'px';
-      el.style.width = W * 0.6 + 'px';
-    } else {
-      el.className = 'wk';
-      el.style.left = xs.get(m) + 'px';
-      el.style.width = (W - 1) + 'px';
-      if (m % 12 === 0) el.innerHTML = `<span>${noteName(m)}</span>`;
-    }
-    el.onmousedown = (ev) => {
-      ev.preventDefault();
-      if (ev.shiftKey) { toggleSilent(m); return; }
-      selectNote(m);
-      noteOn(m, 0.45 + 0.5 * (1 - ev.offsetY / el.offsetHeight));
-    };
-    el.onmouseup = () => down.has(m) && noteOff(m);
-    el.onmouseleave = () => down.has(m) && noteOff(m);
-    keyEl.set(m, el);
-    inner.appendChild(el);
-  }
+  kb = makeKeyboard($('kbInner'), {
+    lo: LOW, hi: HIGH,
+    // The keyboard gives 18..127 from the front of the key to the back; this
+    // instrument has always taken 0.45..0.95 from the same gesture.
+    onDown: (m, v) => noteOn(m, 0.45 + 0.5 * (v - 18) / 109),
+    onUp: (m) => down.has(m) && noteOff(m),
+    onSelect: selectNote,
+    onSilent: toggleSilent,
+  });
+  // Narrower than the whole keyboard (a phone): start on the middle of it.
+  const k = $('kb');
+  k.scrollLeft = (k.scrollWidth - k.clientWidth) / 2;
 }
 function paintKey(m) {
-  const el = keyEl.get(m); if (!el) return;
-  el.classList.toggle('dn', down.has(m) || silent.has(m));
-  el.classList.toggle('sel', m === selNote);
+  kb?.paint(m, { down: down.has(m), silent: silent.has(m), selected: m === selNote });
 }
 
 // ------------------------------------------------------- computer keyboard -
@@ -318,7 +304,7 @@ $('unaBtn').onclick = (e) => {
   e.target.classList.toggle('on', on);
   post({ type: 'unaCorda', on });
 };
-$('panicBtn').onclick = () => { down.clear(); silent.clear(); post({ type: 'panic' }); for (let m = LOW; m <= HIGH; m++) paintKey(m); };
+$('panicBtn').onclick = () => { down.clear(); silent.clear(); stage.clear(); post({ type: 'panic' }); for (let m = LOW; m <= HIGH; m++) paintKey(m); };
 
 // ------------------------------------------------------------------ body ---
 const caseOpts = () => ({
@@ -601,20 +587,20 @@ const eqs = () => (eqLive ? [eqView, eqLive] : [eqView]);
 function drawEq() {
   const c = $('eqCanvas'), g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
   const yOf = (db) => h / 2 - (db / 18) * (h / 2 - 4);
-  g.strokeStyle = '#2b261d';
+  g.strokeStyle = '#19202f';
   for (const db of [-12, -6, 6, 12]) { g.beginPath(); g.moveTo(0, yOf(db)); g.lineTo(w, yOf(db)); g.stroke(); }
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
   for (const f of [100, 1000, 10000]) {
     const x = Math.log(f / 20) / Math.log(1000) * w;
     g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-    g.fillStyle = '#6d6458'; g.textAlign = 'left';
+    g.fillStyle = '#4f5c76'; g.textAlign = 'left';
     g.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 3, h - 3);
   }
-  g.strokeStyle = '#4a4134'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
+  g.strokeStyle = '#323b4c'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
   const resp = eqView.response(EQ_FREQS);
-  g.strokeStyle = eqView.enabled ? '#d9a441' : '#4a4134';
+  g.strokeStyle = eqView.enabled ? '#d8c4a2' : '#323b4c';
   g.lineWidth = 2 * devicePixelRatio;
   g.beginPath();
   for (let i = 0; i < EQ_FREQS.length; i++) {
@@ -680,6 +666,29 @@ buildEq();
 syncVelUi();
 
 wireMenu();
+
+// ------------------------------------------------------------ simple view --
+// By default only the photo, the keyboard with its notes, and a few knobs;
+// Settings shows every control. Remembered in this browser.
+const knobs = [['gain', 'Volume'], ['rMix', 'Room'], ['bc', 'Resonance'], ['cmix', 'Body']]
+  .map(([id, label]) => knob($(id), label, $(id + 'V')));
+for (const k of knobs) $('knobs').appendChild(k.el);
+setInterval(() => { if (document.body.classList.contains('simple')) for (const k of knobs) k.sync(); }, 250);
+const VIEW = 'modelled.view';
+function setView(full, remember = true) {
+  document.body.classList.toggle('simple', !full);
+  $('viewBtn').setAttribute('aria-pressed', String(full));
+  if (remember) { try { localStorage.setItem(VIEW, full ? 'full' : 'simple'); } catch { /* not kept */ } }
+  // What was hidden was drawn at no width: draw it again now it has one.
+  if (full) { editor.sync(); velVolEditor.draw(); velHardEditor.draw(); drawEq(); }
+}
+$('viewBtn').onclick = () => setView(document.body.classList.contains('simple'));
+{
+  let full = false;
+  try { full = localStorage.getItem(VIEW) === 'full'; } catch { /* default */ }
+  setView(full, false);
+}
+tipify();
 // Restore the last session, else the shipped defaults. The editor's old
 // offsets-only key is dropped, not migrated: what it held has been folded into
 // the shipped curves.

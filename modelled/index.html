@@ -4,50 +4,43 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Electric clavinet</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2312100e'/%3E%3Crect x='2' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='5' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='8' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='11' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='3.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3Crect x='9.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../fonts/fonts.css">
 <style>
 :root{
-  --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
-  --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc;
-  --wound:#b5762f; --plain:#7f8fa6;
+  --bg:#0b0e15; --panel:#11161f; --panel2:#151b27; --line:#232d41;
+  --ink:#e5e1dc; --dim:#878b93; --accent:#d8c4a2; --accent2:#8da1be;
+  --wound:#a68e67; --plain:#7f8fa6;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Jost",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-h1{font-size:14px;margin:0 14px 0 0;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{font-size:18px;font-weight:500;letter-spacing:.02em;margin:0 14px 0 0;color:var(--accent)}
 button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
 button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
-button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
+button.primary{background:var(--accent);color:#0c1017;border-color:var(--accent);font-weight:700}
+button.on{background:var(--accent2);color:#0e1116;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
 main{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
 @media(max-width:1000px){main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
-.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
-#kb{position:relative;height:150px;user-select:none;overflow-x:auto;white-space:nowrap}
-#kbInner{position:relative;height:150px}
-.wk{position:absolute;top:0;height:150px;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
-.wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
-.wk.dn{background:linear-gradient(#c9a35c,#a9863f)}
-.bk{position:absolute;top:0;height:95px;background:linear-gradient(#3a342c,#15120e);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
-.bk.sel{background:linear-gradient(#7a5e28,#3d2f14)}
-.bk.dn{background:linear-gradient(#b8933f,#6d5522)}
-.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
+.panel h2{font-size:16px;font-weight:500;letter-spacing:.01em;color:var(--ink);margin:0 0 10px}
 .row{display:flex;align-items:center;gap:8px;margin:5px 0}
-.row label{flex:0 0 116px;color:var(--dim);font-size:11px}
+.row label{flex:0 0 126px;color:var(--dim);font-size:12px}
 .row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
 .row output{flex:0 0 74px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
 table{width:100%;border-collapse:collapse;font-size:11px}
-td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim)}
+td{padding:2px 4px;border-bottom:1px solid #19202f} td:first-child{color:var(--dim)}
 td:last-child{text-align:right;font-variant-numeric:tabular-nums}
 .tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700}
-.tag.w{background:var(--wound);color:#1a1409} .tag.p{background:var(--plain);color:#0d1116}
+.tag.w{background:var(--wound);color:#0c1017} .tag.p{background:var(--plain);color:#0d1116}
 .strings{display:flex;gap:6px;margin:8px 0}
 .strings button{flex:1;padding:4px;font-size:11px}
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
 /* ---- parameter editor ---- */
-.pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pe-group{font-size:13px;font-weight:600;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .pe-group:first-child{margin-top:0}
 .pe-row{margin:2px 0}
 .pe-head{display:flex;align-items:center;gap:8px}
@@ -57,53 +50,140 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-zoom{padding:2px;font-size:10px;max-width:92px}
 .pe-head button{padding:2px 8px;font-size:10px}
 .pe-canvas-wrap{margin:6px 0 10px 150px}
-.pe-canvas-wrap canvas{background:#1b1815;border:1px solid var(--line);border-radius:4px;width:792px;max-width:100%;height:96px;touch-action:none;cursor:crosshair;display:block}
+.pe-canvas-wrap canvas{background:#11161f;border:1px solid var(--line);border-radius:4px;width:792px;max-width:100%;height:96px;touch-action:none;cursor:crosshair;display:block}
 .pe-hint{color:var(--dim);font-size:10px;margin-top:3px}
 #peBar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 #peBar .stat{margin-left:auto}
 /* ---- velocity curves, EQ ---- */
 .velc{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:6px;cursor:crosshair;touch-action:none}
 #eqCanvas{width:100%;height:110px;border:1px solid var(--line);border-radius:4px;display:block;margin-bottom:8px}
-h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
+h3{font-size:13px;color:var(--ink);margin:0 0 6px;font-weight:600}
 .eqband{display:flex;align-items:center;gap:6px;margin:3px 0}
 .eqband label{flex:0 0 70px;color:var(--dim);font-size:11px}
 .eqband input[type=range]{flex:1;min-width:38px;accent-color:var(--accent)}
 .eqband output{flex:0 0 84px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
-#overlay{position:fixed;inset:0;background:rgba(10,8,6,.94);display:flex;align-items:center;justify-content:center;z-index:100}
+#overlay{position:fixed;inset:0;background:rgba(6,7,10,.94);display:flex;align-items:center;justify-content:center;z-index:100}
 #overlay div{text-align:center;max-width:460px}
 #overlay p{color:var(--dim);margin:14px 0}
-#menuWrap{position:relative;margin-left:auto}
-#menuBtn{font-size:18px;line-height:1;padding:4px 10px}
+#overlay .lead{color:var(--ink);font-size:15px;margin:6px 0 18px}
+/* keyboard, menu, tooltips, simple view and knobs: as on the sampled piano */
+#kb{position:relative;user-select:none;overflow-x:auto;touch-action:pan-x;border-radius:10px;background:#090c11}
+#stage{display:block;width:100%;min-width:760px;height:clamp(150px,34vh,420px)}
+#kbInner{position:relative;width:100%;min-width:760px;height:clamp(110px,17vh,170px);border-top:2px solid #3e485d}
+.wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #4e5b74;border-radius:0 0 4px 4px;cursor:pointer}
+.wk.sel{background:linear-gradient(#eee4d3,#dfd5c5)}
+.wk.res{background:linear-gradient(#f1e5cd,#d9c5a0)}
+.wk.sil{background:linear-gradient(#d9e0eb,#afbacb)}
+.wk.dn{background:linear-gradient(#d8c4a2,#b39a70)}
+.bk{position:absolute;top:0;background:linear-gradient(#29303d,#0c1017);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
+.bk.sel{background:linear-gradient(#7c6b4e,#1c2435)}
+.bk.res{background:linear-gradient(#5a5244,#2a261f)}
+.bk.sil{background:linear-gradient(#3a4452,#1d2128)}
+.bk.dn{background:linear-gradient(#b8a37e,#7a6749)}
+.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#787c85;pointer-events:none}
+#menuWrap{position:relative}
+#viewBtn,#menuBtn{height:34px}
+#menuBtn{width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:18px;line-height:1}
 #menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
 #menu.open{display:flex;flex-direction:column;gap:4px}
 #menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px}
+#menu{min-width:260px}
+#panicBtn{display:flex;flex-direction:column;gap:1px}
+#panicBtn small{color:var(--dim);font-size:11.5px;line-height:1.4;white-space:normal}
 #menu button:hover{background:var(--panel2);border:none}
+h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
+/* ⓘ buttons and their popovers (tips.js) */
+.tip{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;margin:0 0 0 6px;border-radius:50%;
+  border:1px solid var(--line);background:var(--panel2);color:var(--dim);font:italic 600 11px/1 Georgia,serif;vertical-align:middle;flex:none;cursor:pointer}
+.tip:hover,.tip[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+.tip-pop{position:fixed;z-index:200;max-width:min(420px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto;
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;box-shadow:0 10px 28px -8px #000;
+  color:var(--ink);font-size:12px;line-height:1.6;text-align:left}
+.tip-pop[hidden]{display:none}
+.tip-pop>*{margin:0 0 8px}
+.tip-pop>*:last-child{margin-bottom:0}
+.tip-pop .hint,.tip-pop p{color:var(--ink);font-size:12px;margin-top:0}
+.tip-pop .tip-lead{color:var(--accent)}
+.tip-pop table{min-width:300px}
+.tip-pop .stat{display:block}
+/* Simple view: the picture, the keyboard and a few knobs. Settings shows the rest. */
+body.simple .panel:not(#stagePanel):not(#mixPanel),body.simple .full-only{display:none}
+body:not(.simple) #mixPanel{display:none}
+body.simple{background:#080a0e}
+/* The photo in a row of its own above the keyboard: whole, centred, as big
+   as the row allows, its edges faded into the page by a mask on its own box
+   (which is sized to the picture, so the fade lands on the picture's edges). */
+#hero{display:none;margin:0;position:relative;order:0;flex:1 1 0;min-height:150px;container-type:size}
+body.simple #hero{display:block}
+#hero img{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100cqw,calc(100cqh * 1600 / 1032));height:auto;aspect-ratio:1600/1032;
+  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 58%,transparent 100%);mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 58%,transparent 100%)}
+body.simple header{background:transparent;border-bottom-color:transparent}
+body.simple main{min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);padding-top:0}
+body.simple #stagePanel{background:none;border:none;box-shadow:none;padding:0}
+body.simple{--roll:clamp(150px,36vh,420px)}
+body.simple #stage{height:var(--roll)}
+/* The notes rise over the photo; only the keyboard sits below it. */
+body.simple #stagePanel{position:relative;z-index:1;margin-top:calc(-1 * var(--roll))}
+body.simple #hero{min-height:calc(var(--roll) + 120px)}
+body.simple #mixPanel{background:none;border:none}
+body.simple #kb{background:transparent;border-radius:6px}
+body.simple #kbInner{border-top:none;box-shadow:0 -1px 0 rgba(189,168,133,.35),0 20px 40px -20px #000}
+body.simple .wk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#fbf7ef,#ddd5c6)}
+body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#29303d,#0c1017)}
+#stagePanel{padding:6px;border:1px solid transparent;border-radius:14px;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,#897556,#232d41 40%,#2c3a4a 70%,#8da1be) border-box;
+  box-shadow:0 18px 40px -22px #000,0 0 0 1px #0006 inset}
+#stagePanel>h2{margin:6px 6px 10px}
+#viewBtn{margin-left:auto}
+.hstats{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+#viewBtn[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.menu-row{display:flex;align-items:center;gap:6px;padding:6px 10px;color:var(--dim);font-size:12px;white-space:nowrap}
+.menu-row select{max-width:120px}
+#knobs{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;padding:6px 0}
+.knob{display:flex;flex-direction:column;align-items:center;width:84px;user-select:none}
+.knob-dial{width:64px;height:64px;cursor:ns-resize;touch-action:none;border-radius:50%;outline:none}
+.knob-dial:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.knob svg{width:100%;height:100%;display:block}
+.knob-track{fill:none;stroke:#1c2434;stroke-width:5;stroke-linecap:round}
+.knob-fill{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round}
+.knob-cap{fill:#19202f;stroke:#2f3746;stroke-width:1}
+.knob-mark{stroke:var(--ink);stroke-width:2.5;stroke-linecap:round}
+.knob-label{font-size:12px;color:var(--ink);margin-top:2px}
+.knob-value{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:560px){#knobs{gap:8px 6px}.knob{width:60px}.knob-dial{width:52px;height:52px}}
+main>div.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+body.simple main{display:flex;flex-direction:column;align-items:stretch}
+body.simple main>div.col{display:contents}
 </style>
 </head>
-<body>
+<body class="simple">
 <div id="overlay"><div>
-  <h1 style="font-size:20px;margin-bottom:6px">Electric clavinet</h1>
-  <p>A physically modelled piano: every string is an individual waveguide with its own
-     geometry, tension and losses, and they all meet at a shared bridge — so unison
-     beating and sympathetic resonance happen on their own rather than being effects.</p>
+  <h1 style="font-size:24px;margin-bottom:6px">Electric clavinet</h1>
+  <p class="lead" data-tip-anchor>Physically modelled strings</p>
+  <p data-tip>Every string is an individual waveguide with its own geometry, tension and losses, and they
+     all meet at a shared bridge, so unison beating and sympathetic resonance happen on their own rather
+     than being effects.</p>
   <button class="primary" id="startBtn">Start audio</button>
-  <p style="font-size:11px">Connect a MIDI keyboard before or after starting. No MIDI? Play with the
-     computer keyboard (<kbd>z</kbd>…<kbd>m</kbd>, <kbd>q</kbd>…<kbd>u</kbd>) or click the keys.
-     <kbd>space</kbd> is the sustain pedal.</p>
+  <p style="font-size:12px" data-tip-anchor>Play with a MIDI keyboard, or <kbd>z</kbd>…<kbd>m</kbd> and <kbd>q</kbd>…<kbd>u</kbd> on your keyboard; <kbd>space</kbd> is the pedal.</p>
+  <p data-tip>A MIDI keyboard can be connected before or after starting. <kbd>,</kbd> and <kbd>.</kbd> move the computer keyboard an octave down or up.</p>
 </div></div>
 
 <header>
   <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Electric clavinet</a></h1>
+  <span class="full-only hstats">
   <select id="midiSel"><option>no MIDI</option></select>
   <button id="sustainBtn">sustain</button>
   <button id="unaBtn">una corda</button>
-  <button id="panicBtn">panic</button>
+  <span class="stat" data-tip-anchor>ringing <b id="statActive">–</b></span>
+  <span id="statMore" data-tip>
   <span class="stat">strings <b id="statStrings">–</b></span>
-  <span class="stat">ringing <b id="statActive">–</b></span>
-  <span class="stat">dsp load <b id="statLoad">–</b></span>
+  <span class="stat">dsp load <b id="statLoad">–</b></span></span>
+  </span>
+  <button id="viewBtn" aria-pressed="false">⚙ Settings</button>
   <div id="menuWrap">
     <button id="menuBtn" title="More" aria-label="More">⋯</button>
     <div id="menu">
+      <button id="panicBtn"><span>Stop all sound</span><small>Silences every string at once, for a stuck note or ringing that will not stop.</small></button>
       <button id="exportBtn">Export settings…</button>
       <button id="importBtn">Import settings…</button>
       <button id="resetAllBtn">Reset everything</button>
@@ -113,17 +193,19 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
 </header>
 
 <main>
-  <div>
-    <div class="panel">
-      <h2>Keyboard — click a key to inspect, shift-click to hold silently</h2>
-      <div id="kb"><div id="kbInner"></div></div>
+  <figure id="hero" aria-hidden="true"><img src="../img/clavinet.webp" alt="" width="1600" height="1032"></figure>
+  <div class="col">
+    <div class="panel" id="stagePanel">
+      <h2 class="full-only">Keyboard — click a key to inspect, shift-click to hold silently</h2>
+      <div id="kb"><canvas id="stage"></canvas><div id="kbInner"></div></div>
       <div class="hint">
         <b>Hear the sympathetic resonance:</b> shift-click <b>C4</b> to hold it silently
         (its dampers lift but no hammer strikes), then play <b>C3</b> hard and release.
         C4 keeps ringing — driven entirely through the bridge.
       </div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel" id="mixPanel"><div id="knobs"></div></div>
+    <div class="panel">
       <h2>Instrument</h2>
       <div class="row"><label>master</label><input type="range" id="gain" min="0" max="12.5" step="0.01" value="1.0"><output id="gainV"></output></div>
       <div class="row"><label>unison coupling</label><input type="range" id="uc" min="0" max="0.9" step="0.01" value="0.55"><output id="ucV"></output></div>
@@ -138,7 +220,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         covers, so it is only handed to strings you actually strike, never to ones ringing
         sympathetically.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Velocity response</h2>
       <h3>Volume</h3>
       <div class="row"><label>custom volume curve</label><button id="velVolBtn" style="flex:1">off — level from hammer speed</button><button id="velVolReset">reset</button></div>
@@ -156,7 +238,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         louder note. Flat at zero is the voicing as fitted; drawing it up toward the right makes loud playing
         brighter than hammer speed alone does, down toward the left softens pianissimo.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Output EQ — after everything, including the room</h2>
       <canvas id="eqCanvas" height="220"></canvas>
       <div id="eqBands"></div>
@@ -165,7 +247,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         gets boxy, presence around 3 kHz where the hammer lives. The curve is drawn from the filters'
         own frequency response, so what is on screen is what is running.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Case &amp; body — everything downstream of the bridge</h2>
       <div class="row"><label>body</label><button id="bodyBtn" class="on" style="flex:1">enabled</button><output></output></div>
       <div class="row"><label>case width</label><input type="range" id="cw" min="0.8" max="2.0" step="0.01" value="1.45"><output id="cwV"></output></div>
@@ -181,7 +263,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         Because this sits downstream of every coupling path, making it linear costs nothing:
         sympathetic resonance is unaffected.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Room — stereo, early reflections and tail kept separate</h2>
       <div class="row"><label>room</label><button id="roomBtn" class="on" style="flex:1">enabled</button><output></output></div>
       <div class="row"><label>amount</label><input type="range" id="rMix" min="0" max="0.8" step="0.005" value="0.26"><output id="rMixV"></output></div>
@@ -204,7 +286,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         because anything was widened. The room is NOT in the mono path the fitting tools use: a room
         in front of a measurement fits the instrument to the room.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Parameter editor — slider is a global offset, chart is per key</h2>
       <div id="peBar">
         <button id="peResetAll">reset all</button>
@@ -218,7 +300,7 @@ h3{font-size:11px;color:var(--ink);margin:0 0 6px;font-weight:600}
         Offsets are in octaves of the value for rates, levels and durations — the ear hears those
         as ratios, and a linear knob on a decay time is not symmetric about its centre.</div>
     </div>
-    <div class="panel" style="margin-top:14px">
+    <div class="panel">
       <h2>Coupling</h2>
       <div class="hint">Coupling is expressed as the fraction of each string's own loss that goes
         into the bridge instead of into internal damping — so it can never destabilise, and the

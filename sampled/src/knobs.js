@@ -1,6 +1,7 @@
 // Round knobs that stand in for range inputs elsewhere on the page: turning
-// one sets the input and fires its `input` event, so the input's own handler
-// does the work and the saving, and the two never disagree. Drag up / down
+// one sets the input and fires its `input` event, and `change` when the turn
+// is over (as a slider does when let go), so the input's own handlers do the
+// work and the saving, and the two never disagree. Drag up / down
 // (or left / right), scroll, or use the arrow keys; double-click resets to
 // the input's value as shipped in the markup.
 const A0 = -135, A1 = 135;     // degrees, from straight up
@@ -50,8 +51,13 @@ export function knob(input, label, out) {
     if (+input.value === v) return;
     input.value = v;
     input.dispatchEvent(new Event('input', { bubbles: true }));
+    moved = true;
     sync();
   }
+
+  // `change` once a turn is over: pointer up, key up, or a pause in scrolling.
+  let moved = false, wheelT = 0;
+  const done = () => { if (moved) { moved = false; input.dispatchEvent(new Event('change', { bubbles: true })); } };
 
   let drag = null;
   dial.addEventListener('pointerdown', (e) => {
@@ -65,13 +71,15 @@ export function knob(input, label, out) {
     const d = (drag.y - e.clientY + e.clientX - drag.x) / (e.shiftKey ? 800 : 200);
     set(min + (max - min) * Math.max(0, Math.min(1, drag.f + d)));
   });
-  const end = () => { drag = null; };
+  const end = () => { drag = null; done(); };
   dial.addEventListener('pointerup', end);
   dial.addEventListener('pointercancel', end);
   dial.addEventListener('wheel', (e) => {
     e.preventDefault();
     set(+input.value - Math.sign(e.deltaY) * (max - min) / 100);
+    clearTimeout(wheelT); wheelT = setTimeout(done, 300);
   }, { passive: false });
+  dial.addEventListener('keyup', done);
   dial.addEventListener('keydown', (e) => {
     const k = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 }[e.key];
     if (!k) return;
@@ -79,7 +87,7 @@ export function knob(input, label, out) {
     e.stopPropagation();      // not a note on the computer keyboard
     set(+input.value + k * (max - min) / (e.shiftKey ? 200 : 50));
   });
-  dial.addEventListener('dblclick', () => set(+input.defaultValue));
+  dial.addEventListener('dblclick', () => { set(+input.defaultValue); done(); });
   input.addEventListener('input', sync);
 
   sync();
