@@ -11,6 +11,8 @@ import { BANDS } from './eq.js';
 import { createResCurveEditor, distanceDb } from './resonance.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
 import { tipify } from './tips.js';
+import { createStage } from './stage.js';
+import { knob } from './knobs.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'piano-sampled-curves';
@@ -85,6 +87,7 @@ async function start(install = false) {
   engine.renderer = $('rendererChk').checked;
   restore();
   buildUI();
+  buildKnobs();
   restoreControls();       // second pass: sliders, EQ bands and toggles
 
   // Enough to play with before the rest arrives: the mezzo-forte layer, from
@@ -128,11 +131,42 @@ function keepRunning(c) {
   addEventListener('focus', () => wakeAudio());
 }
 
+/** The simple view's knobs, each standing in for a slider in the full view. */
+function buildKnobs() {
+  const root = $('knobs');
+  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall']]) {
+    const k = knob($(id), label, $(id + 'V'));
+    root.appendChild(k.el);
+    knobs.push(k);
+  }
+}
+
+/**
+ * Simple view (the picture, the keyboard, a few knobs) or the full one with
+ * every control. Remembered in this browser.
+ */
+const VIEW = 'sampled.view';
+function setView(full, remember = true) {
+  document.body.classList.toggle('simple', !full);
+  $('viewBtn').setAttribute('aria-pressed', String(full));
+  if (remember) { try { localStorage.setItem(VIEW, full ? 'full' : 'simple'); } catch { /* not kept */ } }
+  // What was hidden was drawn at no width: draw it again now it has one.
+  if (full && window.piano?.ui) redrawAll();
+}
+function redrawAll() {
+  editor?.refresh();
+  velCurveEditor?.draw(); velLayerEditor?.draw(); resCurveEditor?.draw();
+  redrawEnvs(); drawEq(); renderNote();
+}
+$('viewBtn').onclick = () => setView(document.body.classList.contains('simple'));
+try { setView(localStorage.getItem(VIEW) === 'full', false); } catch { setView(false, false); }
+
 // ------------------------------------------------------------- note events --
 function noteOn(midi, vel) {
   if (!engine || midi < LOW || midi > HIGH) return;
   const v = engine.noteOn(midi, vel);
   if (v) layerHits.set(midi, { layer: v.layer, vel, at: performance.now(), held: true });
+  stage?.noteOn(midi, vel);
   lastVel = vel; lastVelAt = performance.now();
   down.add(midi); paint(midi); editor?.playing();
 }
@@ -141,12 +175,13 @@ function noteOff(midi, vel = 64) {
   engine.noteOff(midi, vel);
   const hit = layerHits.get(midi);
   if (hit) { hit.held = false; hit.at = performance.now(); }
+  stage?.noteOff(midi);
   down.delete(midi); paint(midi); editor?.playing();
 }
 /** Everything off, and the keyboard drawn to match. */
 function panic() {
   if (!engine) return;
-  engine.panic(); down.clear(); silent.clear();
+  engine.panic(); down.clear(); silent.clear(); stage?.clear();
   for (let m = LOW; m <= HIGH; m++) paint(m);
   editor?.playing();
 }
@@ -170,7 +205,7 @@ function paintResMap() {
   const live = engine ? engine.res.level.some((e) => e > 0) : false;
   if (live || resCurveLive) { resCurveEditor?.draw(); resCurveLive = live; }
   const c = $('resMap');
-  if (!c || !engine) return;
+  if (!c || !engine || !c.offsetParent) return;      // hidden in the simple view
   const g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio;
   const h = c.height, bw = w / 88, lab = 12 * devicePixelRatio;
@@ -217,7 +252,7 @@ function paintResMap() {
  */
 function paintLayerMap() {
   const c = $('layerMap');
-  if (!c || !engine || !lib) return;
+  if (!c || !engine || !lib || !c.offsetParent) return;
   const g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
   const lab = 12 * devicePixelRatio, plot = h - lab;
@@ -273,6 +308,8 @@ function paintResonance() {
   paintResMap();
   paintLayerMap();
   if (performance.now() - lastVelAt < 900) { velCurveEditor?.draw(); velLayerEditor?.draw(); }   // the strike marker fades
+  stage?.tick();
+  for (const k of knobs) k.sync();
   const s = engine.stats();
   $('statVoices').textContent = s.voices;
   $('statRes').textContent = s.resonating;
@@ -395,12 +432,21 @@ addEventListener('blur', () => {
 
 // ---------------------------------------------------------------------- UI --
 let editor = null;
+let stage = null;
+const knobs = [];
 function buildUI() {
+  stage = createStage($('stage'), {
+    lo: LOW, hi: HIGH,
+    res: () => engine?.res, undamped: () => engine?.undamped,
+  });
   kb = buildKeyboard($('kbInner'), {
     lo: LOW, hi: HIGH,
     onDown: noteOn, onUp: (m) => noteOff(m), onSelect: select, onSilent: toggleSilent,
   });
   for (let m = LOW; m <= HIGH; m++) paint(m);
+  // Narrower than the whole keyboard (a phone): start on the middle of it.
+  const kbEl = $('kb');
+  kbEl.scrollLeft = (kbEl.scrollWidth - kbEl.clientWidth) / 2;
 
   editor = createEditor($('editor'), curves, () => {
     engine.refreshStrips();

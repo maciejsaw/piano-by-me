@@ -36,8 +36,9 @@ main>div{display:contents}
 .meter .gr{left:auto;right:0;background:#e08a6a}
 .exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
 .exp-h{font-size:12px;color:var(--dim);margin:0 0 6px}
-#kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
-#kbInner{position:relative;height:150px}
+#kb{position:relative;user-select:none;overflow-x:auto;touch-action:pan-x;border-radius:10px;background:#0f0d0b}
+#stage{display:block;width:100%;min-width:760px;height:clamp(150px,34vh,420px)}
+#kbInner{position:relative;width:100%;min-width:760px;height:clamp(110px,17vh,170px);border-top:2px solid #6b5230}
 .wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
 .wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
 .wk.res{background:linear-gradient(#dff0df,#a8d4a8)}
@@ -111,7 +112,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
 .sel-bar{position:sticky;top:52px;z-index:5;box-shadow:0 6px 10px -6px #000}
 .sel-actions button[data-reset]{border-color:#5a4433}
-#menuWrap{position:relative;margin-left:auto}
+#menuWrap{position:relative}
 #menuBtn{font-size:18px;line-height:1;padding:4px 10px}
 #menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
 #menu.open{display:flex;flex-direction:column;gap:4px}
@@ -141,10 +142,35 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
 .tip-pop table{min-width:300px}
 .tip-pop .stat{display:block}
 #overlay .lead{color:var(--ink);font-size:15px;margin:6px 0 18px}
+/* Simple view: the picture, the keyboard and a few knobs. Settings shows the rest. */
+body.simple .panel:not(#stagePanel):not(#mixPanel),body.simple .full-only{display:none}
+body:not(.simple) #mixPanel{display:none}
+body.simple .wk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#fbf7ef,#ddd5c6)}
+body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a342c,#15120e)}
+#stagePanel{padding:6px;border:1px solid transparent;border-radius:14px;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,#8a6a2c,#3a332a 40%,#2c3a4a 70%,#6fa8dc) border-box;
+  box-shadow:0 18px 40px -22px #000,0 0 0 1px #0006 inset}
+#stagePanel>h2{margin:6px 6px 10px}
+#viewBtn{margin-left:auto}
+.hstats{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+#viewBtn[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.menu-row{display:flex;align-items:center;gap:6px;padding:6px 10px;color:var(--dim);font-size:12px;white-space:nowrap}
+.menu-row select{max-width:120px}
+#knobs{display:flex;flex-wrap:wrap;justify-content:center;gap:10px 28px;padding:6px 0}
+.knob{display:flex;flex-direction:column;align-items:center;width:84px;user-select:none}
+.knob-dial{width:64px;height:64px;cursor:ns-resize;touch-action:none;border-radius:50%;outline:none}
+.knob-dial:focus-visible{box-shadow:0 0 0 2px var(--accent)}
+.knob svg{width:100%;height:100%;display:block}
+.knob-track{fill:none;stroke:#2e2922;stroke-width:5;stroke-linecap:round}
+.knob-fill{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round}
+.knob-cap{fill:#2a251e;stroke:#453c30;stroke-width:1}
+.knob-mark{stroke:var(--ink);stroke-width:2.5;stroke-linecap:round}
+.knob-label{font-size:12px;color:var(--ink);margin-top:2px}
+.knob-value{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
 #uninstallBtn{margin-top:12px;font-size:11px;padding:4px 10px;background:none;color:var(--dim)}
 </style>
 </head>
-<body>
+<body class="simple">
 <div id="overlay"><div id="startView">
   <h1 style="font-size:20px;margin-bottom:6px">Classic grand piano</h1>
   <p class="lead" data-tip-anchor>A recorded Yamaha C5 grand</p>
@@ -179,6 +205,7 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
 <header>
   <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Classic grand piano</a></h1>
   <button id="panicBtn">panic</button>
+  <span class="full-only hstats">
   <span class="stat" data-tip-anchor>voices <b id="statVoices">–</b></span>
   <span id="statMore" data-tip>
   <span class="stat">ringing <b id="statRes">–</b></span>
@@ -186,8 +213,13 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
   <span class="stat">keys ready <b id="statKeys">–</b></span>
   <span class="stat">loaded <b id="statLoad">–</b></span>
   <span class="stat">resident <b id="statMem">–</b></span></span>
+  </span>
   <div id="loadWrap"><div id="loadBar"></div></div>
-  <label class="stat" title="Audio buffer size. Larger is safer against dropouts and cut-off notes, but adds delay between key and sound. Changing it restarts the audio.">latency
+  <button id="viewBtn" aria-pressed="false">⚙ Settings</button>
+  <div id="menuWrap">
+    <button id="menuBtn" title="More" aria-label="More">⋯</button>
+    <div id="menu">
+  <label class="menu-row" title="How much audio is prepared ahead. Most people never need to change this. Larger is safer against dropouts and cut-off notes, but adds delay between key and sound. Changing it restarts the audio.">Buffer size
     <select id="latencySel">
       <option value="interactive">lowest</option>
       <option value="0.01">10 ms</option>
@@ -197,9 +229,6 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
       <option value="0.1">100 ms</option>
       <option value="playback">safest</option>
     </select> <b id="statLatency">–</b></label>
-  <div id="menuWrap">
-    <button id="menuBtn" title="More" aria-label="More">⋯</button>
-    <div id="menu">
       <button id="exportBtn">Export settings…</button>
       <button id="importBtn">Import settings…</button>
       <button id="resetAllBtn">Reset everything</button>
@@ -210,9 +239,10 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
 
 <main>
   <div>
-    <div class="panel" style="order:1">
-      <h2>Keyboard — click to play (hit high on the key for more velocity), shift-click to lift its dampers silently</h2>
-      <div id="kb"><div id="kbInner"></div></div>
+    <div class="panel" id="mixPanel" style="order:2"><div id="knobs"></div></div>
+    <div class="panel" id="stagePanel" style="order:1">
+      <h2 class="full-only">Keyboard — click to play (hit high on the key for more velocity), shift-click to lift its dampers silently</h2>
+      <div id="kb"><canvas id="stage"></canvas><div id="kbInner"></div></div>
       <div class="hint">
         <b>Hear the sympathetic resonance:</b> shift-click <b>C4</b>, <b>E4</b> and <b>G4</b> to raise their
         dampers without striking them — they turn blue — then play <b>C2</b> hard. The chord answers on its own,
