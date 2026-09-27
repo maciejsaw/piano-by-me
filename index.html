@@ -5,34 +5,37 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Piano Model X</title>
 <style>
-:root{--bg:#12100e;--panel:#1b1815;--line:#3a332a;--ink:#ece5da;--dim:#9a8f80;--accent:#d9a441}
+:root{--bg:#0c0b0a;--panel:#161412;--line:#2e2922;--ink:#ece5da;--dim:#9a8f80;--accent:#d9a441}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-main{max-width:760px;width:100%}
-h1{font-size:20px;margin:0 0 4px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);text-align:center}
-.sub{color:var(--dim);text-align:center;margin:0 0 28px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:18px;color:inherit;text-decoration:none}
-a.card:hover,a.card:focus-visible{border-color:var(--accent);outline:none}
-a.card h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
-a.card p{color:var(--dim);margin:0}
-kbd{border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:11px}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse at 50% 0%,#1c1814,var(--bg) 70%);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+main{max-width:1040px;width:100%}
+h1{font-size:28px;font-weight:600;margin:0 0 4px;text-align:center;letter-spacing:.01em}
+.sub{color:var(--dim);text-align:center;margin:0 0 32px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:22px}
+a.card{display:block;position:relative;border-radius:16px;overflow:hidden;color:inherit;text-decoration:none;background:#000;
+  border:1px solid var(--line);box-shadow:0 24px 50px -28px #000;transition:transform .25s,border-color .25s,box-shadow .25s}
+a.card img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;transition:transform .6s}
+a.card .txt{position:absolute;left:0;right:0;bottom:0;padding:48px 20px 18px;background:linear-gradient(transparent,rgba(0,0,0,.85))}
+a.card h2{font-size:19px;font-weight:600;margin:0}
+a.card p{color:var(--dim);margin:2px 0 0;font-size:13px}
+a.card:hover,a.card:focus-visible{border-color:var(--accent);outline:none;transform:translateY(-3px);box-shadow:0 30px 60px -28px #000}
+a.card:hover img,a.card:focus-visible img{transform:scale(1.03)}
+kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12px/1.4 inherit}
 </style>
 </head>
 <body>
 <main>
   <h1>Piano Model X</h1>
-  <p class="sub">Pick a piano. Press <kbd>1</kbd> or <kbd>2</kbd>.</p>
+  <p class="sub">Pick a piano, or press <kbd>1</kbd> or <kbd>2</kbd>.</p>
   <div class="grid">
-    <a class="card" href="sampled/">
-      <h2>1 · Classic grand piano</h2>
-      <p>A recorded Yamaha C5 (Salamander), repitched onto the fitted scale, with
-         release samples, resonance and room.</p>
+    <a class="card" href="sampled/" title="A recorded Yamaha C5 (Salamander), repitched onto the fitted scale, with release samples, resonance and room.">
+      <img src="img/grand.webp" alt="A black grand piano under a soft halo of light" width="1600" height="1049">
+      <div class="txt"><h2>Classic grand piano</h2><p>A recorded Yamaha C5</p></div>
     </a>
-    <a class="card" href="modelled/">
-      <h2>2 · Electric clavinet</h2>
-      <p>Physically modelled: every string is its own waveguide, all meeting at a shared bridge.
-         Unison beating and sympathetic resonance fall out of the physics.</p>
+    <a class="card" href="modelled/" title="Physically modelled: every string is its own waveguide, all meeting at a shared bridge. Unison beating and sympathetic resonance fall out of the physics.">
+      <img src="img/clavinet.webp" alt="A wood-cased electric keyboard on chrome legs with a pedal" width="1548" height="1016">
+      <div class="txt"><h2>Electric clavinet</h2><p>Physically modelled strings</p></div>
     </a>
   </div>
 </main>
