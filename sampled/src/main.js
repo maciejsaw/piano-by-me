@@ -10,6 +10,7 @@ import { createBezierEditor, SHAPES } from './bezier.js';
 import { BANDS } from './eq.js';
 import { createResCurveEditor, distanceDb } from './resonance.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
+import { tipify } from './tips.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'piano-sampled-curves';
@@ -406,6 +407,7 @@ function buildUI() {
     renderNote();
     save();
   }, () => selNote, () => down);
+  tipify($('editor'));
 
   bezierRow('na', envelopes.noteAttack);
   bezierRow('nr', envelopes.noteRelease, { falling: true });
@@ -1111,8 +1113,8 @@ async function offerInstall() {
     if (quota - usage < need) { offer.hidden = true; return; }
   } catch { /* no estimate: offer anyway */ }
   $('installLbl').textContent = done > 0
-    ? `Finish downloading samples to disk for better performance — ${done} of ${total} done, about ${gb(need)} GB more on your disk`
-    : `Download samples to disk for better performance — takes about ${gb(full)} GB on your disk`;
+    ? `Finish downloading samples (${gb(need)} GB more)`
+    : `Download samples for smoother playing (${gb(full)} GB)`;
   offer.hidden = false;
 }
 
@@ -1130,3 +1132,4 @@ $('uninstallBtn').onclick = async () => {
   await offerInstall();
 };
 offerInstall();
+tipify();
