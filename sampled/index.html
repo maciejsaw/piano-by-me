@@ -11,9 +11,9 @@
   --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc; --res:#7fbf7f;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-h1{font-size:14px;margin:0 14px 0 0;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{font-size:16px;font-weight:600;margin:0 14px 0 0;color:var(--accent)}
 button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
 button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
@@ -28,14 +28,14 @@ main{padding:14px;max-width:1240px;margin:0 auto;display:flex;flex-direction:col
 main>div{display:contents}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
-.panel h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
-.panel h3.sub{font-size:11px;color:var(--ink);font-weight:600;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+.panel h2{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 10px}
+.panel h3.sub{font-size:13px;color:var(--ink);font-weight:600;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
 .meter{flex:1;position:relative;height:10px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden}
 .meter div{position:absolute;top:0;bottom:0;left:0}
 .meter .lvl{background:var(--accent2);opacity:.7}
 .meter .gr{left:auto;right:0;background:#e08a6a}
 .exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
-.exp-h{font-size:11px;color:var(--dim);margin:0 0 6px}
+.exp-h{font-size:12px;color:var(--dim);margin:0 0 6px}
 #kb{position:relative;height:154px;user-select:none;overflow-x:auto;white-space:nowrap;touch-action:pan-x}
 #kbInner{position:relative;height:150px}
 .wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
@@ -50,11 +50,11 @@ main>div{display:contents}
 .bk.dn{background:linear-gradient(#b8933f,#6d5522)}
 .wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
 .row{display:flex;align-items:center;gap:8px;margin:5px 0}
-.row label{flex:0 0 126px;color:var(--dim);font-size:11px}
+.row label{flex:0 0 136px;color:var(--dim);font-size:12px}
 .row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
 .btnrow{flex:1;display:flex;gap:6px;min-width:0}
 .btnrow button{flex:1;padding:6px 4px}
-.row output{flex:0 0 118px;text-align:right;font-variant-numeric:tabular-nums;font-size:11px}
+.row output{flex:0 0 118px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 table{width:100%;border-collapse:collapse;font-size:11px}
 td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim);width:38%}
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
@@ -74,7 +74,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 @media(max-width:1100px){.envgrid{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.envgrid{grid-template-columns:1fr}}
 .env.wide{grid-column:1/-1}
-.env h3{font-size:11px;color:var(--ink);margin:0 0 6px;display:flex;align-items:center;gap:6px;font-weight:600}
+.env h3{font-size:13px;color:var(--ink);margin:0 0 6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-weight:600}
 .env h3 span{margin-left:auto;display:flex;gap:4px}
 .env h3 button{padding:1px 6px;font-size:10px}
 .env canvas{width:100%;height:150px;border:1px solid var(--line);border-radius:4px;display:block;touch-action:none;cursor:grab}
@@ -83,11 +83,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .env .row output{flex:0 0 74px}
 #loadWrap{height:3px;background:#2a251e;border-radius:2px;overflow:hidden;flex:0 0 130px}
 #loadBar{height:100%;width:0;background:var(--accent);transition:width .3s}
-.pe-group{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.pe-group{font-size:13px;font-weight:600;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .pe-group:first-child{margin-top:0}
 .pe-row{display:grid;grid-template-columns:242px minmax(0,1fr);gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #241f18}
 .pe-ctl{min-width:0}
-.pe-ctl>label{display:block;color:var(--ink);font-size:11px;cursor:help;margin-bottom:3px}
+.pe-ctl>label{display:block;color:var(--ink);font-size:12px;margin-bottom:3px}
 .pe-head{display:flex;align-items:center;gap:6px}
 .pe-slider{flex:1;min-width:60px;accent-color:var(--accent)}
 .pe-zoom{padding:1px;font-size:10px;flex:0 0 62px}
@@ -105,7 +105,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .sel-actions button{padding:2px 7px;font-size:10px}
 .sel-map{width:100%;height:34px;display:block;margin:6px 0 4px;border:1px solid var(--line);border-radius:4px;touch-action:none;cursor:ew-resize}
 .sel-foot{display:flex;align-items:center;gap:8px}
-.sel-foot label{flex:0 0 70px;color:var(--dim);font-size:11px;cursor:help}
+.sel-foot label{flex:0 0 86px;color:var(--dim);font-size:12px}
 .sel-foot input[type=range]{flex:1;accent-color:var(--accent)}
 .sel-foot output{flex:0 0 66px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums}
 .pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
@@ -125,30 +125,46 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .installOpt[hidden]{display:none}
 .instBar{height:8px;width:360px;max-width:100%;margin:20px auto 0;background:var(--panel2);border-radius:4px;overflow:hidden}
 #instFill{height:100%;width:0;background:var(--accent);transition:width .25s}
+h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
+/* ⓘ buttons and their popovers (tips.js) */
+.tip{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;padding:0;margin:0 0 0 6px;border-radius:50%;
+  border:1px solid var(--line);background:var(--panel2);color:var(--dim);font:italic 600 11px/1 Georgia,serif;vertical-align:middle;flex:none;cursor:pointer}
+.tip:hover,.tip[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+.tip-pop{position:fixed;z-index:200;max-width:min(420px,calc(100vw - 16px));max-height:min(70vh,520px);overflow:auto;
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;box-shadow:0 10px 28px -8px #000;
+  color:var(--ink);font-size:12px;line-height:1.6;text-align:left}
+.tip-pop[hidden]{display:none}
+.tip-pop>*{margin:0 0 8px}
+.tip-pop>*:last-child{margin-bottom:0}
+.tip-pop .hint,.tip-pop p{color:var(--ink);font-size:12px;margin-top:0}
+.tip-pop .tip-lead{color:var(--accent)}
+.tip-pop table{min-width:300px}
+.tip-pop .stat{display:block}
+#overlay .lead{color:var(--ink);font-size:15px;margin:6px 0 18px}
 #uninstallBtn{margin-top:12px;font-size:11px;padding:4px 10px;background:none;color:var(--dim)}
 </style>
 </head>
 <body>
 <div id="overlay"><div id="startView">
   <h1 style="font-size:20px;margin-bottom:6px">Classic grand piano</h1>
-  <p>A Yamaha C5, recorded. One dedicated sample per key per velocity layer — 88 × 16,
+  <p class="lead" data-tip-anchor>A recorded Yamaha C5 grand</p>
+  <p data-tip>A Yamaha C5, recorded. One dedicated sample per key per velocity layer — 88 × 16,
      repitched off the Salamander library with the instrument's own body response held
      still — played by an engine with per-key velocity response, stereo spread, a
      geometric room, and sympathetic resonance that accumulates while the pedal is down.</p>
   <label id="installOffer" class="installOpt">
     <input type="checkbox" id="installChk" checked>
-    <span id="installLbl">Download samples to disk for better performance — takes about 2.6 GB on your disk</span>
+    <span><span id="installLbl">Download samples for smoother playing (2.6 GB)</span><span data-tip-anchor></span><span data-tip>Keeps a decoded copy of every sample in this browser's storage, so notes don't have to be decoded while you play. It takes about 2.6 GB on your disk, downloads once, and can be uninstalled from this page later.</span></span>
   </label>
   <label class="installOpt">
     <input type="checkbox" id="rendererChk">
-    <span>Play every voice in one audio node (experimental) — holds several times more voices before dropouts; resonance filter glides follow their set times, where the usual path runs them about twice as fast</span>
+    <span><span data-tip-anchor>More notes before dropouts (experimental)</span><span data-tip>Plays every voice in one audio node instead of one node each, which holds several times more voices before the sound drops out. It sounds the same except for one detail: resonance filter glides follow their set times, where the usual path runs them about twice as fast.</span></span>
   </label>
   <button class="primary" id="startBtn">Start audio</button>
   <div><button id="uninstallBtn" class="small" hidden></button></div>
-  <p id="loadMsg" style="font-size:11px">The library streams as you play: the first notes are
-     ready in a few seconds, the rest arrives behind you. Connect a MIDI keyboard before or
-     after starting, or play with <kbd>z</kbd>…<kbd>m</kbd> / <kbd>q</kbd>…<kbd>u</kbd>.
-     <kbd>space</kbd> is the sustain pedal.</p>
+  <p id="loadMsg" data-tip-anchor style="font-size:12px">Play with a MIDI keyboard, or <kbd>z</kbd>…<kbd>m</kbd> and <kbd>q</kbd>…<kbd>u</kbd> on your keyboard; <kbd>space</kbd> is the pedal.</p>
+  <p data-tip>The library streams as you play: the first notes are ready in a few seconds, the rest arrives behind you.
+     A MIDI keyboard can be connected before or after starting.</p>
 </div><div id="installView" hidden>
   <h1 style="font-size:20px;margin-bottom:6px">Installing the piano</h1>
   <p>Downloading every sample and decoding it to this browser's storage, once. The piano
@@ -163,13 +179,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 <header>
   <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Classic grand piano</a></h1>
   <button id="panicBtn">panic</button>
-  <span class="stat">voices <b id="statVoices">–</b></span>
+  <span class="stat" data-tip-anchor>voices <b id="statVoices">–</b></span>
+  <span id="statMore" data-tip>
   <span class="stat">ringing <b id="statRes">–</b></span>
   <span class="stat">undamped <b id="statUndamped">–</b></span>
   <span class="stat">keys ready <b id="statKeys">–</b></span>
   <span class="stat">loaded <b id="statLoad">–</b></span>
+  <span class="stat">resident <b id="statMem">–</b></span></span>
   <div id="loadWrap"><div id="loadBar"></div></div>
-  <span class="stat">resident <b id="statMem">–</b></span>
   <label class="stat" title="Audio buffer size. Larger is safer against dropouts and cut-off notes, but adds delay between key and sound. Changing it restarts the audio.">latency
     <select id="latencySel">
       <option value="interactive">lowest</option>
@@ -207,7 +224,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 
     <div class="panel" style="order:3">
       <h2>Velocity response — <span id="noteName">C4</span></h2>
-      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Velocity → layer</h3>
+      <h3 class="lbl">Velocity → layer</h3>
       <canvas id="velLayerCanvas" height="300"></canvas>
       <div class="hint" style="margin-bottom:14px">Map which of the 16 recorded layers each velocity plays:
         <b>click</b> to add a point, <b>drag</b> to move, <b>double-click</b> to remove. This replaces the single
@@ -216,7 +233,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         all play the same layer (and stay near its native level); where it is <b>steep</b>, the layer changes
         quickly. Per-key <b>Layer bias</b> still nudges this for one key.</div>
 
-      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Volume</h3>
+      <h3 class="lbl">Volume</h3>
       <div class="row"><label>custom volume curve</label><button id="velCurveBtn" style="flex:1">off — native layer levels</button><output></output></div>
       <canvas id="velCurveCanvas" height="300"></canvas>
       <div class="hint" style="margin-bottom:12px">By default (<b>off</b>) each layer plays at its own <b>recorded
@@ -226,8 +243,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         pull the far-left point to <b>silent</b> for a true pianissimo. Per-key <b>Level trim</b> always applies.</div>
       <canvas id="velCanvas" height="240"></canvas>
       <div class="hint" id="velHint"></div>
-      <table id="velTable"></table>
-      <table id="noteTable" style="margin-top:8px"></table>
+      <table id="velTable" data-tip></table>
+      <table id="noteTable" data-tip></table>
       <div class="hint">Level comes from the curve; timbre comes from which of the sixteen recordings the
         velocity reaches for. They are separate on purpose — changing the curve never changes the tone,
         and changing the layer bias never changes the level. Both are per key: draw them on the right.</div>
@@ -337,7 +354,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         switching on as a wash. <b>Impulse</b> loads a captured hall instead (any audio file the browser can
         decode; kept in this browser, levelled to match); the shaping controls then apply only to the
         synthetic hall. Click it again to go back.</div>
-      <div class="hint">Both reverbs hang off the one send, and each has its own level, expander and switch.
+      <div class="hint" data-tip-to="panel">Both reverbs hang off the one send, and each has its own level, expander and switch.
         A reverb that is off stops convolving.</div>
     </div>
 
@@ -349,7 +366,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         The <b>lit background</b> is every string whose damper is off, which is what the pedal actually does.
         <b>Blue</b> is what you are holding down.
       </div>
-      <h3 style="font-size:11px;color:var(--ink);margin:0 0 6px">Resonance level per key</h3>
+      <h3 class="lbl">Resonance level per key</h3>
       <canvas id="resCurveCanvas" height="300"></canvas>
       <div class="row"><label>this curve</label><span class="btnrow"><button id="resCurveResetBtn">flatten to 0 dB</button></span><output id="resCurveV"></output></div>
       <div class="hint" style="margin-bottom:12px">How strongly each string answers, in dB, for all three kinds
@@ -358,7 +375,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
         green line), so they answer everything, pedal or not.</div>
       <div class="row"><label>resonance</label><span class="btnrow"><button id="resBtn" class="on">on</button><button id="resSoloBtn">solo</button></span><output></output></div>
 
-      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Sympathetic &mdash; free strings, by shared partials</h3>
+      <h3 class="lbl" style="margin-top:12px">Sympathetic &mdash; free strings, by shared partials</h3>
       <div class="row"><label>level</label><input type="range" id="symAmt" min="0" max="1.5" step="0.005" value="0.3"><output id="symAmtV"></output></div>
       <div class="row"><label>selectivity</label><input type="range" id="resSel" min="1" max="30" step="0.5" value="8"><output id="resSelV"></output></div>
       <div class="row"><label>near/far</label><input type="range" id="resProx" min="-24" max="24" step="0.25" value="0"><output id="resProxV"></output></div>
@@ -366,17 +383,17 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>release</label><input type="range" id="symRel" min="0.05" max="10" step="0.05" value="3"><output id="symRelV"></output></div>
       <div class="row"><label>pedal-up release</label><input type="range" id="symPedalUp" min="0.02" max="4" step="0.02" value="0.6"><output id="symPedalUpV"></output></div>
 
-      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Soundboard &mdash; strings around the key, pedal or not</h3>
+      <h3 class="lbl" style="margin-top:12px">Soundboard &mdash; strings around the key, pedal or not</h3>
       <div class="row"><label>level</label><input type="range" id="sbLevel" min="0" max="0.6" step="0.002" value="0.08"><output id="sbLevelV"></output></div>
       <div class="row"><label>falloff</label><input type="range" id="sbFalloff" min="0" max="40" step="0.25" value="9"><output id="sbFalloffV"></output></div>
       <div class="row"><label>strings</label><input type="range" id="sbStep" min="1" max="12" step="1" value="1"><output id="sbStepV"></output></div>
       <div class="row"><label>release</label><input type="range" id="sbRel" min="0.05" max="6" step="0.05" value="1.2"><output id="sbRelV"></output></div>
 
-      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">Self &mdash; the struck key's own strings</h3>
+      <h3 class="lbl" style="margin-top:12px">Self &mdash; the struck key's own strings</h3>
       <div class="row"><label>level</label><input type="range" id="selfAmt" min="0" max="1" step="0.005" value="0"><output id="selfAmtV"></output></div>
       <div class="row"><label>release</label><input type="range" id="selfRel" min="0.02" max="4" step="0.02" value="0.4"><output id="selfRelV"></output></div>
 
-      <h3 style="font-size:11px;color:var(--ink);margin:10px 0 6px">All resonance voices</h3>
+      <h3 class="lbl" style="margin-top:12px">All resonance voices</h3>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
       <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="64" step="1" value="24"><output id="resMaxV"></output></div>
       <div class="row"><label>resume above</label><input type="range" id="resResume" min="-80" max="-10" step="1" value="-45"><output id="resResumeV"></output></div>
@@ -384,7 +401,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
       <div class="row"><label>enter at</label><input type="range" id="resStart" min="0.03" max="2" step="0.01" value="0.8"><output id="resStartV"></output></div>
       <div class="row"><label>fade-in</label><input type="range" id="resBloom" min="0" max="1" step="0.01" value="0.25"><output id="resBloomV"></output></div>
 
-      <div class="hint">Every resonance voice plays the library's own recording of the string that answers, as
+      <div class="hint" data-tip-to="panel">Every resonance voice plays the library's own recording of the string that answers, as
         recorded, and lasts as long as the note driving it: while the key is held, or while the pedal holds the
         note after the key is up. When that note stops, the voice fades over its kind's <b>release</b>.
         <br><br><b>Sympathetic</b> strings are the ones whose dampers are off &mdash; pedal down, keys held, and
