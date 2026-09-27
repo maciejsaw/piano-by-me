@@ -194,15 +194,15 @@ export function createVelCurveEditor(canvas, vc, { layers, hivel, bias = () => 0
   function draw() {
     const w = canvas.width = canvas.clientWidth * dpr();
     const h = canvas.height;
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
     // Layer bands.
     for (let v = 1; v <= 127; v++) {
       const l = pickLayer(v, hivel, layers, bias());
-      ctx.fillStyle = l % 2 ? '#201c14' : '#262117';
+      ctx.fillStyle = l % 2 ? '#121722' : '#151b28';
       ctx.fillRect(xOf(v, w), 0, w / 127 + 1, h);
     }
     // dB grid.
-    ctx.strokeStyle = '#3a3328'; ctx.fillStyle = '#6d6458';
+    ctx.strokeStyle = '#222c40'; ctx.fillStyle = '#4f5c76';
     ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.textAlign = 'left';
     for (let d = 0; d >= VEL_FLOOR; d -= 12) {
       const y = yOf(d, h);
@@ -212,11 +212,11 @@ export function createVelCurveEditor(canvas, vc, { layers, hivel, bias = () => 0
     // The most recent hit.
     const mv = markVel();
     if (mv) {
-      ctx.strokeStyle = 'rgba(111,168,220,0.6)'; ctx.lineWidth = 1.5 * dpr();
+      ctx.strokeStyle = 'rgba(141,161,190,0.6)'; ctx.lineWidth = 1.5 * dpr();
       ctx.beginPath(); ctx.moveTo(xOf(mv, w), 0); ctx.lineTo(xOf(mv, w), h); ctx.stroke();
     }
     // The curve.
-    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
     for (let v = 1; v <= 127; v++) {
       const x = xOf(v, w), y = yOf(vc.at(v), h);
       v === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
@@ -224,7 +224,7 @@ export function createVelCurveEditor(canvas, vc, { layers, hivel, bias = () => 0
     ctx.stroke();
     // The points.
     for (const p of vc.points) {
-      ctx.fillStyle = '#ffeec0';
+      ctx.fillStyle = '#eee4d3';
       ctx.beginPath(); ctx.arc(xOf(p.v, w), yOf(p.db, h), 4 * dpr(), 0, 7); ctx.fill();
     }
   }
@@ -358,34 +358,34 @@ export function createVelLayerEditor(canvas, vc, { markVel = () => null, onChang
   function draw() {
     const w = canvas.width = canvas.clientWidth * dpr();
     const h = canvas.height;
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
     // Layer bands.
     const n = Math.round(vc.max - vc.min) + 1;
     for (let i = 0; i < n; i++) {
       const L = vc.min + i;
-      ctx.fillStyle = i % 2 ? '#201c14' : '#262117';
+      ctx.fillStyle = i % 2 ? '#121722' : '#151b28';
       ctx.fillRect(0, yOf(L + 0.5, h), w, Math.abs(yOf(L - 0.5, h) - yOf(L + 0.5, h)));
     }
-    ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.fillStyle = '#6d6458'; ctx.textAlign = 'left';
+    ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.fillStyle = '#4f5c76'; ctx.textAlign = 'left';
     ctx.fillText(`layer ${vc.max}`, 3 * dpr(), 10 * dpr());
     ctx.fillText(`layer ${vc.min}`, 3 * dpr(), h - 4 * dpr());
     // Last hit.
     const mv = markVel();
     if (mv) {
-      ctx.strokeStyle = 'rgba(111,168,220,0.6)'; ctx.lineWidth = 1.5 * dpr();
+      ctx.strokeStyle = 'rgba(141,161,190,0.6)'; ctx.lineWidth = 1.5 * dpr();
       ctx.beginPath(); ctx.moveTo(xOf(mv, w), 0); ctx.lineTo(xOf(mv, w), h); ctx.stroke();
-      ctx.fillStyle = 'rgba(111,168,220,0.9)';
+      ctx.fillStyle = 'rgba(141,161,190,0.9)';
       ctx.beginPath(); ctx.arc(xOf(mv, w), yOf(vc.at(mv), h), 3.5 * dpr(), 0, 7); ctx.fill();
     }
     // Curve.
-    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
     for (let v = 1; v <= 127; v++) {
       const x = xOf(v, w), y = yOf(vc.at(v), h);
       v === 1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
     for (const p of vc.points) {
-      ctx.fillStyle = '#ffeec0';
+      ctx.fillStyle = '#eee4d3';
       ctx.beginPath(); ctx.arc(xOf(p.v, w), yOf(p.layer, h), 4 * dpr(), 0, 7); ctx.fill();
     }
   }

@@ -210,7 +210,7 @@ function paintResMap() {
   const w = c.width = c.clientWidth * devicePixelRatio;
   const h = c.height, bw = w / 88, lab = 12 * devicePixelRatio;
   const plot = h - lab;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
 
   const res = engine.res;
   const undamped = engine.undamped ?? new Set();
@@ -218,7 +218,7 @@ function paintResMap() {
     const x = (m - LOW) * bw;
     const black = ![0, 2, 4, 5, 7, 9, 11].includes(m % 12);
     // A damper off is the pedal's actual job, so it is the background.
-    g.fillStyle = undamped.has(m) ? (black ? '#2a2417' : '#37301e') : (black ? '#100e0a' : '#1c1913');
+    g.fillStyle = undamped.has(m) ? (black ? '#171d2a' : '#1e2637') : (black ? '#090c11' : '#10151f');
     g.fillRect(x, 0, Math.max(1, bw - 0.5), plot);
   }
 
@@ -228,16 +228,16 @@ function paintResMap() {
     if (e <= 0) continue;
     const midi = res.lo + i;
     const bar = Math.max(0, Math.min(1, 1 + 20 * Math.log10(e) / 48)) * (plot - 2);
-    g.fillStyle = '#d9a441';
+    g.fillStyle = '#d8c4a2';
     g.fillRect((midi - LOW) * bw + 0.5, plot - bar, Math.max(1, bw - 1), bar);
   }
 
-  g.fillStyle = 'rgba(111,168,220,0.45)';
+  g.fillStyle = 'rgba(141,161,190,0.45)';
   for (const m of down) g.fillRect((m - LOW) * bw, 0, Math.max(1.5, bw), plot);
 
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
   g.textAlign = 'center';
-  g.fillStyle = '#6d6458';
+  g.fillStyle = '#4f5c76';
   for (let m = 24; m <= HIGH; m += 12) g.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 2);
 }
 
@@ -258,7 +258,7 @@ function paintLayerMap() {
   const lab = 12 * devicePixelRatio, plot = h - lab;
   const cols = HIGH - LOW + 1, bw = w / cols;
   const layers = lib.layers, rows = layers.length, rh = plot / rows;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
 
   // The library, layer by layer: loudest at the top, softest at the bottom.
   for (let ci = 0; ci < cols; ci++) {
@@ -272,7 +272,7 @@ function paintLayerMap() {
       if (!n.layers?.[layer]) continue;
       const y = (rows - 1 - r) * rh;
       const resident = lib.has(lib.key(m, layer));
-      g.fillStyle = resident ? (black ? '#332b19' : '#3e3422') : (black ? '#1d1a12' : '#242019');
+      g.fillStyle = resident ? (black ? '#1b2231' : '#222b3e') : (black ? '#10151f' : '#151b28');
       g.fillRect(x + 0.5, y + 0.5, Math.max(1, bw - 1), Math.max(1, rh - 1));
     }
   }
@@ -292,7 +292,7 @@ function paintLayerMap() {
   }
 
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
-  g.fillStyle = '#6d6458'; g.textAlign = 'left';
+  g.fillStyle = '#4f5c76'; g.textAlign = 'left';
   g.fillText('ff', 2 * devicePixelRatio, 8 * devicePixelRatio);
   g.fillText('pp', 2 * devicePixelRatio, plot - 2 * devicePixelRatio);
   g.textAlign = 'center';
@@ -743,20 +743,20 @@ const EQ_FREQS = (() => { const f = new Float32Array(160); for (let i = 0; i < 1
 function drawEq() {
   const c = $('eqCanvas'), g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
   const yOf = (db) => h / 2 - (db / 18) * (h / 2 - 4);
-  g.strokeStyle = '#2b261d';
+  g.strokeStyle = '#19202f';
   for (const db of [-12, -6, 6, 12]) { g.beginPath(); g.moveTo(0, yOf(db)); g.lineTo(w, yOf(db)); g.stroke(); }
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
   for (const f of [100, 1000, 10000]) {
     const x = Math.log(f / 20) / Math.log(1000) * w;
     g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-    g.fillStyle = '#6d6458'; g.textAlign = 'left';
+    g.fillStyle = '#4f5c76'; g.textAlign = 'left';
     g.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 3, h - 3);
   }
-  g.strokeStyle = '#4a4134'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
+  g.strokeStyle = '#323b4c'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
   const resp = engine.eq.response(EQ_FREQS);
-  g.strokeStyle = engine.eq.enabled ? '#d9a441' : '#4a4134';
+  g.strokeStyle = engine.eq.enabled ? '#d8c4a2' : '#323b4c';
   g.lineWidth = 2 * devicePixelRatio;
   g.beginPath();
   for (let i = 0; i < EQ_FREQS.length; i++) {
@@ -1002,7 +1002,7 @@ function renderNote() {
 
   const c = $('velCanvas'), g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
   const bias = Math.round(curves.at('layerBias', selNote));
   const layers = lib.layers, lmin = layers[0], lmax = layers[layers.length - 1];
   const vc = engine?.velCurve, vl = engine?.velLayer;
@@ -1014,15 +1014,15 @@ function renderNote() {
   // the layer each velocity reaches for, as a background band
   for (let v = 1; v <= 127; v++) {
     const l = nearestLayer(layers, layerAt(v));
-    g.fillStyle = l % 2 ? '#201c14' : '#262117';
+    g.fillStyle = l % 2 ? '#121722' : '#151b28';
     g.fillRect((v - 1) / 127 * w, 0, w / 127 + 1, h);
   }
-  g.strokeStyle = '#3a3328';
+  g.strokeStyle = '#222c40';
   for (let d = 0; d >= -48; d -= 12) {
     const y = (-d / 48) * h;
     g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
   }
-  g.strokeStyle = '#d9a441'; g.lineWidth = 2 * devicePixelRatio; g.beginPath();
+  g.strokeStyle = '#d8c4a2'; g.lineWidth = 2 * devicePixelRatio; g.beginPath();
   for (let v = 1; v <= 127; v++) {
     const y = Math.min(h, (-(baseDb(v) + curves.at('trim', selNote)) / 48) * h);
     v === 1 ? g.moveTo(0, y) : g.lineTo((v - 1) / 127 * w, y);

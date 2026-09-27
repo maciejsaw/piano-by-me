@@ -5,20 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Classic grand piano</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2312100e'/%3E%3Crect x='2' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='5' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='8' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='11' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='3.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3Crect x='9.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../fonts/fonts.css">
 <style>
 :root{
-  --bg:#12100e; --panel:#1b1815; --panel2:#232019; --line:#3a332a;
-  --ink:#ece5da; --dim:#9a8f80; --accent:#d9a441; --accent2:#6fa8dc; --res:#7fbf7f;
+  --bg:#0b0e15; --panel:#11161f; --panel2:#151b27; --line:#232d41;
+  --ink:#e5e1dc; --dim:#878b93; --accent:#d8c4a2; --accent2:#8da1be; --res:#d6c6a8;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "Jost",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
 header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
-h1{font-size:16px;font-weight:600;margin:0 14px 0 0;color:var(--accent)}
+h1{font-size:18px;font-weight:500;letter-spacing:.02em;margin:0 14px 0 0;color:var(--accent)}
 button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:6px 12px;font:inherit;cursor:pointer}
 button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);color:#1a1409;border-color:var(--accent);font-weight:700}
+button.primary{background:var(--accent);color:#0c1017;border-color:var(--accent);font-weight:700}
 button.primary:disabled{opacity:.55;cursor:default}
-button.on{background:var(--accent2);color:#08131c;border-color:var(--accent2)}
+button.on{background:var(--accent2);color:#0e1116;border-color:var(--accent2)}
 select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:5px;font:inherit;max-width:230px}
 code{background:var(--panel2);padding:1px 5px;border-radius:3px}
 .stat{color:var(--dim)} .stat b{color:var(--ink);font-weight:600}
@@ -28,7 +29,7 @@ main{padding:14px;max-width:1240px;margin:0 auto;display:flex;flex-direction:col
 main>div{display:contents}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px}
-.panel h2{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 10px}
+.panel h2{font-size:16px;font-weight:500;letter-spacing:.01em;color:var(--ink);margin:0 0 10px}
 .panel h3.sub{font-size:13px;color:var(--ink);font-weight:600;margin:14px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
 .meter{flex:1;position:relative;height:10px;background:var(--panel2);border:1px solid var(--line);border-radius:3px;overflow:hidden}
 .meter div{position:absolute;top:0;bottom:0;left:0}
@@ -36,20 +37,20 @@ main>div{display:contents}
 .meter .gr{left:auto;right:0;background:#e08a6a}
 .exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
 .exp-h{font-size:12px;color:var(--dim);margin:0 0 6px}
-#kb{position:relative;user-select:none;overflow-x:auto;touch-action:pan-x;border-radius:10px;background:#0f0d0b}
+#kb{position:relative;user-select:none;overflow-x:auto;touch-action:pan-x;border-radius:10px;background:#090c11}
 #stage{display:block;width:100%;min-width:760px;height:clamp(150px,34vh,420px)}
-#kbInner{position:relative;width:100%;min-width:760px;height:clamp(110px,17vh,170px);border-top:2px solid #6b5230}
-.wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #6b6357;border-radius:0 0 4px 4px;cursor:pointer}
-.wk.sel{background:linear-gradient(#ffeec0,#e8cf94)}
-.wk.res{background:linear-gradient(#dff0df,#a8d4a8)}
-.wk.sil{background:linear-gradient(#cfe0f5,#9dbbdd)}
-.wk.dn{background:linear-gradient(#c9a35c,#a9863f)}
-.bk{position:absolute;top:0;background:linear-gradient(#3a342c,#15120e);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
-.bk.sel{background:linear-gradient(#7a5e28,#3d2f14)}
-.bk.res{background:linear-gradient(#3c5c3c,#1b2b1b)}
-.bk.sil{background:linear-gradient(#2c4260,#16212f)}
-.bk.dn{background:linear-gradient(#b8933f,#6d5522)}
-.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#8b8172;pointer-events:none}
+#kbInner{position:relative;width:100%;min-width:760px;height:clamp(110px,17vh,170px);border-top:2px solid #3e485d}
+.wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #4e5b74;border-radius:0 0 4px 4px;cursor:pointer}
+.wk.sel{background:linear-gradient(#eee4d3,#dfd5c5)}
+.wk.res{background:linear-gradient(#f1e5cd,#d9c5a0)}
+.wk.sil{background:linear-gradient(#d9e0eb,#afbacb)}
+.wk.dn{background:linear-gradient(#d8c4a2,#b39a70)}
+.bk{position:absolute;top:0;background:linear-gradient(#29303d,#0c1017);border:1px solid #000;border-radius:0 0 3px 3px;cursor:pointer;z-index:2}
+.bk.sel{background:linear-gradient(#7c6b4e,#1c2435)}
+.bk.res{background:linear-gradient(#5a5244,#2a261f)}
+.bk.sil{background:linear-gradient(#3a4452,#1d2128)}
+.bk.dn{background:linear-gradient(#b8a37e,#7a6749)}
+.wk span{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:8px;color:#787c85;pointer-events:none}
 .row{display:flex;align-items:center;gap:8px;margin:5px 0}
 .row label{flex:0 0 136px;color:var(--dim);font-size:12px}
 .row input[type=range]{flex:1;accent-color:var(--accent);min-width:60px}
@@ -57,7 +58,7 @@ main>div{display:contents}
 .btnrow button{flex:1;padding:6px 4px}
 .row output{flex:0 0 118px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 table{width:100%;border-collapse:collapse;font-size:11px}
-td{padding:2px 4px;border-bottom:1px solid #2a251e} td:first-child{color:var(--dim);width:38%}
+td{padding:2px 4px;border-bottom:1px solid #19202f} td:first-child{color:var(--dim);width:38%}
 .hint{color:var(--dim);font-size:11px;margin-top:8px;line-height:1.7}
 kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
 #velCanvas{width:100%;height:120px;border:1px solid var(--line);border-radius:4px;display:block}
@@ -82,11 +83,11 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .env p{color:var(--dim);font-size:10px;line-height:1.6;margin:6px 0 0}
 .env .row label{flex:0 0 86px}
 .env .row output{flex:0 0 74px}
-#loadWrap{height:3px;background:#2a251e;border-radius:2px;overflow:hidden;flex:0 0 130px}
+#loadWrap{height:3px;background:#19202f;border-radius:2px;overflow:hidden;flex:0 0 130px}
 #loadBar{height:100%;width:0;background:var(--accent);transition:width .3s}
 .pe-group{font-size:13px;font-weight:600;color:var(--accent);margin:14px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .pe-group:first-child{margin-top:0}
-.pe-row{display:grid;grid-template-columns:242px minmax(0,1fr);gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #241f18}
+.pe-row{display:grid;grid-template-columns:242px minmax(0,1fr);gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid #151b27}
 .pe-ctl{min-width:0}
 .pe-ctl>label{display:block;color:var(--ink);font-size:12px;margin-bottom:3px}
 .pe-head{display:flex;align-items:center;gap:6px}
@@ -97,7 +98,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .pe-btns{display:flex;gap:4px;margin-top:4px}
 .pe-btns button{padding:1px 7px;font-size:10px}
 .pe-canvas-wrap{min-width:0}
-.pe-canvas-wrap canvas{background:#17150f;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
+.pe-canvas-wrap canvas{background:#0d1119;border:1px solid var(--line);border-radius:4px;width:100%;touch-action:none;cursor:crosshair;display:block}
 .pe-canvas-wrap canvas.pe-keys{height:72px;cursor:pointer}
 .sel-bar{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:12px}
 .sel-head{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);flex-wrap:wrap}
@@ -109,16 +110,20 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-radius:3px;padd
 .sel-foot label{flex:0 0 86px;color:var(--dim);font-size:12px}
 .sel-foot input[type=range]{flex:1;accent-color:var(--accent)}
 .sel-foot output{flex:0 0 66px;text-align:right;font-size:10px;font-variant-numeric:tabular-nums}
-.pe-hint{color:#6d6458;font-size:10px;margin-top:2px}
+.pe-hint{color:#4f5c76;font-size:10px;margin-top:2px}
 .sel-bar{position:sticky;top:52px;z-index:5;box-shadow:0 6px 10px -6px #000}
-.sel-actions button[data-reset]{border-color:#5a4433}
+.sel-actions button[data-reset]{border-color:#384255}
 #menuWrap{position:relative}
-#menuBtn{font-size:18px;line-height:1;padding:4px 10px}
+#viewBtn,#menuBtn{height:34px}
+#menuBtn{width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:18px;line-height:1}
 #menu{display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px;min-width:180px;box-shadow:0 8px 18px -8px #000;z-index:20}
 #menu.open{display:flex;flex-direction:column;gap:4px}
 #menu button{text-align:left;border:none;background:none;padding:7px 10px;border-radius:4px}
+#menu{min-width:260px}
+#panicBtn{display:flex;flex-direction:column;gap:1px}
+#panicBtn small{color:var(--dim);font-size:11.5px;line-height:1.4;white-space:normal}
 #menu button:hover{background:var(--panel2);border:none}
-#overlay{position:fixed;inset:0;background:rgba(10,8,6,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+#overlay{position:fixed;inset:0;background:rgba(6,7,10,.95);display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
 #overlay div{text-align:center;max-width:540px}
 #overlay p{color:var(--dim);margin:14px 0}
 .installOpt{display:flex;gap:8px;align-items:flex-start;justify-content:center;text-align:left;margin:0 auto 14px;max-width:420px;font-size:12px;color:var(--dim);cursor:pointer}
@@ -147,23 +152,29 @@ body.simple .panel:not(#stagePanel):not(#mixPanel),body.simple .full-only{displa
 body:not(.simple) #mixPanel{display:none}
 /* The grand behind it all, held still while the page scrolls (a fixed layer,
    since iOS does not do background-attachment:fixed). */
-body.simple{background:#0c0b0a}
-/* The photo, whole ("contain"), centred, its edges fading into the page by a
-   mask on its own box so they vanish at any screen shape. */
-body.simple::before{content:"";position:fixed;z-index:-1;pointer-events:none;left:50%;top:46%;transform:translate(-50%,-50%);
-  width:min(100vw,calc(100vh * 1600 / 1049));aspect-ratio:1600/1049;background:url(../img/grand.webp) center/contain no-repeat;
-  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 55%,transparent 100%);mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 55%,transparent 100%)}
+body.simple{background:#080a0e}
+/* The photo in a row of its own above the keyboard: whole, centred, as big
+   as the row allows, its edges faded into the page by a mask on its own box
+   (which is sized to the picture, so the fade lands on the picture's edges). */
+#hero{display:none;margin:0;position:relative;order:0;flex:1 1 0;min-height:150px;container-type:size}
+body.simple #hero{display:block}
+#hero img{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100cqw,calc(100cqh * 1600 / 1049));height:auto;aspect-ratio:1600/1049;
+  -webkit-mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 58%,transparent 100%);mask-image:radial-gradient(ellipse 50% 50% at 50% 50%,#000 58%,transparent 100%)}
 body.simple header{background:transparent;border-bottom-color:transparent}
-body.simple main{min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);justify-content:flex-end}
+body.simple main{min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);padding-top:0}
 body.simple #stagePanel{background:none;border:none;box-shadow:none;padding:0}
-body.simple #stage{height:clamp(120px,30vh,340px)}
+body.simple{--roll:clamp(150px,36vh,420px)}
+body.simple #stage{height:var(--roll)}
+/* The notes rise over the photo; only the keyboard sits below it. */
+body.simple #stagePanel{position:relative;z-index:1;margin-top:calc(-1 * var(--roll))}
+body.simple #hero{min-height:calc(var(--roll) + 120px)}
 body.simple #mixPanel{background:none;border:none}
 body.simple #kb{background:transparent;border-radius:6px}
-body.simple #kbInner{border-top:none;box-shadow:0 -1px 0 rgba(217,164,65,.35),0 20px 40px -20px #000}
+body.simple #kbInner{border-top:none;box-shadow:0 -1px 0 rgba(189,168,133,.35),0 20px 40px -20px #000}
 body.simple .wk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#fbf7ef,#ddd5c6)}
-body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a342c,#15120e)}
+body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#29303d,#0c1017)}
 #stagePanel{padding:6px;border:1px solid transparent;border-radius:14px;
-  background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,#8a6a2c,#3a332a 40%,#2c3a4a 70%,#6fa8dc) border-box;
+  background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,#897556,#232d41 40%,#2c3a4a 70%,#8da1be) border-box;
   box-shadow:0 18px 40px -22px #000,0 0 0 1px #0006 inset}
 #stagePanel>h2{margin:6px 6px 10px}
 #viewBtn{margin-left:auto}
@@ -176,12 +187,13 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a3
 .knob-dial{width:64px;height:64px;cursor:ns-resize;touch-action:none;border-radius:50%;outline:none}
 .knob-dial:focus-visible{box-shadow:0 0 0 2px var(--accent)}
 .knob svg{width:100%;height:100%;display:block}
-.knob-track{fill:none;stroke:#2e2922;stroke-width:5;stroke-linecap:round}
+.knob-track{fill:none;stroke:#1c2434;stroke-width:5;stroke-linecap:round}
 .knob-fill{fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round}
-.knob-cap{fill:#2a251e;stroke:#453c30;stroke-width:1}
+.knob-cap{fill:#19202f;stroke:#2f3746;stroke-width:1}
 .knob-mark{stroke:var(--ink);stroke-width:2.5;stroke-linecap:round}
 .knob-label{font-size:12px;color:var(--ink);margin-top:2px}
 .knob-value{font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:560px){#knobs{gap:8px 6px}.knob{width:60px}.knob-dial{width:52px;height:52px}}
 #uninstallBtn{margin-top:12px;font-size:11px;padding:4px 10px;background:none;color:var(--dim)}
 </style>
 </head>
@@ -219,7 +231,6 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a3
 
 <header>
   <h1><a href="../" title="back to the piano chooser" style="color:inherit;text-decoration:none">Classic grand piano</a></h1>
-  <button id="panicBtn">panic</button>
   <span class="full-only hstats">
   <span class="stat" data-tip-anchor>voices <b id="statVoices">–</b></span>
   <span id="statMore" data-tip>
@@ -244,6 +255,7 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a3
       <option value="0.1">100 ms</option>
       <option value="playback">safest</option>
     </select> <b id="statLatency">–</b></label>
+      <button id="panicBtn"><span>Stop all sound</span><small>Silences every note and all resonance at once, for a stuck note or ringing that will not stop.</small></button>
       <button id="exportBtn">Export settings…</button>
       <button id="importBtn">Import settings…</button>
       <button id="resetAllBtn">Reset everything</button>
@@ -253,6 +265,7 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#3a3
 </header>
 
 <main>
+  <figure id="hero" aria-hidden="true"><img src="../img/grand.webp" alt="" width="1600" height="1049"></figure>
   <div>
     <div class="panel" id="mixPanel" style="order:2"><div id="knobs"></div></div>
     <div class="panel" id="stagePanel" style="order:1">

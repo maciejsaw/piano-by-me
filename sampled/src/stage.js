@@ -32,9 +32,9 @@ export function keyGeometry(lo, hi) {
 }
 
 // Two colours only: a note on a white key, a note on a black key.
-// Each a shade with a little yellow in it, strongest at the keys and gone
+// Each a shade of the photos' beige halo, strongest at the keys and gone
 // by the top of the picture.
-const WHITE_NOTE = [250, 236, 200], BLACK_NOTE = [232, 184, 92];
+const WHITE_NOTE = [240, 230, 212], BLACK_NOTE = [210, 188, 150];
 
 export function createStage(canvas, { lo, hi, res }) {
   const g = canvas.getContext('2d');
@@ -72,7 +72,7 @@ export function createStage(canvas, { lo, hi, res }) {
         const top = h - v * h * 0.8;
         const grad = g.createLinearGradient(0, h, 0, top);
         grad.addColorStop(0, `rgba(240,190,90,${(0.1 + 0.3 * v).toFixed(3)})`);
-        grad.addColorStop(1, 'rgba(240,190,90,0)');
+        grad.addColorStop(1, 'rgba(211,191,159,0)');
         g.fillStyle = grad;
         const cx = (k.x + k.w / 2) * w, bw = Math.max(1 * dpr, k.w * w * 0.3);
         g.fillRect(cx - bw / 2, top, bw, h - top);
@@ -89,7 +89,7 @@ export function createStage(canvas, { lo, hi, res }) {
       return f;
     };
     const fills = [fadeUp(WHITE_NOTE), fadeUp(BLACK_NOTE)];
-    g.shadowColor = 'rgba(255,200,90,0.55)';
+    g.shadowColor = 'rgba(221,199,165,0.55)';
     g.shadowBlur = 8 * dpr;
     let live = false;
     for (let i = notes.length - 1; i >= 0; i--) {
