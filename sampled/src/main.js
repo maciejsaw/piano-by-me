@@ -47,7 +47,6 @@ const layerHits = new Map();
 async function start(install = false) {
   $('startBtn').disabled = true;
   $('installChk').disabled = true;
-  $('rendererChk').disabled = true;
   $('uninstallBtn').disabled = true;
   $('startBtn').textContent = 'loading…';
   ctx = new AudioContext({ latencyHint: latencyHint(), sampleRate: 48000 });
@@ -59,7 +58,6 @@ async function start(install = false) {
   catch (e) {
     $('startBtn').disabled = false;
     $('installChk').disabled = false;
-    $('rendererChk').disabled = false;
     $('uninstallBtn').disabled = false;
     $('startBtn').textContent = 'Start audio';
     $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b><br>
@@ -82,9 +80,6 @@ async function start(install = false) {
 
   await loadWorklets(ctx);
   engine = new Engine(ctx, lib, curves, envelopes);
-  // The start screen's choice: one worklet for every voice (voices.js), or a
-  // node per voice.
-  engine.renderer = $('rendererChk').checked;
   restore();
   buildUI();
   buildKnobs();
@@ -134,7 +129,7 @@ function keepRunning(c) {
 /** The simple view's knobs, each standing in for a slider in the full view. */
 function buildKnobs() {
   const root = $('knobs');
-  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['symAmt', 'Resonance']]) {
+  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['resAll', 'Resonance']]) {
     const k = knob($(id), label, $(id + 'V'));
     root.appendChild(k.el);
     knobs.push(k);
@@ -534,7 +529,7 @@ function buildUI() {
         : `${levelDb.toFixed(0)} dB, −${(-reductionDb).toFixed(1)} dB`;
     };
   }
-  bind('wet', (v) => { engine.wet.gain.value = v; }, db);
+  bind('wet', (v) => { engine.wet.gain.value = v; linkToggles(); }, db);
   // Bass and treble read out in seconds, which move with the reverb time.
   const hallRtReadouts = () => {
     const rt = engine.hallOpts.rt60;
@@ -550,7 +545,7 @@ function buildUI() {
     (v) => `${(v * engine.hallOpts.rt60).toFixed(2)} s @ 8 kHz`);
   bind('hallPre', (v) => engine.setHall({ predelayMs: v }), (v) => v.toFixed(1) + ' ms');
   bind('hallBuild', (v) => engine.setHall({ buildMs: v }), (v) => v.toFixed(0) + ' ms');
-  bind('fdnWet', (v) => { engine.early.wet.gain.value = v; }, db);
+  bind('fdnWet', (v) => { engine.early.wet.gain.value = v; linkToggles(); }, db);
   bind('fdnEr', (v) => engine.setFdnRoom({ erLevel: v }), (v) => v.toFixed(2) + '×');
   bind('fdnTail', (v) => engine.setFdnRoom({ tailLevel: v }), (v) => v.toFixed(2) + '×');
   bind('fdnW', (v) => engine.setFdnRoom({ width: v }), (v) => v.toFixed(1) + ' m');
@@ -562,6 +557,7 @@ function buildUI() {
   bind('fdnPos', (v) => engine.setFdnRoom({ distance: v }), (v) => (v * 100).toFixed(0) + '% back');
   const sec = (v) => v.toFixed(2) + ' s';
   bind('symAmt', (v) => { engine.res.symAmount = v; }, db);
+  bind('resAll', (v) => { engine.res.amount = v; linkToggles(); }, db);
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
   // What a dB-per-doubling rate comes to at 1 semitone, an octave, two octaves.
   const reach = (v) => [1, 12, 24].map((d) => distanceDb(d, v).toFixed(0)).join(' / ') + ' dB';
@@ -692,11 +688,7 @@ function buildUI() {
   $('resSoloBtn').onclick = () => setSoloRes(!engine.soloRes);
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
   $('panicBtn').onclick = panic;
-  // What the context actually gave: the hint is a request, and the browser
-  // rounds it to a buffer size the device supports.
-  const hint = latencyHint();
-  $('latencySel').value = String(hint);
-  $('statLatency').textContent = `${((ctx.baseLatency + (ctx.outputLatency || 0)) * 1000).toFixed(0)} ms`;
+  $('latencySel').value = String(latencyHint());
   $('latencySel').onchange = (e) => {
     try { localStorage.setItem(LATENCY, e.target.value); } catch { /* not kept */ }
     save();
@@ -726,6 +718,19 @@ function buildUI() {
 // exists, because collectSettings reads the sliders out of the DOM and a save
 // fired mid-build would store a half-populated set.
 const save = () => { if (uiReady) localStorage.setItem(STORE, JSON.stringify(collectSettings())); };
+/**
+ * The simple view's Room, Hall and Resonance knobs each own their section's
+ * switch: turned all the way down is off, anything above it is on. Clicking
+ * the switch only when it disagrees keeps its label, class and engine in step.
+ */
+function linkToggles() {
+  if (!uiReady) return;          // the switches are wired after the sliders
+  for (const [id, btn, on] of [
+    ['wet', 'roomBtn', engine.hall.on],
+    ['fdnWet', 'fdnBtn', engine.early.on],
+    ['resAll', 'resBtn', engine.res.enabled],
+  ]) if ((+$(id).value > 0) !== on) $(btn).click();
+}
 /** The resonance curve's readout: flat, or how far down it pulls the top. */
 function syncResCurve() {
   const out = $('resCurveV');
@@ -919,6 +924,9 @@ function applyControls(o) {
   if (t.perspective != null && engine.perspective !== t.perspective) $('persBtn').click();
   if (t.invert != null && engine.invert !== t.invert) $('invBtn').click();
   if (t.partialsOnly != null && engine.res.partialsOnly !== t.partialsOnly) $('partialsBtn').click();
+  // A saved switch that disagrees with its knob (files from before they were
+  // linked): the knob wins, since it is what the simple view shows.
+  linkToggles();
   // Redraw the things that read from state rather than from a slider event.
   editor?.refresh(); redrawEnvs(); for (const e of envEditors) e.draw();
   const b = $('velCurveBtn');
@@ -943,7 +951,9 @@ function download(name, text) {
 function wireMenu() {
   const menu = $('menu');
   $('menuBtn').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('open'); };
-  document.addEventListener('click', () => menu.classList.remove('open'));
+  // A click on the latency picker must not close the menu, or its list
+  // vanishes before an option can be picked.
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-row')) menu.classList.remove('open'); });
   $('exportBtn').onclick = () =>
     download(`piano-sampled-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(collectSettings(), null, 2));
@@ -1106,15 +1116,10 @@ const startFailed = (e) => {
   $('startView').hidden = false; $('installView').hidden = true;
   $('loadMsg').innerHTML = `<b style="color:#e08a6a">${e.message}</b>`;
   $('startBtn').disabled = false; $('startBtn').textContent = 'Start audio';
-  $('installChk').disabled = false; $('rendererChk').disabled = false; $('uninstallBtn').disabled = false;
+  $('installChk').disabled = false; $('uninstallBtn').disabled = false;
 };
 // The box is only honoured while it is showing: hidden means already
 // installed, or nowhere to put it.
-// Remembered between visits, like the rest of the settings.
-try { $('rendererChk').checked = localStorage.getItem('sampled.renderer') === '1'; } catch { /* no storage */ }
-$('rendererChk').onchange = () => {
-  try { localStorage.setItem('sampled.renderer', $('rendererChk').checked ? '1' : '0'); } catch { /* no storage */ }
-};
 $('startBtn').onclick = () => start(!$('installOffer').hidden && $('installChk').checked).catch(startFailed);
 
 /**

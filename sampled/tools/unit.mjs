@@ -92,7 +92,7 @@ check('key noise opts out of the hold law', Math.abs(keyOff - 1) < 1e-6, keyOff.
 // Drawn down over the top of the keyboard, the strings it covers must answer
 // more quietly and the ones it does not must be untouched. strength() is where
 // the curve enters every resonance voice's gain, so that is what is checked.
-const res = { lo: 21, n: 88, curves: new Curves(), keyCurve: new ResCurve(21, 108), keyG: new Float64Array(88), voices: new Map() };
+const res = { lo: 21, n: 88, amount: 1, curves: new Curves(), keyCurve: new ResCurve(21, 108), keyG: new Float64Array(88), voices: new Map() };
 const refresh = () => Resonance.prototype.refreshKeyCurve.call(res);
 const strength = (k) => Resonance.prototype.strength.call(res, k, 1, 100);
 refresh();
