@@ -207,10 +207,6 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
     <input type="checkbox" id="installChk" checked>
     <span><span id="installLbl">Download samples for smoother playing (2.6 GB)</span><span data-tip-anchor></span><span data-tip>Keeps a decoded copy of every sample in this browser's storage, so notes don't have to be decoded while you play. It takes about 2.6 GB on your disk, downloads once, and can be uninstalled from this page later.</span></span>
   </label>
-  <label class="installOpt">
-    <input type="checkbox" id="rendererChk">
-    <span><span data-tip-anchor>More notes before dropouts (experimental)</span><span data-tip>Plays every voice in one audio node instead of one node each, which holds several times more voices before the sound drops out. It sounds the same except for one detail: resonance filter glides follow their set times, where the usual path runs them about twice as fast.</span></span>
-  </label>
   <button class="primary" id="startBtn">Start audio</button>
   <div><button id="uninstallBtn" class="small" hidden></button></div>
   <p id="loadMsg" data-tip-anchor style="font-size:12px">Play with a MIDI keyboard, or <kbd>z</kbd>…<kbd>m</kbd> and <kbd>q</kbd>…<kbd>u</kbd> on your keyboard; <kbd>space</kbd> is the pedal.</p>
@@ -243,7 +239,7 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
   <div id="menuWrap">
     <button id="menuBtn" title="More" aria-label="More">⋯</button>
     <div id="menu">
-  <label class="menu-row" title="How much audio is prepared ahead. Most people never need to change this. Larger is safer against dropouts and cut-off notes, but adds delay between key and sound. Changing it restarts the audio.">Buffer size
+  <label class="menu-row" title="Delay between key and sound. Most people never need to change this. Higher is safer against dropouts and cut-off notes. Changing it restarts the audio.">Latency
     <select id="latencySel">
       <option value="interactive">lowest</option>
       <option value="0.01">10 ms</option>
@@ -252,7 +248,7 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
       <option value="0.05">50 ms</option>
       <option value="0.1">100 ms</option>
       <option value="playback">safest</option>
-    </select> <b id="statLatency">–</b></label>
+    </select></label>
       <button id="panicBtn"><span>Stop all sound</span><small>Silences every note and all resonance at once, for a stuck note or ringing that will not stop.</small></button>
       <button id="exportBtn">Export settings…</button>
       <button id="importBtn">Import settings…</button>
@@ -450,6 +446,7 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
       <div class="row"><label>release</label><input type="range" id="selfRel" min="0.02" max="4" step="0.02" value="0.4"><output id="selfRelV"></output></div>
 
       <h3 class="lbl" style="margin-top:12px">All resonance voices</h3>
+      <div class="row"><label>level</label><input type="range" id="resAll" min="0" max="3.16" step="0.01" value="1"><output id="resAllV"></output></div>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
       <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="64" step="1" value="24"><output id="resMaxV"></output></div>
       <div class="row"><label>resume above</label><input type="range" id="resResume" min="-80" max="-10" step="1" value="-45"><output id="resResumeV"></output></div>
@@ -478,6 +475,9 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
         spreading from a point dies away: the nearest few strings stay close in level, an octave away is well
         down, and further out the curve flattens. The readout shows what that comes to at 1 semitone, an
         octave and two octaves.
+        <br><br><b>Level</b> under All resonance voices turns sympathetic, soundboard and self up or down
+        together, on top of their own levels; it is the Resonance knob in the simple view, and turning it all
+        the way down switches the resonance off.
         <br><br><b>Enter at</b> starts each recording past the hammer knock, and <b>fade-in</b> brings it in
         gently, because what answers a strike is a string ringing, not another strike. <b>Max voices</b> keeps
         the loudest. A string struck again while it is still ringing is not restarted: it is turned up

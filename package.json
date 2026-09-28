@@ -20,7 +20,6 @@
     "sampled:stress": "node sampled/tools/stress.mjs",
     "sampled:perf": "node sampled/tools/perf.mjs",
     "sampled:ab": "node sampled/tools/ab.mjs",
-    "sampled:ab:renderer": "node sampled/tools/ab-renderer.mjs",
     "sampled:render": "node sampled/tools/render.mjs"
   },
   "repository": {

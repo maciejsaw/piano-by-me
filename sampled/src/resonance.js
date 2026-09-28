@@ -28,7 +28,6 @@
 // There is no reverb here: the voices go into the same per-key channel strips
 // as the struck notes, and the room is the room's job.
 
-import { StreamSource } from './stream.js';
 import { RATE } from './ogg.js';
 import { holdFade, fadeAt } from './envelopes.js';
 
@@ -210,7 +209,7 @@ export class Resonance {
     this.n = this.hi - this.lo + 1;
     this.enabled = true;
     this.lookahead = 0;           // seconds; the engine sets its own
-    this.renderer = () => null;   // the engine's one-worklet voice renderer, when it is on
+    this.renderer = () => null;   // the engine's one-worklet voice renderer
 
     // Sympathetic (free strings, partial coincidence).
     this.symAmount = 0.3;
@@ -235,6 +234,7 @@ export class Resonance {
     this.selfRelease = 0.4;
 
     // Shared.
+    this.amount = 1;              // overall level, on top of each kind's own
     this.maxVoices = 24;
     // How long a voice takes to hand over when it has to be cut: crossfaded
     // into a restart of the same string, or faded out to make room for a
@@ -338,7 +338,7 @@ export class Resonance {
 
   /** A candidate's gain: its coupling `g`, at velocity `vel`, on the string's own level. */
   strength(target, g, vel) {
-    return g * Math.pow(vel / 127, VEL_EXP) * this.keyG[target - this.lo]
+    return this.amount * g * Math.pow(vel / 127, VEL_EXP) * this.keyG[target - this.lo]
       * Math.max(0, this.curves.at('resonance', target));
   }
 
@@ -557,7 +557,6 @@ export class Resonance {
   start(kind, midi, g, when, fadeIn = this.bloom, k = 1) {
     const got = this.lib.best(midi, this.layer);
     if (!got) return null;
-    const ctx = this.ctx;
     const len = got.frames / RATE;
     const offset = Math.max(Math.min(0.03, len * 0.1), Math.min(this.startAt, len / 3));
     // The wanted layer's true level, whichever layer is standing in for it
@@ -568,26 +567,22 @@ export class Resonance {
     // `gain` moves with top-ups (see drive).
     const v = { kind, midi, key: got.key, gain: g, unit, t0: when, offset,
       db0: this.decayDb(midi, offset), drivers: new Set(), k };
-    const r = this.renderer();
-    const c = this.chain(id, v, r);
+    const c = this.chain(id, v);
     v.chain = c; v.hp = c.hp; v.lp = c.lp;
-    let src, lvl, rel;
-    if (r) { src = r.voice(got.key, got.frames, midi, c); ({ lvl, rel } = src); }
-    else { src = new StreamSource(this.lib.streamer, got.key, got.frames); lvl = ctx.createGain(); rel = ctx.createGain(); }
+    const src = this.renderer().voice(got.key, got.frames, midi, c);
+    const { lvl, rel } = src;
     v.src = src; v.lvl = lvl; v.rel = rel;
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
     lvl.gain.value = g * unit;
     // Sits at 1 until release() runs its fall from that known value.
     rel.gain.value = 1;
-    if (!r) src.connect(lvl).connect(rel).connect(c.hp[0]);
     src.start(when, offset, fadeIn, this.fadeInCurve());
     src.onended = () => {
       // The recording ran out: nothing left to fade.
       if (this.voices.get(id) === v) this.voices.delete(id);
       this.fading.delete(v);
-      rel.disconnect();
       if (--c.users === 0) {
-        if (c.renderer) c.free(); else c.lp.disconnect();
+        c.free();
         if (this.chains.get(id) === c) this.chains.delete(id);
       }
     };
@@ -604,26 +599,12 @@ export class Resonance {
    * a voice that needs another one gets filters of its own, and is the one a
    * later voice there joins.
    */
-  chain(id, v, r = null) {
+  chain(id, v) {
     const cut = this.partialCut(v);
     let c = this.chains.get(id);
-    if (!c || c.cut !== cut || !c.renderer !== !r) {
-      if (r) {
-        c = r.chain(v.midi, cut, this.tone);
-        c.cut = cut; c.users = 0;
-        this.chains.set(id, c);
-        c.users++;
-        return c;
-      }
-      const ctx = this.ctx;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
-      // Two second-order high-passes, 24 dB/octave: steep enough that a string
-      // driven at its 2nd partial loses its fundamental, not just some of it.
-      const hp = [ctx.createBiquadFilter(), ctx.createBiquadFilter()];
-      for (const h of hp) { h.type = 'highpass'; h.Q.value = Math.SQRT1_2; h.frequency.value = cut; }
-      hp[0].connect(hp[1]).connect(lp).connect(this.strip(v.midi));
-      c = { hp, lp, cut, users: 0 };
+    if (!c || c.cut !== cut) {
+      c = this.renderer().chain(v.midi, cut, this.tone);
+      c.cut = cut; c.users = 0;
       this.chains.set(id, c);
     }
     c.users++;

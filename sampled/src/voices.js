@@ -5,8 +5,8 @@
 // It hands the engine and the resonance objects shaped like the ones they
 // already use -- a source with start / stop / resume / onended /
 // playbackRate, gain "nodes" whose `gain` has the AudioParam calls, filter
-// "nodes" whose `frequency` has them -- so the same code drives either path
-// (engine.renderer chooses). Every call is posted to the audio thread; all
+// "nodes" whose `frequency` has them -- so the code that once drove a node
+// per voice drives this unchanged. Every call is posted to the audio thread; all
 // the calls made in one task go as one message, sent when the task is done.
 //
 // A param keeps a copy of its timeline here (automation.js), so it refuses

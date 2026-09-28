@@ -12,12 +12,12 @@
 //                 playbackRate. It plays the head straight out of memory the
 //                 instant it starts, and asks the worker for the rest, which
 //                 arrives long before the head runs out.
-//   piano-voices  the other way to play them: ONE node for every voice, with
+//   piano-voices  how the engine plays them: ONE node for every voice, with
 //                 what used to be native nodes after each voice -- its gains,
 //                 a resonance string's filters, the key's strip -- done here
-//                 in JS (voices.js is its main-thread half; engine.renderer
-//                 chooses). Chrome charges every node a fixed cost per render
-//                 quantum, and under the pedal that was most of the load.
+//                 in JS (voices.js is its main-thread half). Chrome charges
+//                 every node a fixed cost per render quantum, and under the
+//                 pedal that was most of the load.
 //
 // Heads are kept as 16-bit: at the level of a sample's first quarter second
 // that is 96 dB below the note, and it halves the only thing held here for

@@ -276,6 +276,13 @@ is per-key numbers, so the renderer can apply it itself:
   params, so a loaded main thread gives the same smooth-but-late behaviour
   the engine relies on (see the comments in noteOn about `rel`).
 
+## Progress (2026-09-28)
+
+- The user tested the renderer and approved it: it is now the only path.
+  The start-screen checkbox, `engine.renderer`, the node-per-voice wiring in
+  engine.js / resonance.js and `ab-renderer.mjs` are gone. StreamSource and
+  the `piano-voice` processor stay, used by the tools (ab, smoke, perf).
+
 ## Progress (2026-09-26)
 
 - Stage A skipped (stage 0.2). Stage B steps 1-4 and 6 done, behind

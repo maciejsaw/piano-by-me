@@ -28,7 +28,6 @@ import { renderFdnIR, FDN_DEFAULTS } from './fdn-room.js';
 import { renderHallIR, HALL_DEFAULTS, energyOf } from './hall.js';
 import { Envelopes, holdFade } from './envelopes.js';
 import { Eq } from './eq.js';
-import { StreamSource } from './stream.js';
 import { VoiceRenderer } from './voices.js';
 
 const MAX_VOICES = 64;
@@ -207,14 +206,12 @@ export class Engine {
     this.velLayer = VelLayerCurve.fromHivel(lib.m.hivel, lib.layers);
 
     // Every voice in one worklet (voices.js) instead of a worklet and its
-    // own gains and filters each. Off: the node per voice. Only notes
-    // started after a change take the other path.
-    this.renderer = false;
+    // own gains and filters each.
     this.voiceRenderer = null;
 
     this.res = new Resonance(ctx, lib, curves, (m) => this.strips.get(m).in, this.env);
     this.res.lookahead = this.lookahead;
-    this.res.renderer = () => (this.renderer ? this.rv() : null);
+    this.res.renderer = () => this.rv();
     this.refreshStrips();
     this.updateUndamped();
   }
@@ -452,7 +449,7 @@ export class Engine {
   // performance were arriving late before this existed.
   noteOn(midi, vel, when) {
     if (midi < this.lo || midi > this.hi) return;
-    const ctx = this.ctx, now = this.time(when);
+    const now = this.time(when);
 
     const p = plan(this.curves, this.lib, midi, vel, 0, this.velCurve, this.velLayer);
     if (!p) {
@@ -481,14 +478,8 @@ export class Engine {
     this.damping.delete(midi);
     // A streamed sample: its head is already decoded, the rest is decoded by
     // the stream worker as it plays. Used exactly like a buffer source.
-    let src, lvl, att, rel;
-    if (this.renderer) {
-      src = this.rv().voice(p.key, p.frames, midi);
-      ({ lvl, att, rel } = src);
-    } else {
-      src = new StreamSource(this.lib.streamer, p.key, p.frames);
-      lvl = ctx.createGain(); att = ctx.createGain(); rel = ctx.createGain();
-    }
+    const src = this.rv().voice(p.key, p.frames, midi);
+    const { lvl, att, rel } = src;
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
 
     // Three gains in a row, each with one job. `lvl` is the velocity's level
@@ -522,7 +513,6 @@ export class Engine {
     } else {
       att.gain.value = 1;
     }
-    if (!this.renderer) src.connect(lvl).connect(att).connect(rel).connect(this.strips.get(midi).direct);
     src.start(t0, at.offset, fade);
 
     // `rel` on the voice is the release gain; `releasing` says whether it has
