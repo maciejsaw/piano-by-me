@@ -30,8 +30,6 @@ import { Envelopes, holdFade } from './envelopes.js';
 import { Eq } from './eq.js';
 import { VoiceRenderer } from './voices.js';
 
-const MAX_VOICES = 64;
-
 // Where the dampers come clear of the strings. Below this the pedal is
 // shortening notes rather than sustaining them, which is what half-pedalling
 // is; at or above it the string is free and nothing should be touching it.
@@ -197,6 +195,8 @@ export class Engine {
     // Notes estimated quieter than this, in dB of full scale before the
     // master, are faded out (see cutQuiet). -100 or lower is off.
     this.cutDb = -80;
+    // Main-sample polyphony: past this, prune() fades the oldest unheld notes.
+    this.maxVoices = 128;
     this.held = new Set();
 
     // The hand-drawn velocity curves, shared with the editors in the UI: one
@@ -707,11 +707,11 @@ export class Engine {
   prune() {
     let n = 0;
     for (const l of this.voices.values()) n += l.length;
-    if (n <= MAX_VOICES) return;
+    if (n <= this.maxVoices) return;
     const all = [];
     for (const l of this.voices.values()) all.push(...l);
     all.sort((a, b) => a.started - b.started);
-    for (let i = 0; i < n - MAX_VOICES; i++) {
+    for (let i = 0; i < n - this.maxVoices; i++) {
       const v = all[i];
       if (this.down.has(v.midi)) continue;
       this.kill(v.midi, 0.06);
