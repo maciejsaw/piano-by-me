@@ -9,6 +9,7 @@ const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const isBlack = (m) => !WHITE.includes(m % 12);
 const SPEED = 70;        // CSS px per second the bars rise
 const MAX_NOTES = 400;
+const LONG_NOTE = 3;     // seconds held at which a bar's bottom is thinnest
 
 /** Key m's left edge and width as fractions of the keyboard, as keyboard.js lays it out. */
 export function keyGeometry(lo, hi) {
@@ -81,14 +82,18 @@ export function createStage(canvas, { lo, hi, res }) {
 
     // Notes, rising.
     const px = SPEED * dpr;
-    const fadeUp = ([r, gg, b]) => {
-      const f = g.createLinearGradient(0, h, 0, 0);
-      f.addColorStop(0, `rgba(${r},${gg},${b},0.95)`);
-      f.addColorStop(0.6, `rgba(${r},${gg},${b},0.35)`);
-      f.addColorStop(1, `rgba(${r},${gg},${b},0)`);
+    // Each bar is its colour times two fades: the area's, even from the keys
+    // (80%) to nothing at the top, and the note's own, which thins its bottom
+    // end the longer it is held -- a short note stays solid, a long one trails off.
+    const fill = ([r, gg, b], top, bottom, thin) => {
+      const f = g.createLinearGradient(0, top, 0, bottom);
+      for (let s = 0; s <= 4; s++) {
+        const u = s / 4, y = top + u * (bottom - top);
+        const a = 0.8 * Math.max(0, y / h) * (1 - thin * u);
+        f.addColorStop(u, `rgba(${r},${gg},${b},${a.toFixed(3)})`);
+      }
       return f;
     };
-    const fills = [fadeUp(WHITE_NOTE), fadeUp(BLACK_NOTE)];
     g.shadowColor = 'rgba(221,199,165,0.55)';
     g.shadowBlur = 8 * dpr;
     let live = false;
@@ -100,9 +105,12 @@ export function createStage(canvas, { lo, hi, res }) {
       live = true;
       const k = geo.get(n.m);
       const bw = Math.max(2 * dpr, k.w * w * 0.55), x = k.x * w + (k.w * w - bw) / 2;
-      // A thin bar with a soft glow, fading toward the top.
-      g.fillStyle = fills[k.black ? 1 : 0];
-      roundRect(g, x, top, bw, Math.max(2 * dpr, bottom - top), bw / 2);
+      const held = (n.t1 ?? t) - n.t0;
+      const thin = 0.85 * Math.min(1, held / LONG_NOTE);
+      // A thin bar, barely rounded, with a soft glow.
+      g.fillStyle = fill(k.black ? BLACK_NOTE : WHITE_NOTE, top, bottom, thin);
+      g.beginPath();
+      g.roundRect(x, top, bw, Math.max(2 * dpr, bottom - top), 2 * dpr);
       g.fill();
     }
     g.shadowBlur = 0;
@@ -138,14 +146,4 @@ export function createStage(canvas, { lo, hi, res }) {
       if (ringing || lastRes) start();
     },
   };
-}
-
-function roundRect(g, x, y, w, h, r) {
-  g.beginPath();
-  g.moveTo(x + r, y);
-  g.arcTo(x + w, y, x + w, y + h, r);
-  g.arcTo(x + w, y + h, x, y + h, r);
-  g.arcTo(x, y + h, x, y, r);
-  g.arcTo(x, y, x + w, y, r);
-  g.closePath();
 }

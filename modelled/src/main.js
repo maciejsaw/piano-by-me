@@ -670,8 +670,36 @@ wireMenu();
 // ------------------------------------------------------------ simple view --
 // By default only the photo, the keyboard with its notes, and a few knobs;
 // Settings shows every control. Remembered in this browser.
-const knobs = [['gain', 'Volume'], ['rMix', 'Room'], ['bc', 'Resonance'], ['cmix', 'Body']]
-  .map(([id, label]) => knob($(id), label, $(id + 'V')));
+// Room and Body are the toggle and the amount in one knob: all the way left is
+// bypassed, anything above it enables and sets the amount. A stand-in range,
+// kept out of the page so it is never saved, reads 0 whenever the toggle is off.
+function toggleKnob(btn, amount, label) {
+  const v = document.createElement('input');
+  Object.assign(v, { type: 'range', min: 0, max: amount.max, step: amount.step });
+  v.defaultValue = amount.defaultValue;
+  const out = document.createElement('output');
+  const pull = () => {
+    const on = btn.classList.contains('on');
+    v.value = on ? amount.value : 0;
+    out.textContent = on ? $(amount.id + 'V').textContent : 'off';
+  };
+  v.addEventListener('input', () => {
+    const x = +v.value;
+    if (btn.classList.contains('on') !== x > 0) btn.click();
+    if (x > 0) { amount.value = x; amount.dispatchEvent(new Event('input', { bubbles: true })); }
+    pull();
+  });
+  v.addEventListener('change', () => amount.dispatchEvent(new Event('change', { bubbles: true })));
+  pull();
+  const k = knob(v, label, out);
+  return { el: k.el, sync: () => { pull(); k.sync(); } };
+}
+const knobs = [
+  knob($('gain'), 'Volume', $('gainV')),
+  toggleKnob($('roomBtn'), $('rMix'), 'Room'),
+  knob($('bc'), 'Resonance', $('bcV')),
+  toggleKnob($('bodyBtn'), $('cmix'), 'Body'),
+];
 for (const k of knobs) $('knobs').appendChild(k.el);
 setInterval(() => { if (document.body.classList.contains('simple')) for (const k of knobs) k.sync(); }, 250);
 const VIEW = 'modelled.view';
@@ -702,3 +730,4 @@ localStorage.removeItem(LEGACY_OFFSETS);
   try { applySettings(stored); } catch (err) { console.error('stored settings ignored', err); }
 }
 uiReady = true;
+for (const k of knobs) k.sync();
