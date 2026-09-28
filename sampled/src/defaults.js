@@ -207,6 +207,12 @@ export const DEFAULT_SETTINGS = {
           "hi": 73,
           "v": -0.378,
           "feather": 0
+        },
+        {
+          "lo": 68,
+          "hi": 70,
+          "v": 1.1880000000000002,
+          "feather": 0
         }
       ],
       "layerBias": [
@@ -401,10 +407,10 @@ export const DEFAULT_SETTINGS = {
         0,
         0,
         -0.972,
-        -0.954,
+        0.774,
         0,
-        0,
-        0,
+        -1.062,
+        -0.414,
         -0.486,
         0,
         0,
