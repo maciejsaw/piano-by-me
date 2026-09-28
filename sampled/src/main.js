@@ -129,7 +129,7 @@ function keepRunning(c) {
 /** The simple view's knobs, each standing in for a slider in the full view. */
 function buildKnobs() {
   const root = $('knobs');
-  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['resAll', 'Resonance']]) {
+  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['resDb', 'Resonance']]) {
     const k = knob($(id), label, $(id + 'V'));
     root.appendChild(k.el);
     knobs.push(k);
@@ -557,7 +557,11 @@ function buildUI() {
   bind('fdnPos', (v) => engine.setFdnRoom({ distance: v }), (v) => (v * 100).toFixed(0) + '% back');
   const sec = (v) => v.toFixed(2) + ' s';
   bind('symAmt', (v) => { engine.res.symAmount = v; }, db);
-  bind('resAll', (v) => { engine.res.amount = v; linkToggles(); }, db);
+  // In dB rather than gain, up to +30: a linear slider that reaches x31.6 would
+  // leave unity in the bottom 3% of its travel. All the way down is off.
+  const RES_OFF = -40;
+  bind('resDb', (v) => { engine.res.amount = v <= RES_OFF ? 0 : Math.pow(10, v / 20); linkToggles(); },
+    (v) => v <= RES_OFF ? 'off' : `${v >= 0 ? '+' : ''}${v.toFixed(1)} dB`);
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
   // What a dB-per-doubling rate comes to at 1 semitone, an octave, two octaves.
   const reach = (v) => [1, 12, 24].map((d) => distanceDb(d, v).toFixed(0)).join(' / ') + ' dB';
@@ -581,6 +585,7 @@ function buildUI() {
   bind('resBloom', (v) => { engine.res.bloom = v; }, (v) => v === 0 ? 'none' : (v * 1000).toFixed(0) + ' ms');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
   bind('dampNoise', (v) => { engine.damperNoise = v; }, db);
+  bind('maxVoices', (v) => { engine.maxVoices = v; engine.prune(); }, (v) => v.toFixed(0) + ' voices');
   bind('cutDb', (v) => { engine.cutDb = v; }, (v) => v <= -100 ? 'off' : v.toFixed(0) + ' dB');
   bind('pedSweep', (v) => { engine.pedalSweep = v / 1000; }, (v) => v === 0 ? 'all at once' : `bass ${v.toFixed(0)} ms after treble`);
   bind('pedDampCount', (v) => { engine.pedalDamperCount = v; }, (v) => v === 0 ? 'none' : `loudest ${v.toFixed(0)}`);
@@ -728,8 +733,8 @@ function linkToggles() {
   for (const [id, btn, on] of [
     ['wet', 'roomBtn', engine.hall.on],
     ['fdnWet', 'fdnBtn', engine.early.on],
-    ['resAll', 'resBtn', engine.res.enabled],
-  ]) if ((+$(id).value > 0) !== on) $(btn).click();
+    ['resDb', 'resBtn', engine.res.enabled],
+  ]) if ((+$(id).value > +$(id).min) !== on) $(btn).click();
 }
 /** The resonance curve's readout: flat, or how far down it pulls the top. */
 function syncResCurve() {
@@ -895,6 +900,13 @@ function applyControls(o) {
     if (v == null) continue;
     o.sliders['aExp' + k] ??= v; o.sliders['bExp' + k] ??= v;
     delete o.sliders['exp' + k];
+  }
+  // The resonance level used to be a linear gain (resAll, 0..3.16); it is now
+  // in dB (resDb), bottom of the range meaning off.
+  if (o.sliders?.resAll != null) {
+    const g = +o.sliders.resAll;
+    o.sliders.resDb ??= String(g > 0 ? Math.max(-39.5, 20 * Math.log10(g)) : -40);
+    delete o.sliders.resAll;
   }
   if (o.sliders) for (const [id, val] of Object.entries(o.sliders)) {
     if (id === 'ped') continue;   // momentary; see collectSettings -- never restore it

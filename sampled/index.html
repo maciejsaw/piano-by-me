@@ -456,7 +456,7 @@ body.simple .bk.res:not(.dn):not(.sil){background:linear-gradient(#29303d,#0c101
       <div class="row"><label>release</label><input type="range" id="selfRel" min="0.02" max="4" step="0.02" value="0.4"><output id="selfRelV"></output></div>
 
       <h3 class="lbl" style="margin-top:12px">All resonance voices</h3>
-      <div class="row"><label>level</label><input type="range" id="resAll" min="0" max="3.16" step="0.01" value="1"><output id="resAllV"></output></div>
+      <div class="row"><label>level</label><input type="range" id="resDb" min="-40" max="30" step="0.5" value="0"><output id="resDbV"></output></div>
       <div class="row"><label>tone</label><input type="range" id="resTone" min="800" max="12000" step="100" value="5200"><output id="resToneV"></output></div>
       <div class="row"><label>max voices</label><input type="range" id="resMax" min="4" max="64" step="1" value="24"><output id="resMaxV"></output></div>
       <div class="row"><label>resume above</label><input type="range" id="resResume" min="-80" max="-10" step="1" value="-45"><output id="resResumeV"></output></div>
@@ -566,6 +566,7 @@ body.simple .bk.res:not(.dn):not(.sil){background:linear-gradient(#29303d,#0c101
       <div class="row"><label>sustain pedal</label><input type="range" id="ped" min="0" max="1" step="0.01" value="0"><output id="pedV"></output></div>
       <div class="row"><label>key release</label><input type="range" id="relNoise" min="0" max="2" step="0.01" value="0.9"><output id="relNoiseV"></output></div>
       <div class="row"><label>damper fall</label><input type="range" id="dampNoise" min="0" max="2" step="0.01" value="1"><output id="dampNoiseV"></output></div>
+      <div class="row"><label>max voices</label><input type="range" id="maxVoices" min="16" max="256" step="1" value="128"><output id="maxVoicesV"></output></div>
       <div class="row"><label>cut notes below</label><input type="range" id="cutDb" min="-100" max="-30" step="1" value="-80"><output id="cutDbV"></output></div>
       <div class="row"><label>pedal-up sweep</label><input type="range" id="pedSweep" min="0" max="300" step="1" value="40"><output id="pedSweepV"></output></div>
       <div class="row"><label>pedal-up dampers heard</label><input type="range" id="pedDampCount" min="0" max="30" step="1" value="6"><output id="pedDampCountV"></output></div>
