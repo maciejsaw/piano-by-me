@@ -19,4 +19,4 @@ createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': TYPES[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store' });
     res.end(body);
   } catch { res.writeHead(404).end('not found'); }
-}).listen(port, () => console.log(`\n  piano-model-x  ->  http://localhost:${port}\n     modelled    ->  http://localhost:${port}/modelled/\n     sampled     ->  http://localhost:${port}/sampled/\n`));
+}).listen(port, () => console.log(`\n  piano-by-me  ->  http://localhost:${port}\n     modelled    ->  http://localhost:${port}/modelled/\n     sampled     ->  http://localhost:${port}/sampled/\n`));

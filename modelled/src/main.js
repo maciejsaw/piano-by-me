@@ -449,7 +449,6 @@ $('roomBtn').onclick = (e) => {
 // events, click a toggle that disagrees), so there is one code path that moves
 // the instrument and a file cannot reach anything the UI cannot.
 const STORE = 'piano-modelled-settings';
-const LEGACY_OFFSETS = 'pianoModelX.offsets';   // the editor's old save button, now unused
 // Performance controls, not settings -- and the inspector's, which show the
 // selected note and are kept as noteEdits instead.
 const NOT_SETTINGS = new Set(['len', 'core', 'wrap', 'det', 't60l', 't60h', 'strike', 'cpl']);
@@ -720,7 +719,6 @@ tipify();
 // Restore the last session, else the shipped defaults. The editor's old
 // offsets-only key is dropped, not migrated: what it held has been folded into
 // the shipped curves.
-localStorage.removeItem(LEGACY_OFFSETS);
 {
   let stored = null;
   try { stored = JSON.parse(localStorage.getItem(STORE)); } catch { stored = null; }

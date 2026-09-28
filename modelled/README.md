@@ -1,4 +1,4 @@
-# Piano Model X
+# Piano calibrated by me
 
 A physically modelled piano. Every string is an individual digital waveguide with
 its own geometry, tension and losses, and they all meet at a shared bridge — so

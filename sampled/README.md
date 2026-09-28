@@ -1,4 +1,4 @@
-# Piano Model X — Sampled
+# Piano calibrated by me — Sampled
 
 A Yamaha C5, recorded. The other half of this repository models a piano from
 its strings outwards; this half starts from a real one and spends its effort on

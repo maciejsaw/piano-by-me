@@ -72,7 +72,7 @@ async function start(install = false) {
     lastStreamError = msg;
     $('installV').textContent = msg;
     // Without Opus decoding there is no piano at all, so say so out loud.
-    if (/cannot decode/.test(msg)) alert(`Piano Model X: ${msg}`);
+    if (/cannot decode/.test(msg)) alert(`Piano calibrated by me: ${msg}`);
   };
   // Ticked on the start screen: install first, and bring the player up only
   // once every sample is on disk -- so it never runs from memory meanwhile.
@@ -873,7 +873,7 @@ function collectSettings() {
 
 function applySettings(o) {
   if (!o || typeof o !== 'object' || (o.app && o.app !== 'piano-sampled')) {
-    throw new Error('not a Piano Model X — Sampled settings file');
+    throw new Error('not a settings file from the sampled piano');
   }
   if (o.curves) curves.fromJSON(o.curves);
   if (o.envelopes) envelopes.fromJSON(o.envelopes);

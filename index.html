@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Piano Model X</title>
+<title>Piano calibrated by me</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2312100e'/%3E%3Crect x='2' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='5' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='8' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='11' y='3' width='2.4' height='10' fill='%23ece5da'/%3E%3Crect x='3.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3Crect x='9.8' y='3' width='1.6' height='6' fill='%23d9a441'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="fonts/fonts.css">
 <style>
@@ -30,12 +30,15 @@ a.card p{color:var(--dim);margin:2px 0 0;font-size:13px}
 a.card:hover,a.card:focus-visible{outline:none;transform:translateY(-3px);
   box-shadow:0 0 0 1px rgba(0,0,0,.4),0 36px 70px -30px #000,0 0 90px -10px rgba(216,196,162,.28)}
 a.card:hover img,a.card:focus-visible img{transform:scale(1.03)}
+footer{color:var(--dim);text-align:center;margin:36px 0 0;font-size:13px}
+footer a{color:var(--accent);text-decoration:none}
+footer a:hover{text-decoration:underline}
 kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12px/1.4 inherit}
 </style>
 </head>
 <body>
 <main>
-  <h1>Piano Model X</h1>
+  <h1>Piano calibrated by me</h1>
   <p class="sub">Pick a piano, or press <kbd>1</kbd> or <kbd>2</kbd>.</p>
   <div class="grid">
     <a class="card" href="sampled/" title="A recorded Yamaha C5 (Salamander), repitched onto the fitted scale, with release samples, resonance and room.">
@@ -47,6 +50,7 @@ kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12px/1.4 i
       <div class="txt"><h2>Electric clavinet</h2><p>Physically modelled strings</p></div>
     </a>
   </div>
+  <footer>Maciej Sawicki · <a href="mailto:saw.maciej@gmail.com">saw.maciej@gmail.com</a></footer>
 </main>
 <script>
 addEventListener('keydown', (e) => {

@@ -1,4 +1,4 @@
-# Piano Model X
+# Piano calibrated by me
 
 One piano, two ways. Both play in the browser, with a MIDI keyboard or the
 computer keyboard.

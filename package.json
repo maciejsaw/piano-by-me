@@ -1,5 +1,5 @@
 {
-  "name": "piano-model-x",
+  "name": "piano-by-me",
   "version": "0.1.0",
   "description": "A piano two ways: physically modelled (modelled/) and sampled (sampled/)",
   "scripts": {
@@ -24,15 +24,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maciejsaw/piano-model-x.git"
+    "url": "git+https://github.com/maciejsaw/piano-by-me.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/maciejsaw/piano-model-x/issues"
+    "url": "https://github.com/maciejsaw/piano-by-me/issues"
   },
-  "homepage": "https://github.com/maciejsaw/piano-model-x#readme",
+  "homepage": "https://github.com/maciejsaw/piano-by-me#readme",
   "devDependencies": {
     "ffmpeg-static": "^5.2.0",
     "playwright": "^1.63.0"

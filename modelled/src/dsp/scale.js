@@ -11,7 +11,7 @@ import { MATERIALS, noteHz, noteName, derive, linearDensity } from './physics.js
 import { NO_OFFSETS } from './offsets.js';
 
 export const DEFAULT_SCALE = {
-  name: 'Model X — medium grand',
+  name: 'Medium grand',
   a4: 440,
   // Stretch tuning, cents on top of equal temperament. Real pianos are tuned to
   // their own inharmonicity, not to a calculator: octaves are widened so upper
