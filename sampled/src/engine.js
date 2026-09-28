@@ -28,9 +28,7 @@ import { renderFdnIR, FDN_DEFAULTS } from './fdn-room.js';
 import { renderHallIR, HALL_DEFAULTS, energyOf } from './hall.js';
 import { Envelopes, holdFade } from './envelopes.js';
 import { Eq } from './eq.js';
-import { StreamSource } from './stream.js';
-
-const MAX_VOICES = 64;
+import { VoiceRenderer } from './voices.js';
 
 // Where the dampers come clear of the strings. Below this the pedal is
 // shortening notes rather than sustaining them, which is what half-pedalling
@@ -197,6 +195,8 @@ export class Engine {
     // Notes estimated quieter than this, in dB of full scale before the
     // master, are faded out (see cutQuiet). -100 or lower is off.
     this.cutDb = -80;
+    // Main-sample polyphony: past this, prune() fades the oldest unheld notes.
+    this.maxVoices = 128;
     this.held = new Set();
 
     // The hand-drawn velocity curves, shared with the editors in the UI: one
@@ -205,8 +205,13 @@ export class Engine {
     this.velCurve = new VelCurve();
     this.velLayer = VelLayerCurve.fromHivel(lib.m.hivel, lib.layers);
 
+    // Every voice in one worklet (voices.js) instead of a worklet and its
+    // own gains and filters each.
+    this.voiceRenderer = null;
+
     this.res = new Resonance(ctx, lib, curves, (m) => this.strips.get(m).in, this.env);
     this.res.lookahead = this.lookahead;
+    this.res.renderer = () => this.rv();
     this.refreshStrips();
     this.updateUndamped();
   }
@@ -243,6 +248,16 @@ export class Engine {
     return { midi, in: inG, direct, g, out };
   }
 
+  /** The one-worklet voice renderer, made the first time it is asked for, with the strips' state. */
+  rv() {
+    if (this.voiceRenderer) return this.voiceRenderer;
+    const r = this.voiceRenderer = new VoiceRenderer(this.lib.streamer);
+    r.connect(this.dry, this.send);
+    this.refreshStrips();
+    if (this.soloRes) for (let m = this.lo; m <= this.hi; m++) r.direct(m).gain.value = 0;
+    return r;
+  }
+
   /**
    * Width and position, as one 2x2 matrix, over the already-swapped stereo.
    *
@@ -269,6 +284,7 @@ export class Engine {
       s.g[1].gain.value = gl * other;
       s.g[2].gain.value = gr * other;
       s.g[3].gain.value = gr * own;
+      this.voiceRenderer?.matrix(m, s.g[0].gain.value, s.g[1].gain.value, s.g[2].gain.value, s.g[3].gain.value);
     }
   }
 
@@ -386,7 +402,10 @@ export class Engine {
       g.gain.setValueAtTime(g.gain.value, t);
       g.gain.linearRampToValueAtTime(v, t + 0.02);
     };
-    for (const strip of this.strips.values()) ramp(strip.direct);
+    for (const strip of this.strips.values()) {
+      ramp(strip.direct);
+      if (this.voiceRenderer) ramp(this.voiceRenderer.direct(strip.midi));
+    }
     ramp(this.noiseSolo);
   }
 
@@ -411,6 +430,12 @@ export class Engine {
     return { offset, delay: Math.max(0, Math.min(0.25, -want)) };
   }
 
+  /**
+   * Where the audio clock is now. The same as ctx.currentTime, except under
+   * a test tool that runs the engine on a clock of its own, ahead of it.
+   */
+  audioNow() { return this.ctx.currentTime; }
+
   /** When a live event with no `when` should happen: just ahead of the audio thread. */
   time(when) { return when ?? this.ctx.currentTime + this.lookahead; }
 
@@ -424,7 +449,7 @@ export class Engine {
   // performance were arriving late before this existed.
   noteOn(midi, vel, when) {
     if (midi < this.lo || midi > this.hi) return;
-    const ctx = this.ctx, now = this.time(when);
+    const now = this.time(when);
 
     const p = plan(this.curves, this.lib, midi, vel, 0, this.velCurve, this.velLayer);
     if (!p) {
@@ -453,7 +478,8 @@ export class Engine {
     this.damping.delete(midi);
     // A streamed sample: its head is already decoded, the rest is decoded by
     // the stream worker as it plays. Used exactly like a buffer source.
-    const src = new StreamSource(this.lib.streamer, p.key, p.frames);
+    const src = this.rv().voice(p.key, p.frames, midi);
+    const { lvl, att, rel } = src;
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
 
     // Three gains in a row, each with one job. `lvl` is the velocity's level
@@ -465,10 +491,7 @@ export class Engine {
     // is clamped to the present and simply starts the same smooth fall a few
     // milliseconds later, instead of jumping to a guessed value. No step, no
     // click, however loaded the main thread is.
-    const lvl = ctx.createGain();
     lvl.gain.value = p.gain;
-    const att = ctx.createGain();
-    const rel = ctx.createGain();
     rel.gain.value = 1;
     // Alignment first: everything below is timed from when the note actually
     // starts, which is a few milliseconds after `now` for a recording whose
@@ -490,7 +513,6 @@ export class Engine {
     } else {
       att.gain.value = 1;
     }
-    src.connect(lvl).connect(att).connect(rel).connect(this.strips.get(midi).direct);
     src.start(t0, at.offset, fade);
 
     // `rel` on the voice is the release gain; `releasing` says whether it has
@@ -655,7 +677,7 @@ export class Engine {
       this.damping.delete(midi);
       for (const v of list) {
         if (t > v.stopAt - 0.04 || !v.fade) continue;
-        const level = holdFade(v.rel.gain, v.fade, t);
+        const level = holdFade(v.rel.gain, v.fade, t, this.audioNow());
         if (level < 1e-3) continue;
         v.src.resume();
         v.level = level;
@@ -685,11 +707,11 @@ export class Engine {
   prune() {
     let n = 0;
     for (const l of this.voices.values()) n += l.length;
-    if (n <= MAX_VOICES) return;
+    if (n <= this.maxVoices) return;
     const all = [];
     for (const l of this.voices.values()) all.push(...l);
     all.sort((a, b) => a.started - b.started);
-    for (let i = 0; i < n - MAX_VOICES; i++) {
+    for (let i = 0; i < n - this.maxVoices; i++) {
       const v = all[i];
       if (this.down.has(v.midi)) continue;
       this.kill(v.midi, 0.06);

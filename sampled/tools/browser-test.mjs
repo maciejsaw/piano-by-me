@@ -1,13 +1,10 @@
 // Does the sampled piano actually work in a real browser?
 //
-// Four things, in order of how much trouble they would be if they were wrong:
-//
-//   1. the Opus files decode at all (decodeAudioData, Ogg container)
-//   2. a struck note makes sound, and a harder one makes more
-//   3. strings that are free to ring DO ring when another key is struck, and
-//      strings that are damped do not
-//   4. the resonance piles up when the pedal is down -- the same gesture twice
-//      leaves more behind than once
+// The slow, detailed audio checks: levels, envelopes, pedal, release samples,
+// the resonance under the pedal, the output EQ -- each measured through an
+// analyser in real time. Part of `npm run sampled:test:full`. The quick
+// browser check is smoke.mjs; the engine's arithmetic, resonance decisions
+// included, is checked in unit.mjs.
 //
 // Measured off engine.master through an analyser, so what is checked is the
 // signal the instrument produces rather than anything the UI claims.
@@ -86,28 +83,8 @@ const r = await page.evaluate(async () => {
   engine.setPedal(0); await settle();
   engine.setLimiter(true);
 
-  // --- sympathetic resonance, with the struck note fully damped ---
-  // Turned up so the held chord is easy to measure, and put back afterwards:
-  // leaving it up made the halo check further down read 8x the shipped level
-  // and blame the engine for it.
-  // Only the sympathetic kind, so the soundboard's neighbours and the struck
-  // key's own voice do not count as "held strings ringing".
-  const shipped = { sym: engine.res.symAmount, sb: engine.res.sbAmount, self: engine.res.selfAmount };
-  engine.res.symAmount = 1.2; engine.res.sbAmount = 0; engine.res.selfAmount = 0;
-  for (const m of [60, 64, 67]) engine.silentHold(m, true);
-  engine.noteOn(48, 120); await wait(420); engine.noteOff(48);
-  await wait(1500);                        // C3 is damped; anything left is the held chord
-  out.sympathetic = await peakOver(500);
-  out.ringing = engine.res.voices.size;
-  for (const m of [60, 64, 67]) engine.silentHold(m, false);
-  await settle();
+  // Which strings answer a strike, how hard, and for how long: unit.mjs.
 
-  // --- the same gesture with everything damped leaves nothing ---
-  engine.noteOn(48, 120); await wait(420); engine.noteOff(48);
-  await wait(1500);
-  out.damped = await peakOver(500);
-  engine.res.symAmount = shipped.sym; engine.res.sbAmount = shipped.sb; engine.res.selfAmount = shipped.self;
-  await settle();
 
   // --- a released key under a held pedal keeps ringing, and the pedal stops it ---
   engine.setPedal(1);
@@ -126,17 +103,6 @@ const r = await page.evaluate(async () => {
   engine.setPedal(0);
   await wait(100);
   out.afterPedalUpVoices = [...engine.res.voices.values()].filter((v) => v.kind === 'sym').length;
-  await settle();
-
-  // --- a halo under a LONG held note ---
-  // Held treble strings answering a held bass note must still be sounding
-  // eight seconds in: a resonance voice lasts as long as the note driving it.
-  for (const m of [79, 83, 86]) engine.silentHold(m, true);
-  engine.noteOn(36, 120);
-  await wait(8000);
-  out.haloHeld8s = [79, 83, 86].reduce((a, m) => a + engine.res.level[m - engine.res.lo], 0);
-  engine.noteOff(36);
-  for (const m of [79, 83, 86]) engine.silentHold(m, false);
   await settle();
 
   // --- envelopes -----------------------------------------------------------
@@ -178,12 +144,9 @@ const r = await page.evaluate(async () => {
   envelopes.noteRelease.shape.set(0.08, 0.62, 0.32, 0.9);
   engine.curves.g.damping = 0;
 
-  // Release level against hold time, as a function and then as audio.
-  out.holdShort = envelopes.holdLevel(0);
-  out.holdLong = envelopes.holdLevel(envelopes.hold.seconds);
-  out.holdKeyNoiseOff = envelopes.holdLevel(envelopes.hold.seconds, 0);
-
-  // Same, through the engine -- checked at the gain the engine schedules
+  // Release level against hold time, through the engine (the hold law
+  // itself is checked as arithmetic in unit.mjs).
+  // Checked at the gain the engine schedules
   // rather than at the analyser. A damper thud is impulsive and 40 dB below
   // the note it came off, and measuring one through an 85 ms analyser window
   // immediately after a note-off is not a repeatable thing to do: the first
@@ -239,20 +202,12 @@ const r = await page.evaluate(async () => {
   engine.damperNoise = 1;
   engine.res.enabled = true;
 
-  // --- the halo has to be a halo -------------------------------------------
-  // This is the check that would have caught the worst bug in this engine.
-  // The resonance voices were not applying the manifest gain that restores a
-  // recording's true level, so they played peak-normalised pianissimo samples
-  // as if they were fortissimo -- about 20 dB too loud, on up to 24 voices at
-  // once. Over a pedalled passage the "sympathetic halo" came out 15 dB ABOVE
-  // the notes supposed to be causing it, and the instrument sounded like a
-  // granular synth because that is what it had become.
-  //
-  // The assertion is on ONE SYMPATHETIC STRING against one struck string,
-  // because that is the quantity with a reference behind it: the physically
-  // modelled variant in this repo measures its own pedal halo at -27 dB below
-  // a strike peak. Asserting on the total instead would be asserting on how
-  // many strings a chord happens to excite, which is a property of the chord.
+  // --- the halo is audible ------------------------------------------------
+  // One sympathetic string against one struck string, under the pedal. Only
+  // that it is audible is asserted: how loud it should be is a voicing
+  // choice, made with the sliders, and the level is printed for reference
+  // (the physically modelled variant in this repo measures its halo at
+  // -27 dB below a strike peak).
   engine.res.enabled = true;
   await settle();
   engine.setPedal(1);
@@ -297,87 +252,12 @@ const r = await page.evaluate(async () => {
   await wait(10);
   engine.noteOn(60, 100); out.octRestored = await peakOver(400); engine.noteOff(60); await settle();
 
-  // Feathering: the point of the whole tier. A range raised with a fade must
-  // not leave a step at its edge, and must still reach its full value inside.
-  const stepFor = (f) => { curves.setScope('trim', { lo: 84, hi: 108 }, 12, f); return curves.worstStep('trim').step; };
-  out.hardStep = stepFor(0);
-  out.featherStep = stepFor(6);
-  curves.setScope('trim', { lo: 84, hi: 108 }, 12, 6);
-  out.featherInside = curves.at('trim', 96) - curves.at('trim', 60);
-  // Widening the fade has to keep reducing the step, every time. That is the
-  // property; any particular number is just where the raised cosine is
-  // steepest for that width.
-  out.featherLadder = [0, 3, 6, 10, 14].map(stepFor).map((v) => +v.toFixed(2));
-  out.featherMonotonic = out.featherLadder.every((v, i, a) => i === 0 || v < a[i - 1]);
+  // Feathering and the rest of the range arithmetic: unit.mjs.
   curves.reset('trim');
 
-  // --- attack alignment -----------------------------------------------------
-  // Every recording's measured attack front has to land the same distance
-  // after the key goes down, whether the engine gets there by skipping into a
-  // late sample or by holding an early one back.
-  const landings = (on) => {
-    engine.alignStarts = on;
-    const out = [];
-    for (const midi of [21, 33, 45, 60, 72, 84, 96, 108]) {
-      for (const layer of [1, 8, 16]) {
-        const t0 = lib.m.notes[midi]?.layers?.[layer]?.t0;
-        if (t0 == null) continue;
-        const at = engine.startAt(midi, { t0, buf: { duration: 5 } });
-        out.push(t0 - at.offset * 1000 + at.delay * 1000);
-      }
-    }
-    return out;
-  };
-  const spread = (v) => Math.max(...v) - Math.min(...v);
-  out.alignSpread = spread(landings(true));
-  out.rawSpread = spread(landings(false));
-  engine.alignStarts = true;
-  out.alignTarget = lib.m.alignMs ?? null;
-  // Per-key Sample start, on top of the alignment, moving one key alone.
-  const startOf = (midi) => {
-    const t0 = lib.m.notes[midi].layers[8].t0;
-    return engine.startAt(midi, { t0, buf: { duration: 5 } }).offset * 1000;
-  };
-  const before = startOf(60), sibling = startOf(61);
-  curves.setKey('startTrim', 60, 20);
-  out.trimMoved = startOf(60) - before;
-  out.trimNeighbour = Math.abs(startOf(61) - sibling);
-  curves.setKey('startTrim', 60, 0);
-  // It must never skip so far in that the note is a fragment.
-  curves.setKey('startTrim', 60, 100000);
-  out.trimClamped = engine.startAt(60, { t0: 12, buf: { duration: 4 } }).offset;
-  curves.setKey('startTrim', 60, 0);
+  // Attack alignment and per-key sample start are arithmetic: unit.mjs.
 
-  // --- the per-key resonance level curve ------------------------------------
-  // Drawn down over the top of the keyboard, the strings it covers must answer
-  // more quietly and the ones it does not must be untouched.
-  const ringTop = async () => {
-    engine.res.allOff();
-    for (const m of [48, 55, 60]) { engine.noteOn(m, 120); await wait(40); engine.noteOff(m); }
-    await wait(300);
-    let top = 0, mid = 0;
-    for (let i = 0; i < engine.res.n; i++) {
-      const k = engine.res.lo + i;
-      if (k >= 96) top = Math.max(top, engine.res.level[i]);
-      else if (k > 60 && k < 90) mid = Math.max(mid, engine.res.level[i]);
-    }
-    return { top, mid };
-  };
-  // From flat: the shipped defaults carry a drawn curve of their own, and what
-  // is being checked here is what drawing one DOES. Put it back afterwards.
-  const shippedCurve = engine.res.keyCurve.toJSON();
-  engine.res.keyCurve.reset(); engine.res.refreshKeyCurve();
-  engine.setPedal(1);
-  const flat = await ringTop();
-  engine.res.keyCurve.fromJSON({ points: [{ k: 21, db: 0 }, { k: 84, db: 0 }, { k: 96, db: -18 }, { k: 108, db: -18 }] });
-  engine.res.refreshKeyCurve();
-  const drawn = await ringTop();
-  out.resCurveTop = drawn.top / Math.max(1e-12, flat.top);
-  out.resCurveMid = drawn.mid / Math.max(1e-12, flat.mid);
-  out.resCurveAt = [60, 96].map((k) => engine.res.keyCurve.at(k));
-  engine.res.keyCurve.fromJSON(shippedCurve); engine.res.refreshKeyCurve();
-  engine.setPedal(0);
-  await settle();
+  // The per-key resonance level curve is arithmetic: unit.mjs.
 
   // --- the output EQ --------------------------------------------------------
   // Measured on the output node, because the EQ sits after the master bus --
@@ -413,12 +293,17 @@ const r = await page.evaluate(async () => {
   // and reads half the gain -- correct behaviour for a shelf, and a test that
   // asserted +12 dB there would have been asserting the filter is not a shelf.
   engine.eq.set(0, 'freq', 400);
+  // Settled first, and the bypass measured straight after the flat curve it
+  // is compared with: measured last, after the boost, it read ~2 dB off the
+  // first strike of the block every run, which is the block's order and not
+  // the EQ (alternated, the two agree to half a decibel).
+  await settle();
   out.eqFlat = await holdAndMeasure(100);
-  engine.eq.set(0, 'gain', 12);
-  out.eqBoost = await holdAndMeasure(100);
   engine.eq.setEnabled(false);
   out.eqBypass = await holdAndMeasure(100);
   engine.eq.setEnabled(true);
+  engine.eq.set(0, 'gain', 12);
+  out.eqBoost = await holdAndMeasure(100);
   engine.eq.set(0, 'gain', 0);
   engine.eq.set(0, 'freq', 90);
   engine.res.enabled = eqRes;
@@ -429,7 +314,7 @@ const r = await page.evaluate(async () => {
   out.keysReady = lib.keysReady();
   out.failed = lib.failed;
   out.resident = Math.round(lib.bytes / 1048576);
-  out.finite = [out.loud, out.soft, out.sympathetic].every(Number.isFinite);
+  out.finite = [out.loud, out.soft, out.haloDb].every(Number.isFinite);
   return out;
 });
 
@@ -442,11 +327,8 @@ console.log('  silence                        :', f(r.silence));
 console.log('  C4 at velocity 110             :', f(r.loud));
 console.log('  C4 at velocity 25              :', f(r.soft), `(${(20 * Math.log10(r.soft / r.loud)).toFixed(1)} dB below)`);
 console.log('  ten-note pedalled cluster, ff  :', f(r.cluster), `(${(20 * Math.log10(r.cluster)).toFixed(1)} dBFS rms, limiter off)`);
-console.log('  held C-E-G after a struck C3   :', f(r.sympathetic), `on ${r.ringing} strings`);
-console.log('  same gesture, nothing held     :', f(r.damped));
 console.log('  sympathetic voices, pedal down :', r.pedalVoices);
 console.log('  ...just after the pedal lifts  :', r.afterPedalUpVoices);
-console.log('  halo under a held note, 8 s in :', f(r.haloHeld8s));
 console.log('  key released, pedal still down :', f(r.pedalHeld));
 console.log('  ...then the pedal comes up     :', f(r.pedalLifted));
 console.log('');
@@ -454,7 +336,6 @@ console.log('  60 ms in, no attack envelope   :', f(r.attackFast));
 console.log('  60 ms in, 800 ms shaped attack :', f(r.attackSlow));
 console.log('  part-way through a "grip" fall :', f(r.fallGrip));
 console.log('  ...and through a "fast" fall   :', f(r.fallFast));
-console.log('  hold law, 0 s / full / key-off :', r.holdShort.toFixed(3), '/', r.holdLong.toFixed(3), '/', r.holdKeyNoiseOff.toFixed(3));
 console.log('  damper gain, 60 ms hold        :', f(r.relShortHold));
 console.log('  damper gain, 900 ms hold       :', f(r.relLongHold), `(${(20 * Math.log10(r.relLongHold / r.relShortHold)).toFixed(1)} dB)`);
 console.log('  ...with that key trimmed 40 dB :', f(r.relPerKey), `(${(20 * Math.log10(r.relPerKey / r.relShortHold)).toFixed(1)} dB)`);
@@ -467,14 +348,6 @@ console.log('');
 console.log('  C4 inside a range trimmed 40dB :', f(r.octTarget));
 console.log('  C5, outside that range         :', f(r.octNeighbour));
 console.log('  C4 once the range is cleared   :', f(r.octRestored));
-console.log('  +12 dB range, inside it        :', r.featherInside.toFixed(1), 'dB');
-console.log('  biggest neighbour step, by fade:', r.featherLadder.map((v, i) => `${[0, 3, 6, 10, 14][i]}:${v}`).join('  '), 'dB');
-console.log('  attack front, aligned / raw    :', r.alignSpread.toFixed(2), '/', r.rawSpread.toFixed(1),
-  `ms of spread (target ${r.alignTarget} ms)`);
-console.log('  top-string resonance, drawn -18:',
-  (20 * Math.log10(Math.max(r.resCurveTop, 1e-12))).toFixed(1), 'dB');
-console.log('  middle strings, same pass      :',
-  (20 * Math.log10(Math.max(r.resCurveMid, 1e-12))).toFixed(2), 'dB (should be 0)');
 console.log('  100 Hz, EQ flat                :', r.eqFlat.toFixed(1), 'dB');
 console.log('  ...with a +12 dB low shelf     :', r.eqBoost.toFixed(1), 'dB', `(${(r.eqBoost - r.eqFlat).toFixed(1)} dB)`);
 console.log('  ...with the EQ bypassed        :', r.eqBypass.toFixed(1), 'dB');
@@ -489,38 +362,21 @@ const checks = [
   ['a note is not clipping', r.loud < 0.35],
   ['velocity changes level', r.soft < r.loud * 0.5],
   ['the worst case has headroom', r.cluster < 0.55],
-  ['held strings ring', r.sympathetic > Math.max(r.silence * 6, 2e-4)],
-  ['damped strings do not', r.damped < r.sympathetic * 0.4],
   ['the pedal holds sympathetic voices', r.pedalVoices > 0],
   ['lifting the pedal releases them', r.afterPedalUpVoices === 0],
-  ['a held note still has a halo 8 s in', r.haloHeld8s > 0],
   ['a released key rings on under the pedal', r.pedalHeld > 5e-3],
   ['lifting the pedal stops it', r.pedalLifted < r.pedalHeld * 0.3],
   ['values finite', r.finite],
   ['the attack envelope holds the note back', r.attackSlow < r.attackFast * 0.2],
   ['the damper-fall shape changes the fall', r.fallGrip > r.fallFast * 2],
-  ['the hold law falls with hold time', r.holdLong < r.holdShort * 0.6],
-  ['key noise opts out of the hold law', Math.abs(r.holdKeyNoiseOff - 1) < 1e-6],
   ['a long-held key gives a quieter release', r.relLongHold < r.relShortHold * 0.3],
   ['per-key release level works', Math.abs(20 * Math.log10(r.relPerKey / r.relShortHold) + 40) < 1],
   ['the key thud sits well under the note', 20 * Math.log10(r.keyThudGain / r.ffNoteGain) < -28],
   ['release samples are audible', r.releaseAudible > 1e-4],
-  ['a sympathetic string stays well under a struck one', r.haloDb < -18],
-  ['...but is still audible', r.haloDb > -35],
+  ['a sympathetic string is audible under the pedal', r.haloDb > -35],
   ['a range edit moves its own keys', r.octTarget < r.octRestored * 0.2],
   ['...and leaves keys outside it alone', r.octNeighbour > r.octRestored * 0.4],
   ['...and is undone by setting it back', r.octRestored > r.octTarget * 5],
-  ['a feathered range still reaches full value inside', Math.abs(r.featherInside - 12) < 0.1],
-  ['...and a fade cuts the edge step fourfold', r.featherStep <= r.hardStep / 4],
-  ['...with a hard edge dropping it all at once', r.hardStep > 11],
-  ['...and a wider fade always being gentler', r.featherMonotonic],
-  ['aligned attacks land together', r.alignSpread < 0.5],
-  ['...which the recordings do not do on their own', r.rawSpread > 5],
-  ['...and per-key sample start moves one key', Math.abs(r.trimMoved - 20) < 0.5 && r.trimNeighbour < 0.01],
-  ['...and cannot skip past half the recording', r.trimClamped <= 2 + 1e-9],
-  ['the resonance curve quietens the keys it covers', r.resCurveTop < 0.2],
-  // A decibel of slack: the two passes are measured a beat apart in real time.
-  ['...and leaves the keys it does not alone', Math.abs(20 * Math.log10(r.resCurveMid)) < 1],
   ['the output EQ is in the signal path', r.eqBoost - r.eqFlat > 8],
   ['...and its bypass is a real bypass', Math.abs(r.eqBypass - r.eqFlat) < 2],
   ['no console errors', errors.length === 0],

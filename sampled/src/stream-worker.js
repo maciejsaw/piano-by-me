@@ -22,6 +22,7 @@ import { demux, unpackHead, opusHead, RATE } from './ogg.js';
 
 const AHEAD = RATE * 1.2;      // decoded ahead of the playhead, per stream
 const BLOCK = 4800;            // frames per message to the worklet (100 ms)
+const FIRST = 960;             // ...except a stream's first, sent once it has this many
 const CONCURRENCY = 6;
 const PREROLL = 3840;          // 80 ms of Opus decoded and thrown away before a seek point
 const URGENT = 10;
@@ -76,6 +77,7 @@ function pump() {
   while (queue.length) {
     if (dirty) { queue.sort((a, b) => b.priority - a.priority); dirty = false; }
     if (inflight >= CONCURRENCY && queue[0].priority < URGENT) break;
+    if (queue[0].priority < URGENT && pressed()) break;      // the heartbeat tries again
     const job = queue.shift();
     inflight++;
     load(job)
@@ -279,8 +281,13 @@ async function loadHeads(order) {
   // mezzo-forte is ready first.
   const ordered = new Set(order);
   const keys = [...order.filter((k) => parts.has(k)), ...[...parts.keys()].filter((k) => !ordered.has(k))];
+  // One at a time. Four at once got every head in three seconds sooner and
+  // made the notes played meanwhile underrun ten times as often.
   for (const key of keys) {
     const d = parts.get(key);
+    // Heads for keys not yet played wait while a note that is playing needs
+    // the machine (see pressed()).
+    while (pressed()) await new Promise((r) => setTimeout(r, 10));
     await calibrate(d);
     await sendHead(key, d);
     if (store.has(key) || disk.installed.has(key)) announce(key);
@@ -291,9 +298,34 @@ async function loadHeads(order) {
 // ----------------------------------------------------------------- streams --
 const streams = new Map();     // id -> stream
 
+// A struck note starts playing its head the instant it is struck, and its
+// stream has to arrive before the head runs out. The same strike starts a
+// score of sympathetic-resonance streams whose voices simply wait for their
+// first block. Started all at once they share the machine evenly, and on a
+// busy one the struck note's stream came in after its head had run out -- a
+// gap in the note. So until every playing voice's stream is SAFE ahead, the
+// waiting ones hold off opening a decoder (for SOFT_WAIT at most) and the
+// background downloads hold off starting.
+const SAFE = RATE * 0.35;
+const SOFT_WAIT = 250;         // ms
+function pressed() {
+  for (const s of streams.values()) if (!s.soft && !s.closed && s.sent < s.end && s.sent - s.consumed < SAFE) return true;
+  return false;
+}
+
+// Block buffers, back from the worklet once played (see giveBack there) and
+// sent out again, so neither thread allocates a stream as it plays.
+const pool = [];
+const POOL_MAX = 512;          // ~10 MB
+function block() { return pool.pop() ?? new Float32Array(BLOCK); }
+function recycle(bufs) {
+  for (const b of bufs) if (b.byteLength === BLOCK * 4 && pool.length < POOL_MAX) pool.push(new Float32Array(b));
+}
+
 class DecodeStream {
-  constructor(id, key, d, from) {
+  constructor(id, key, d, from, retries = 0, exact = false) {
     this.id = id; this.key = key; this.d = d;
+    this.retries = retries;
     this.from = from; this.sent = from; this.consumed = from;
     this.end = d.total;
     this.next = 0; this.ts = 0;
@@ -304,32 +336,57 @@ class DecodeStream {
     // does with the pre-skip, it does it to its first output after configure.
     // Starts at the head keep decoding from packet 0, so the join with the
     // head is sample-exact.
-    if (from > headFrames + PREROLL) {
+    // A recovery (see recover) decodes from the top as well, so the note
+    // carries on sample-exact instead of through a pre-roll's approximation.
+    if (!exact && from > headFrames + PREROLL) {
       const want = from + trimOf(d) - PREROLL;
       while (this.next < d.n - 1 && this.ts + d.dur[this.next] <= want) this.ts += d.dur[this.next++];
     }
     this.outPos = this.ts - trimOf(d);
     this.acc = null; this.accN = 0; this.accStart = from;
     this.closed = false;
+    // A stream that starts past the head has a voice waiting for it, not one
+    // already playing: it can give way to one that is (see pressed()), until
+    // its first block is out.
+    this.soft = from > headFrames && !retries;
+    this.first = true;
+    this.born = performance.now();
+    this.dec = null;
+  }
+
+  open() {
     this.dec = new AudioDecoder({
       output: (ad) => this.onOut(ad),
-      error: (e) => { console.warn('stream', key, e); this.fail(); },
+      error: (e) => this.recover(e),
     });
-    this.dec.configure(config(d));
+    this.dec.configure(config(this.d));
     this.dec.addEventListener?.('dequeue', () => this.pump());
   }
 
   pump() {
     if (this.closed) return;
+    if (!this.dec) {
+      if (this.soft && performance.now() - this.born < SOFT_WAIT && pressed()) return;
+      this.open();
+    }
     const d = this.d, trim = trimOf(d);
     // Feed while the decoded-so-far (fed) is short of the target, a few
-    // packets in flight at a time so no single stream hogs the decoder.
+    // packets in flight at a time so no single stream hogs the decoder --
+    // except for the stretch before `sent` that is decoded only to be thrown
+    // away: the head, for a note that is already playing it, or what a
+    // recovery has to catch up on. Both are racing the playhead.
     const target = Math.min(this.end, this.consumed + AHEAD) + trim;
-    while (this.next < d.n && this.ts < target && this.dec.decodeQueueSize < 6) {
+    while (this.next < d.n && this.ts < target
+      && this.dec.decodeQueueSize < (this.ts < this.sent + trim ? 64 : 6)) {
       this.dec.decode(chunk(d, this.next, this.ts));
       this.ts += d.dur[this.next++];
     }
-    if (this.next >= d.n && !this.flushing) {
+    // Flush once everything up to the end has been fed, not only once every
+    // packet has: the last packets of a file can lie wholly past its end, so
+    // they are never fed, and without a flush the decoder holds on to its
+    // last few frames -- the note's final 50-70 ms played as silence and its
+    // stream never ended.
+    if ((this.next >= d.n || this.ts >= this.end + trim) && !this.flushing) {
       this.flushing = true;
       this.dec.flush().then(() => this.done(), () => {});
     }
@@ -351,21 +408,28 @@ class DecodeStream {
   take(L, R) {
     let i = 0;
     while (i < L.length) {
-      if (!this.acc) { this.acc = [new Float32Array(BLOCK), new Float32Array(BLOCK)]; this.accN = 0; this.accStart = this.sent; }
+      if (!this.acc) { this.acc = [block(), block()]; this.accN = 0; this.accStart = this.sent; }
       const n = Math.min(BLOCK - this.accN, L.length - i);
       this.acc[0].set(L.subarray(i, i + n), this.accN);
       this.acc[1].set(R.subarray(i, i + n), this.accN);
       this.accN += n; this.sent += n; i += n;
-      if (this.accN === BLOCK) this.post();
+      // The first block goes as soon as there is a little of it, when a voice
+      // is already playing its head and counting down: 20 ms now beats 100 ms
+      // later. A voice still waiting would start on it and run straight out.
+      if (this.accN === BLOCK || (this.first && !this.soft && this.accN >= FIRST)) { this.first = false; this.post(); }
     }
   }
 
   post() {
     if (!this.acc || !this.accN) return;
     let [L, R] = this.acc;
-    if (this.accN < BLOCK) { L = L.slice(0, this.accN); R = R.slice(0, this.accN); }
+    if (this.accN < BLOCK) {
+      L = L.slice(0, this.accN); R = R.slice(0, this.accN);
+      recycle([this.acc[0].buffer, this.acc[1].buffer]);
+    }
     hub.postMessage({ type: 'block', id: this.id, start: this.accStart, frames: this.accN, L, R }, [L.buffer, R.buffer]);
     this.acc = null; this.accN = 0;
+    this.soft = false;
   }
 
   done() {
@@ -380,10 +444,30 @@ class DecodeStream {
     hub.postMessage({ type: 'fail', id: this.id, at: this.sent });
     this.close();
   }
+  /**
+   * The decoder died mid-note -- the browser can reclaim one under resource
+   * pressure, and a hundred of them are open in a pedalled passage. Pick up
+   * where it got to with a fresh decoder, decoding from the top again so the
+   * join is exact -- the stream runs over a second ahead of the playhead, so
+   * there is time for that -- rather than cut the note off.
+   * Twice at most: a file that keeps failing is broken, not unlucky.
+   */
+  recover(e) {
+    if (this.closed) return;
+    console.warn('stream', this.key, e);
+    if (this.retries >= 2 || this.sent >= this.end) { this.fail(); return; }
+    this.post();
+    const consumed = this.consumed;
+    this.close();
+    const s = new DecodeStream(this.id, this.key, this.d, this.sent, this.retries + 1, true);
+    s.consumed = consumed;
+    streams.set(this.id, s);
+    s.pump();
+  }
   close() {
     this.closed = true;
-    streams.delete(this.id);
-    try { this.dec.close(); } catch { /* already */ }
+    if (streams.get(this.id) === this) streams.delete(this.id);
+    try { this.dec?.close(); } catch { /* already */ }
   }
 }
 
@@ -402,7 +486,7 @@ class DiskStream {
       const n = Math.min(BLOCK, this.end - this.sent);
       const view = this.buf.subarray(0, n * 2);
       this.h.read(view, { at: this.sent * 4 });
-      const L = new Float32Array(n), R = new Float32Array(n);
+      const L = n === BLOCK ? block() : new Float32Array(n), R = n === BLOCK ? block() : new Float32Array(n);
       for (let i = 0; i < n; i++) { L[i] = view[2 * i] / 32768; R[i] = view[2 * i + 1] / 32768; }
       hub.postMessage({ type: 'block', id: this.id, start: this.sent, frames: n, L, R }, [L.buffer, R.buffer]);
       this.sent += n;
@@ -412,7 +496,7 @@ class DiskStream {
       this.close();
     }
   }
-  close() { this.closed = true; streams.delete(this.id); disk.release(this.key); }
+  close() { this.closed = true; if (streams.get(this.id) === this) streams.delete(this.id); disk.release(this.key); }
 }
 
 // Voices that stopped before their stream had finished opening (a disk
@@ -452,7 +536,10 @@ async function startStream(id, key, from) {
 
 // A heartbeat, for the decoders whose 'dequeue' event this browser does not
 // fire, and for disk streams, which have no events at all.
-setInterval(() => { for (const s of streams.values()) s.pump(); }, 25);
+setInterval(() => {
+  for (const s of streams.values()) s.pump();
+  if (queue.length && inflight < CONCURRENCY) pump();
+}, 25);
 
 function fromWorklet(e) {
   const m = e.data;
@@ -460,6 +547,8 @@ function fromWorklet(e) {
   else if (m.type === 'need') {
     const s = streams.get(m.id);
     if (s) { s.consumed = Math.max(s.consumed, m.pos); s.pump(); }
+  } else if (m.type === 'free') {
+    recycle(m.bufs);
   } else if (m.type === 'stop') {
     const s = streams.get(m.id);
     if (s) s.close(); else if (opening.has(m.id)) stoppedEarly.add(m.id);

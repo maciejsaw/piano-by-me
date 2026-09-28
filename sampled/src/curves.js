@@ -280,7 +280,7 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
     const w = map.clientWidth * devicePixelRatio;
     if (map.width !== w) map.width = w;
     const h = map.height, bw = w / KEYS;
-    mapX.fillStyle = '#17150f'; mapX.fillRect(0, 0, w, h);
+    mapX.fillStyle = '#0d1119'; mapX.fillRect(0, 0, w, h);
     for (let i = 0; i < KEYS; i++) {
       const m = LOW + i;
       const inSel = m >= sel.lo && m <= sel.hi;
@@ -290,19 +290,19 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
         if (m >= sel.lo - f && m < sel.lo) edge = 0.5 - 0.5 * Math.cos(Math.PI * (m - (sel.lo - f)) / f);
         else if (m > sel.hi && m <= sel.hi + f) edge = 0.5 - 0.5 * Math.cos(Math.PI * ((sel.hi + f) - m) / f);
       }
-      mapX.fillStyle = inSel ? '#d9a441' : edge ? `rgba(217,164,65,${edge * 0.55})` : (BLACK.has(m % 12) ? '#100e0a' : '#241f18');
+      mapX.fillStyle = inSel ? '#d8c4a2' : edge ? `rgba(217,164,65,${edge * 0.55})` : (BLACK.has(m % 12) ? '#090c11' : '#151b27');
       mapX.fillRect(i * bw, 0, Math.max(1, bw - 0.5), h - 11 * devicePixelRatio);
     }
     paintPressed(mapX, w, h - 11 * devicePixelRatio, bw);
     mapX.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
     mapX.textAlign = 'center';
     for (let m = 24; m <= HIGH; m += 12) {
-      mapX.fillStyle = '#6d6458';
+      mapX.fillStyle = '#4f5c76';
       mapX.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 1);
     }
     const cur = selected();
     if (cur >= LOW && cur <= HIGH) {
-      mapX.strokeStyle = '#ece5da';
+      mapX.strokeStyle = '#e5e1dc';
       mapX.strokeRect((cur - LOW) * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 11 * devicePixelRatio - 1);
     }
     bar.querySelector('.sel-what').textContent = scopeName();
@@ -322,7 +322,7 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
   function paintPressed(c, w, h, bw) {
     const down = pressed();
     if (!down || !down.size) return;
-    c.fillStyle = 'rgba(111,168,220,0.42)';
+    c.fillStyle = 'rgba(141,161,190,0.42)';
     for (const m of down) {
       if (m < LOW || m > HIGH) continue;
       c.fillRect((m - LOW) * bw, 0, Math.max(1.5, bw), h);
@@ -417,28 +417,28 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
       const w = canvas.clientWidth * devicePixelRatio;
       if (canvas.width !== w) canvas.width = w;
       const h = canvas.height, mid = h / 2, bw = w / KEYS;
-      ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
       for (let i = 0; i < KEYS; i++) {
         const m = LOW + i;
-        if (m >= sel.lo && m <= sel.hi) { ctx.fillStyle = '#211c13'; ctx.fillRect(i * bw, 0, bw, h); }
-        else if (BLACK.has(m % 12)) { ctx.fillStyle = '#131109'; ctx.fillRect(i * bw, 0, bw, h); }
+        if (m >= sel.lo && m <= sel.hi) { ctx.fillStyle = '#121722'; ctx.fillRect(i * bw, 0, bw, h); }
+        else if (BLACK.has(m % 12)) { ctx.fillStyle = '#0a0d12'; ctx.fillRect(i * bw, 0, bw, h); }
       }
       paintPressed(ctx, w, h, bw);
-      ctx.strokeStyle = '#4a4134'; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+      ctx.strokeStyle = '#323b4c'; ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
 
       const per = curves.k[p.key];
       for (let i = 0; i < KEYS; i++) {
         const v = per ? per[i] : 0;
         if (!v) continue;
         const y = mid - (v / span()) * (h / 2 - 2);
-        ctx.fillStyle = v > 0 ? '#8a6a2a' : '#3f627e';
+        ctx.fillStyle = v > 0 ? '#897554' : '#505c6d';
         ctx.fillRect(i * bw + 0.5, Math.min(y, mid), Math.max(1, bw - 1), Math.max(1, Math.abs(y - mid)));
       }
 
       // The TOTAL -- global plus ranges plus per key -- because a cliff is a
       // property of the sum and nothing else on screen would show it.
       const total = curves.curve(p.key);
-      ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 1.6 * devicePixelRatio;
+      ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 1.6 * devicePixelRatio;
       ctx.beginPath();
       for (let i = 0; i < KEYS; i++) {
         const off = total[i] - p.def;
@@ -450,7 +450,7 @@ export function createEditor(root, curves, onChange, selected = () => 60, presse
 
       const cur = selected();
       if (cur >= LOW && cur <= HIGH) {
-        ctx.strokeStyle = '#ece5da'; ctx.lineWidth = 1;
+        ctx.strokeStyle = '#e5e1dc'; ctx.lineWidth = 1;
         ctx.strokeRect((cur - LOW) * bw + 0.5, 0.5, Math.max(1, bw - 1), h - 1);
       }
 

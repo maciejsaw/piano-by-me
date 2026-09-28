@@ -176,13 +176,13 @@ export function createEditor(root, { offsets, onChange, selectedNote = () => 60 
       g.clearRect(0, 0, KEYS * KEY_W, h);
       for (let i = 0; i < KEYS; i++) {
         const midi = i + LOW;
-        g.fillStyle = BLACK.has(midi % 12) ? '#191612' : '#221e19';
+        g.fillStyle = BLACK.has(midi % 12) ? '#0f131c' : '#151b26';
         g.fillRect(i * KEY_W, 0, KEY_W - 1, h);
       }
       // Octave marks, so a note can be found without counting.
-      g.fillStyle = '#4a4238';
+      g.fillStyle = '#343d4e';
       for (let i = 0; i < KEYS; i++) if ((i + LOW) % 12 === 0) g.fillRect(i * KEY_W, 0, 1, h);
-      g.fillStyle = '#5c5347';
+      g.fillStyle = '#414c62';
       g.fillRect(0, mid, KEYS * KEY_W, 1);
 
       const arr = offsets.keys.get(p.key);
@@ -191,12 +191,12 @@ export function createEditor(root, { offsets, onChange, selectedNote = () => 60 
         if (!v) continue;
         const clipped = Math.abs(v) > s;
         const px = Math.max(-mid, Math.min(mid, (v / s) * mid));
-        g.fillStyle = clipped ? '#c0392b' : (v > 0 ? '#d9a441' : '#6fa8dc');
+        g.fillStyle = clipped ? '#c0392b' : (v > 0 ? '#d8c4a2' : '#8da1be');
         g.fillRect(i * KEY_W, px > 0 ? mid - px : mid, KEY_W - 1, Math.max(1, Math.abs(px)));
       }
       const sel = selectedNote() - LOW;
       if (sel >= 0 && sel < KEYS) {
-        g.strokeStyle = '#ece5da';
+        g.strokeStyle = '#e5e1dc';
         g.strokeRect(sel * KEY_W - 0.5, 0.5, KEY_W, h - 1);
       }
     }

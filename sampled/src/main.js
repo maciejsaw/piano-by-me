@@ -10,6 +10,9 @@ import { createBezierEditor, SHAPES } from './bezier.js';
 import { BANDS } from './eq.js';
 import { createResCurveEditor, distanceDb } from './resonance.js';
 import { DEFAULT_SETTINGS } from './defaults.js';
+import { tipify } from './tips.js';
+import { createStage } from './stage.js';
+import { knob } from './knobs.js';
 
 const $ = (id) => document.getElementById(id);
 const STORE = 'piano-sampled-curves';
@@ -48,6 +51,7 @@ async function start(install = false) {
   $('startBtn').textContent = 'loading…';
   ctx = new AudioContext({ latencyHint: latencyHint(), sampleRate: 48000 });
   await ctx.resume();
+  keepRunning(ctx);
 
   lib = new Library(ctx, './samples');
   try { await lib.loadManifest(); }
@@ -78,6 +82,7 @@ async function start(install = false) {
   engine = new Engine(ctx, lib, curves, envelopes);
   restore();
   buildUI();
+  buildKnobs();
   restoreControls();       // second pass: sliders, EQ bands and toggles
 
   // Enough to play with before the rest arrives: the mezzo-forte layer, from
@@ -97,11 +102,66 @@ async function start(install = false) {
   initMidi();
 }
 
+/**
+ * The context can stop underneath the page: the OS suspends audio across a
+ * sleep, and some browsers 'interrupt' it for a call or an output device that
+ * went away. Nothing else here would ever notice -- the piano would just go
+ * silent until a reload. So ask for it back whenever it drops, and again on
+ * the next thing the player does, because a browser may only allow resume()
+ * from a gesture. Nothing in this page suspends the context on purpose.
+ */
+let wakeAudio = () => {};
+function keepRunning(c) {
+  wakeAudio = () => {
+    if (c.state === 'running' || c.state === 'closed') return;
+    c.resume().catch(() => { /* not allowed yet: the next gesture tries again */ });
+  };
+  c.addEventListener('statechange', () => {
+    if (c.state === 'running' || c.state === 'closed') return;
+    console.warn(`sampled: audio context ${c.state}, resuming`);
+    wakeAudio();
+  });
+  for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => wakeAudio(), { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio(); });
+  addEventListener('focus', () => wakeAudio());
+}
+
+/** The simple view's knobs, each standing in for a slider in the full view. */
+function buildKnobs() {
+  const root = $('knobs');
+  for (const [id, label] of [['gain', 'Volume'], ['dry', 'Direct'], ['fdnWet', 'Room'], ['wet', 'Hall'], ['resDb', 'Resonance']]) {
+    const k = knob($(id), label, $(id + 'V'));
+    root.appendChild(k.el);
+    knobs.push(k);
+  }
+}
+
+/**
+ * Simple view (the picture, the keyboard, a few knobs) or the full one with
+ * every control. Remembered in this browser.
+ */
+const VIEW = 'sampled.view';
+function setView(full, remember = true) {
+  document.body.classList.toggle('simple', !full);
+  $('viewBtn').setAttribute('aria-pressed', String(full));
+  if (remember) { try { localStorage.setItem(VIEW, full ? 'full' : 'simple'); } catch { /* not kept */ } }
+  // What was hidden was drawn at no width: draw it again now it has one.
+  if (full && window.piano?.ui) redrawAll();
+}
+function redrawAll() {
+  editor?.refresh();
+  velCurveEditor?.draw(); velLayerEditor?.draw(); resCurveEditor?.draw();
+  redrawEnvs(); drawEq(); renderNote();
+}
+$('viewBtn').onclick = () => setView(document.body.classList.contains('simple'));
+try { setView(localStorage.getItem(VIEW) === 'full', false); } catch { setView(false, false); }
+
 // ------------------------------------------------------------- note events --
 function noteOn(midi, vel) {
   if (!engine || midi < LOW || midi > HIGH) return;
   const v = engine.noteOn(midi, vel);
   if (v) layerHits.set(midi, { layer: v.layer, vel, at: performance.now(), held: true });
+  stage?.noteOn(midi);
   lastVel = vel; lastVelAt = performance.now();
   down.add(midi); paint(midi); editor?.playing();
 }
@@ -110,7 +170,15 @@ function noteOff(midi, vel = 64) {
   engine.noteOff(midi, vel);
   const hit = layerHits.get(midi);
   if (hit) { hit.held = false; hit.at = performance.now(); }
+  stage?.noteOff(midi);
   down.delete(midi); paint(midi); editor?.playing();
+}
+/** Everything off, and the keyboard drawn to match. */
+function panic() {
+  if (!engine) return;
+  engine.panic(); down.clear(); silent.clear(); stage?.clear();
+  for (let m = LOW; m <= HIGH; m++) paint(m);
+  editor?.playing();
 }
 function toggleSilent(midi) {
   silent.has(midi) ? silent.delete(midi) : silent.add(midi);
@@ -132,12 +200,12 @@ function paintResMap() {
   const live = engine ? engine.res.level.some((e) => e > 0) : false;
   if (live || resCurveLive) { resCurveEditor?.draw(); resCurveLive = live; }
   const c = $('resMap');
-  if (!c || !engine) return;
+  if (!c || !engine || !c.offsetParent) return;      // hidden in the simple view
   const g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio;
   const h = c.height, bw = w / 88, lab = 12 * devicePixelRatio;
   const plot = h - lab;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
 
   const res = engine.res;
   const undamped = engine.undamped ?? new Set();
@@ -145,7 +213,7 @@ function paintResMap() {
     const x = (m - LOW) * bw;
     const black = ![0, 2, 4, 5, 7, 9, 11].includes(m % 12);
     // A damper off is the pedal's actual job, so it is the background.
-    g.fillStyle = undamped.has(m) ? (black ? '#2a2417' : '#37301e') : (black ? '#100e0a' : '#1c1913');
+    g.fillStyle = undamped.has(m) ? (black ? '#171d2a' : '#1e2637') : (black ? '#090c11' : '#10151f');
     g.fillRect(x, 0, Math.max(1, bw - 0.5), plot);
   }
 
@@ -155,16 +223,16 @@ function paintResMap() {
     if (e <= 0) continue;
     const midi = res.lo + i;
     const bar = Math.max(0, Math.min(1, 1 + 20 * Math.log10(e) / 48)) * (plot - 2);
-    g.fillStyle = '#d9a441';
+    g.fillStyle = '#d8c4a2';
     g.fillRect((midi - LOW) * bw + 0.5, plot - bar, Math.max(1, bw - 1), bar);
   }
 
-  g.fillStyle = 'rgba(111,168,220,0.45)';
+  g.fillStyle = 'rgba(141,161,190,0.45)';
   for (const m of down) g.fillRect((m - LOW) * bw, 0, Math.max(1.5, bw), plot);
 
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
   g.textAlign = 'center';
-  g.fillStyle = '#6d6458';
+  g.fillStyle = '#4f5c76';
   for (let m = 24; m <= HIGH; m += 12) g.fillText(noteName(m), (m - LOW) * bw + bw / 2, h - 2);
 }
 
@@ -179,13 +247,13 @@ function paintResMap() {
  */
 function paintLayerMap() {
   const c = $('layerMap');
-  if (!c || !engine || !lib) return;
+  if (!c || !engine || !lib || !c.offsetParent) return;
   const g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
   const lab = 12 * devicePixelRatio, plot = h - lab;
   const cols = HIGH - LOW + 1, bw = w / cols;
   const layers = lib.layers, rows = layers.length, rh = plot / rows;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
 
   // The library, layer by layer: loudest at the top, softest at the bottom.
   for (let ci = 0; ci < cols; ci++) {
@@ -199,7 +267,7 @@ function paintLayerMap() {
       if (!n.layers?.[layer]) continue;
       const y = (rows - 1 - r) * rh;
       const resident = lib.has(lib.key(m, layer));
-      g.fillStyle = resident ? (black ? '#332b19' : '#3e3422') : (black ? '#1d1a12' : '#242019');
+      g.fillStyle = resident ? (black ? '#1b2231' : '#222b3e') : (black ? '#10151f' : '#151b28');
       g.fillRect(x + 0.5, y + 0.5, Math.max(1, bw - 1), Math.max(1, rh - 1));
     }
   }
@@ -219,7 +287,7 @@ function paintLayerMap() {
   }
 
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
-  g.fillStyle = '#6d6458'; g.textAlign = 'left';
+  g.fillStyle = '#4f5c76'; g.textAlign = 'left';
   g.fillText('ff', 2 * devicePixelRatio, 8 * devicePixelRatio);
   g.fillText('pp', 2 * devicePixelRatio, plot - 2 * devicePixelRatio);
   g.textAlign = 'center';
@@ -235,6 +303,8 @@ function paintResonance() {
   paintResMap();
   paintLayerMap();
   if (performance.now() - lastVelAt < 900) { velCurveEditor?.draw(); velLayerEditor?.draw(); }   // the strike marker fades
+  stage?.tick();
+  for (const k of knobs) k.sync();
   const s = engine.stats();
   $('statVoices').textContent = s.voices;
   $('statRes').textContent = s.resonating;
@@ -258,31 +328,54 @@ async function initMidi() {
   let access;
   try { access = await navigator.requestMIDIAccess(); }
   catch { $('midiSel').innerHTML = '<option>MIDI permission denied</option>'; return; }
-  const refresh = () => {
+  const refresh = (e) => {
     const inputs = [...access.inputs.values()];
     $('midiSel').innerHTML = inputs.length
       ? inputs.map((i, k) => `<option value="${k}">${i.name}</option>`).join('')
       : '<option>no MIDI device</option>';
-    inputs.forEach((i) => { i.onmidimessage = onMidi; });
+    inputs.forEach((i) => { i.onmidimessage = (m) => onMidi(m, i.id); });
+    if (e?.port?.type === 'input' && e.port.state === 'disconnected') unplugged(e.port.id);
   };
   access.onstatechange = refresh;
   refresh();
 }
-function onMidi(e) {
+// What each MIDI input is holding down, so a keyboard that is unplugged -- or
+// drops off the USB bus mid-phrase -- does not leave its notes and its pedal
+// stuck on: the note-offs it would have sent are never coming.
+const midiHeld = new Map();       // input id -> { notes: Set, pedal }
+function heldBy(id) {
+  let h = midiHeld.get(id);
+  if (!h) midiHeld.set(id, h = { notes: new Set(), pedal: 0 });
+  return h;
+}
+function unplugged(id) {
+  const h = midiHeld.get(id);
+  if (!h) return;
+  midiHeld.delete(id);
+  for (const m of h.notes) noteOff(m);
+  if (h.pedal > 0) setPedal(0);
+}
+function onMidi(e, id) {
   const [st, d1, d2] = e.data;
   const cmd = st & 0xf0;
-  if (cmd === 0x90 && d2 > 0) noteOn(d1, d2);
-  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) noteOff(d1, d2 || 64);
+  const h = heldBy(id);
+  wakeAudio();
+  if (cmd === 0x90 && d2 > 0) { h.notes.add(d1); noteOn(d1, d2); }
+  else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) { h.notes.delete(d1); noteOff(d1, d2 || 64); }
   else if (cmd === 0xb0) {
     // Continuous, not a switch: a half-pedalled CC 64 is a real technique and
     // most controllers send the whole range.
-    if (d1 === 64) setPedal(d2 / 127);
-    if (d1 === 123) engine.panic();
+    if (d1 === 64) { h.pedal = d2 / 127; setPedal(h.pedal); }
+    // All sound off, all notes off: what a DAW or a controller's panic button
+    // sends. Reset all controllers lets the pedal up.
+    if (d1 === 120 || d1 === 123) { for (const x of midiHeld.values()) { x.notes.clear(); x.pedal = 0; } panic(); }
+    if (d1 === 121) { h.pedal = 0; setPedal(0); }
   }
 }
 
 // ------------------------------------------------------------------ pedals --
 function setPedal(v) {
+  if (!engine) return;
   engine.setPedal(v);
   $('pedalBtn').classList.toggle('on', v >= 0.5);
   $('pedalBtn').textContent = v < 0.02 ? 'sustain' : v >= 0.98 ? 'sustain ▮▮▮' : `sustain ${(v * 100) | 0}%`;
@@ -302,32 +395,60 @@ const MAP = { z: 0, s: 1, x: 2, d: 3, c: 4, v: 5, g: 6, b: 7, h: 8, n: 9, j: 10,
 let octave = 4;
 addEventListener('keydown', (e) => {
   if (e.repeat || e.metaKey || e.ctrlKey || /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
-  if (e.key === ' ') { e.preventDefault(); setPedal(1); return; }
+  if (e.key === ' ') { e.preventDefault(); spaceHeld = true; setPedal(1); return; }
   if (e.key === ',') { octave = Math.max(0, octave - 1); return; }
   if (e.key === '.') { octave = Math.min(7, octave + 1); return; }
-  const k = MAP[e.key.toLowerCase()];
-  if (k !== undefined) { e.preventDefault(); noteOn(12 * octave + 12 + k, 96); }
+  const key = e.key.toLowerCase(), k = MAP[key];
+  if (k !== undefined) {
+    e.preventDefault();
+    const m = 12 * octave + 12 + k;
+    typed.set(key, m);
+    noteOn(m, 96);
+  }
 });
+// Which note each typed key started, so letting go stops that note even if
+// the octave moved in between -- recomputing it at keyup left the first one
+// stuck on.
+const typed = new Map();
+let spaceHeld = false;
 addEventListener('keyup', (e) => {
-  if (e.key === ' ') { setPedal(0); return; }
-  const k = MAP[e.key.toLowerCase()];
-  if (k !== undefined) noteOff(12 * octave + 12 + k);
+  if (e.key === ' ') { spaceHeld = false; setPedal(0); return; }
+  const key = e.key.toLowerCase(), m = typed.get(key);
+  if (m === undefined) return;
+  typed.delete(key);
+  noteOff(m);
+});
+// A window that loses focus with keys down never sees their keyups.
+addEventListener('blur', () => {
+  for (const m of typed.values()) noteOff(m);
+  typed.clear();
+  if (spaceHeld) { spaceHeld = false; setPedal(0); }
 });
 
 // ---------------------------------------------------------------------- UI --
 let editor = null;
+let stage = null;
+const knobs = [];
 function buildUI() {
+  stage = createStage($('stage'), {
+    lo: LOW, hi: HIGH,
+    res: () => engine?.res,
+  });
   kb = buildKeyboard($('kbInner'), {
     lo: LOW, hi: HIGH,
     onDown: noteOn, onUp: (m) => noteOff(m), onSelect: select, onSilent: toggleSilent,
   });
   for (let m = LOW; m <= HIGH; m++) paint(m);
+  // Narrower than the whole keyboard (a phone): start on the middle of it.
+  const kbEl = $('kb');
+  kbEl.scrollLeft = (kbEl.scrollWidth - kbEl.clientWidth) / 2;
 
   editor = createEditor($('editor'), curves, () => {
     engine.refreshStrips();
     renderNote();
     save();
   }, () => selNote, () => down);
+  tipify($('editor'));
 
   bezierRow('na', envelopes.noteAttack);
   bezierRow('nr', envelopes.noteRelease, { falling: true });
@@ -408,7 +529,7 @@ function buildUI() {
         : `${levelDb.toFixed(0)} dB, −${(-reductionDb).toFixed(1)} dB`;
     };
   }
-  bind('wet', (v) => { engine.wet.gain.value = v; }, db);
+  bind('wet', (v) => { engine.wet.gain.value = v; linkToggles(); }, db);
   // Bass and treble read out in seconds, which move with the reverb time.
   const hallRtReadouts = () => {
     const rt = engine.hallOpts.rt60;
@@ -424,7 +545,7 @@ function buildUI() {
     (v) => `${(v * engine.hallOpts.rt60).toFixed(2)} s @ 8 kHz`);
   bind('hallPre', (v) => engine.setHall({ predelayMs: v }), (v) => v.toFixed(1) + ' ms');
   bind('hallBuild', (v) => engine.setHall({ buildMs: v }), (v) => v.toFixed(0) + ' ms');
-  bind('fdnWet', (v) => { engine.early.wet.gain.value = v; }, db);
+  bind('fdnWet', (v) => { engine.early.wet.gain.value = v; linkToggles(); }, db);
   bind('fdnEr', (v) => engine.setFdnRoom({ erLevel: v }), (v) => v.toFixed(2) + '×');
   bind('fdnTail', (v) => engine.setFdnRoom({ tailLevel: v }), (v) => v.toFixed(2) + '×');
   bind('fdnW', (v) => engine.setFdnRoom({ width: v }), (v) => v.toFixed(1) + ' m');
@@ -436,6 +557,11 @@ function buildUI() {
   bind('fdnPos', (v) => engine.setFdnRoom({ distance: v }), (v) => (v * 100).toFixed(0) + '% back');
   const sec = (v) => v.toFixed(2) + ' s';
   bind('symAmt', (v) => { engine.res.symAmount = v; }, db);
+  // In dB rather than gain, up to +30: a linear slider that reaches x31.6 would
+  // leave unity in the bottom 3% of its travel. All the way down is off.
+  const RES_OFF = -40;
+  bind('resDb', (v) => { engine.res.amount = v <= RES_OFF ? 0 : Math.pow(10, v / 20); linkToggles(); },
+    (v) => v <= RES_OFF ? 'off' : `${v >= 0 ? '+' : ''}${v.toFixed(1)} dB`);
   bind('resSel', (v) => { engine.res.build(v); }, (v) => v.toFixed(1) + '× bandwidth');
   // What a dB-per-doubling rate comes to at 1 semitone, an octave, two octaves.
   const reach = (v) => [1, 12, 24].map((d) => distanceDb(d, v).toFixed(0)).join(' / ') + ' dB';
@@ -459,6 +585,7 @@ function buildUI() {
   bind('resBloom', (v) => { engine.res.bloom = v; }, (v) => v === 0 ? 'none' : (v * 1000).toFixed(0) + ' ms');
   bind('relNoise', (v) => { engine.releaseNoise = v; }, db);
   bind('dampNoise', (v) => { engine.damperNoise = v; }, db);
+  bind('maxVoices', (v) => { engine.maxVoices = v; engine.prune(); }, (v) => v.toFixed(0) + ' voices');
   bind('cutDb', (v) => { engine.cutDb = v; }, (v) => v <= -100 ? 'off' : v.toFixed(0) + ' dB');
   bind('pedSweep', (v) => { engine.pedalSweep = v / 1000; }, (v) => v === 0 ? 'all at once' : `bass ${v.toFixed(0)} ms after treble`);
   bind('pedDampCount', (v) => { engine.pedalDamperCount = v; }, (v) => v === 0 ? 'none' : `loudest ${v.toFixed(0)}`);
@@ -565,16 +692,8 @@ function buildUI() {
   // from collectSettings(), so it never survives a reload or an export.
   $('resSoloBtn').onclick = () => setSoloRes(!engine.soloRes);
   $('pedalBtn').onclick = () => setPedal(engine.pedal >= 0.5 ? 0 : 1);
-  $('panicBtn').onclick = () => {
-    engine.panic(); down.clear(); silent.clear();
-    for (let m = LOW; m <= HIGH; m++) paint(m);
-    editor?.playing();
-  };
-  // What the context actually gave: the hint is a request, and the browser
-  // rounds it to a buffer size the device supports.
-  const hint = latencyHint();
-  $('latencySel').value = String(hint);
-  $('statLatency').textContent = `${((ctx.baseLatency + (ctx.outputLatency || 0)) * 1000).toFixed(0)} ms`;
+  $('panicBtn').onclick = panic;
+  $('latencySel').value = String(latencyHint());
   $('latencySel').onchange = (e) => {
     try { localStorage.setItem(LATENCY, e.target.value); } catch { /* not kept */ }
     save();
@@ -604,6 +723,19 @@ function buildUI() {
 // exists, because collectSettings reads the sliders out of the DOM and a save
 // fired mid-build would store a half-populated set.
 const save = () => { if (uiReady) localStorage.setItem(STORE, JSON.stringify(collectSettings())); };
+/**
+ * The simple view's Room, Hall and Resonance knobs each own their section's
+ * switch: turned all the way down is off, anything above it is on. Clicking
+ * the switch only when it disagrees keeps its label, class and engine in step.
+ */
+function linkToggles() {
+  if (!uiReady) return;          // the switches are wired after the sliders
+  for (const [id, btn, on] of [
+    ['wet', 'roomBtn', engine.hall.on],
+    ['fdnWet', 'fdnBtn', engine.early.on],
+    ['resDb', 'resBtn', engine.res.enabled],
+  ]) if ((+$(id).value > +$(id).min) !== on) $(btn).click();
+}
 /** The resonance curve's readout: flat, or how far down it pulls the top. */
 function syncResCurve() {
   const out = $('resCurveV');
@@ -621,20 +753,20 @@ const EQ_FREQS = (() => { const f = new Float32Array(160); for (let i = 0; i < 1
 function drawEq() {
   const c = $('eqCanvas'), g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
   const yOf = (db) => h / 2 - (db / 18) * (h / 2 - 4);
-  g.strokeStyle = '#2b261d';
+  g.strokeStyle = '#19202f';
   for (const db of [-12, -6, 6, 12]) { g.beginPath(); g.moveTo(0, yOf(db)); g.lineTo(w, yOf(db)); g.stroke(); }
   g.font = `${9 * devicePixelRatio}px ui-monospace,monospace`;
   for (const f of [100, 1000, 10000]) {
     const x = Math.log(f / 20) / Math.log(1000) * w;
     g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
-    g.fillStyle = '#6d6458'; g.textAlign = 'left';
+    g.fillStyle = '#4f5c76'; g.textAlign = 'left';
     g.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 3, h - 3);
   }
-  g.strokeStyle = '#4a4134'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
+  g.strokeStyle = '#323b4c'; g.beginPath(); g.moveTo(0, yOf(0)); g.lineTo(w, yOf(0)); g.stroke();
   const resp = engine.eq.response(EQ_FREQS);
-  g.strokeStyle = engine.eq.enabled ? '#d9a441' : '#4a4134';
+  g.strokeStyle = engine.eq.enabled ? '#d8c4a2' : '#323b4c';
   g.lineWidth = 2 * devicePixelRatio;
   g.beginPath();
   for (let i = 0; i < EQ_FREQS.length; i++) {
@@ -769,6 +901,13 @@ function applyControls(o) {
     o.sliders['aExp' + k] ??= v; o.sliders['bExp' + k] ??= v;
     delete o.sliders['exp' + k];
   }
+  // The resonance level used to be a linear gain (resAll, 0..3.16); it is now
+  // in dB (resDb), bottom of the range meaning off.
+  if (o.sliders?.resAll != null) {
+    const g = +o.sliders.resAll;
+    o.sliders.resDb ??= String(g > 0 ? Math.max(-39.5, 20 * Math.log10(g)) : -40);
+    delete o.sliders.resAll;
+  }
   if (o.sliders) for (const [id, val] of Object.entries(o.sliders)) {
     if (id === 'ped') continue;   // momentary; see collectSettings -- never restore it
     const el = $(id);
@@ -797,6 +936,9 @@ function applyControls(o) {
   if (t.perspective != null && engine.perspective !== t.perspective) $('persBtn').click();
   if (t.invert != null && engine.invert !== t.invert) $('invBtn').click();
   if (t.partialsOnly != null && engine.res.partialsOnly !== t.partialsOnly) $('partialsBtn').click();
+  // A saved switch that disagrees with its knob (files from before they were
+  // linked): the knob wins, since it is what the simple view shows.
+  linkToggles();
   // Redraw the things that read from state rather than from a slider event.
   editor?.refresh(); redrawEnvs(); for (const e of envEditors) e.draw();
   const b = $('velCurveBtn');
@@ -821,7 +963,9 @@ function download(name, text) {
 function wireMenu() {
   const menu = $('menu');
   $('menuBtn').onclick = (e) => { e.stopPropagation(); menu.classList.toggle('open'); };
-  document.addEventListener('click', () => menu.classList.remove('open'));
+  // A click on the latency picker must not close the menu, or its list
+  // vanishes before an option can be picked.
+  document.addEventListener('click', (e) => { if (!e.target.closest('.menu-row')) menu.classList.remove('open'); });
   $('exportBtn').onclick = () =>
     download(`piano-sampled-${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(collectSettings(), null, 2));
@@ -880,7 +1024,7 @@ function renderNote() {
 
   const c = $('velCanvas'), g = c.getContext('2d');
   const w = c.width = c.clientWidth * devicePixelRatio, h = c.height;
-  g.fillStyle = '#17150f'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#0d1119'; g.fillRect(0, 0, w, h);
   const bias = Math.round(curves.at('layerBias', selNote));
   const layers = lib.layers, lmin = layers[0], lmax = layers[layers.length - 1];
   const vc = engine?.velCurve, vl = engine?.velLayer;
@@ -892,15 +1036,15 @@ function renderNote() {
   // the layer each velocity reaches for, as a background band
   for (let v = 1; v <= 127; v++) {
     const l = nearestLayer(layers, layerAt(v));
-    g.fillStyle = l % 2 ? '#201c14' : '#262117';
+    g.fillStyle = l % 2 ? '#121722' : '#151b28';
     g.fillRect((v - 1) / 127 * w, 0, w / 127 + 1, h);
   }
-  g.strokeStyle = '#3a3328';
+  g.strokeStyle = '#222c40';
   for (let d = 0; d >= -48; d -= 12) {
     const y = (-d / 48) * h;
     g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
   }
-  g.strokeStyle = '#d9a441'; g.lineWidth = 2 * devicePixelRatio; g.beginPath();
+  g.strokeStyle = '#d8c4a2'; g.lineWidth = 2 * devicePixelRatio; g.beginPath();
   for (let v = 1; v <= 127; v++) {
     const y = Math.min(h, (-(baseDb(v) + curves.at('trim', selNote)) / 48) * h);
     v === 1 ? g.moveTo(0, y) : g.lineTo((v - 1) / 127 * w, y);
@@ -1032,8 +1176,8 @@ async function offerInstall() {
     if (quota - usage < need) { offer.hidden = true; return; }
   } catch { /* no estimate: offer anyway */ }
   $('installLbl').textContent = done > 0
-    ? `Finish downloading samples to disk for better performance — ${done} of ${total} done, about ${gb(need)} GB more on your disk`
-    : `Download samples to disk for better performance — takes about ${gb(full)} GB on your disk`;
+    ? `Finish downloading samples (${gb(need)} GB more)`
+    : `Download samples for smoother playing (${gb(full)} GB)`;
   offer.hidden = false;
 }
 
@@ -1050,4 +1194,5 @@ $('uninstallBtn').onclick = async () => {
   un.disabled = false;
   await offerInstall();
 };
-offerInstall();
+tipify();
+offerInstall().finally(() => $('startView').classList.remove('checking'));

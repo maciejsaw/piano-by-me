@@ -5,37 +5,29 @@
 // same spirit as what a real key does. Shift-click lifts a key's dampers
 // without striking it, which is the way to hear the sympathetic resonance on
 // its own.
+import { keyGeometry } from './stage.js';
+
 const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const isBlack = (m) => !WHITE.includes(m % 12);
 
 export function buildKeyboard(inner, { lo, hi, onDown, onUp, onSelect, onSilent }) {
   inner.innerHTML = '';
   const el = new Map();
-  const W = 15;
-  let x = 0;
-  const xs = new Map();
-  for (let m = lo; m <= hi; m++) {
-    if (isBlack(m)) continue;
-    xs.set(m, x); x += W;
-  }
-  inner.style.width = `${x + 2}px`;
-
-  const make = (m, cls, left, w, h) => {
+  // Fractions of the width, shared with the picture above it (stage.js), so
+  // the keyboard fills whatever it is given.
+  const geo = keyGeometry(lo, hi);
+  const pct = (f) => `${(f * 100).toFixed(4)}%`;
+  const make = (m, cls, k, h) => {
     const d = document.createElement('div');
     d.className = cls;
-    d.style.left = `${left}px`; d.style.width = `${w}px`; d.style.height = `${h}px`;
+    d.style.left = pct(k.x); d.style.width = `calc(${pct(k.w)} - 1px)`; d.style.height = h;
     d.dataset.m = m;
     if (!isBlack(m) && m % 12 === 0) d.innerHTML = `<span>C${Math.floor(m / 12) - 1}</span>`;
     inner.appendChild(d);
     el.set(m, d);
   };
-  for (let m = lo; m <= hi; m++) if (!isBlack(m)) make(m, 'wk', xs.get(m), W - 1, 150);
-  for (let m = lo; m <= hi; m++) {
-    if (!isBlack(m)) continue;
-    let prev = m - 1;
-    while (prev >= lo && isBlack(prev)) prev--;
-    make(m, 'bk', (xs.get(prev) ?? 0) + W * 0.66, W * 0.66, 95);
-  }
+  for (let m = lo; m <= hi; m++) if (!isBlack(m)) make(m, 'wk', geo.get(m), '100%');
+  for (let m = lo; m <= hi; m++) if (isBlack(m)) make(m, 'bk', geo.get(m), '63%');
 
   let held = null;
   const velFrom = (e, d) => {

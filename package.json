@@ -13,7 +13,13 @@
     "sampled:align": "node sampled/tools/align.mjs",
     "sampled:selftest": "node sampled/tools/selftest.mjs",
     "sampled:verify": "node sampled/tools/verify.mjs",
-    "sampled:test": "node sampled/tools/browser-test.mjs",
+    "sampled:test": "node sampled/tools/unit.mjs && node sampled/tools/automation-test.mjs && node sampled/tools/selftest.mjs && node sampled/tools/smoke.mjs",
+    "sampled:test:full": "npm run sampled:test && node sampled/tools/browser-test.mjs",
+    "sampled:unit": "node sampled/tools/unit.mjs",
+    "sampled:smoke": "node sampled/tools/smoke.mjs",
+    "sampled:stress": "node sampled/tools/stress.mjs",
+    "sampled:perf": "node sampled/tools/perf.mjs",
+    "sampled:ab": "node sampled/tools/ab.mjs",
     "sampled:render": "node sampled/tools/render.mjs"
   },
   "repository": {

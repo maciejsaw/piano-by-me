@@ -11,6 +11,8 @@
 // head -- and a sample is playable when both are true.
 
 let nextId = 1;
+/** A fresh voice id, unique across both kinds of voice (the worklet routes stream blocks by it). */
+export const newVoiceId = () => nextId++;
 
 export class Streamer {
   /**
@@ -107,6 +109,7 @@ export class StreamSource {
   constructor(streamer, key, totalFrames) {
     this.streamer = streamer;
     this.id = nextId++;
+    this.key = key;
     this.node = new AudioWorkletNode(streamer.ctx, 'piano-voice', {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
       processorOptions: { id: this.id, key, total: totalFrames },

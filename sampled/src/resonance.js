@@ -28,7 +28,6 @@
 // There is no reverb here: the voices go into the same per-key channel strips
 // as the struck notes, and the room is the room's job.
 
-import { StreamSource } from './stream.js';
 import { RATE } from './ogg.js';
 import { holdFade, fadeAt } from './envelopes.js';
 
@@ -181,6 +180,8 @@ const STEAL = 2;
 const TOPUP_MIN = 1.06;
 // Time constant of a top-up: quick, since a string pushed again answers at once.
 const TOPUP_TAU = 0.04;
+// How fast a tail on its fall is cut short when its slot is needed.
+const CUT = 0.1;
 
 // The distance at which the fall-off starts to bite, in semitones.
 const NEAR_REF = 2;
@@ -208,6 +209,7 @@ export class Resonance {
     this.n = this.hi - this.lo + 1;
     this.enabled = true;
     this.lookahead = 0;           // seconds; the engine sets its own
+    this.renderer = () => null;   // the engine's one-worklet voice renderer
 
     // Sympathetic (free strings, partial coincidence).
     this.symAmount = 0.3;
@@ -223,11 +225,16 @@ export class Resonance {
     this.sbFalloff = 9;           // dB per doubling of distance (see distanceDb)
     this.sbStep = 1;              // every string (1), every 2nd, every 3rd... out from the key
     this.sbRelease = 1.2;
+    // Only the nearest strings take part: past about six keys either way a
+    // string adds little (~7% of the soundboard's energy, -0.3 dB) and costs
+    // a voice like any other.
+    this.sbMax = 12;
     // Self (the struck key's own recording under the note).
     this.selfAmount = 0;
     this.selfRelease = 0.4;
 
     // Shared.
+    this.amount = 1;              // overall level, on top of each kind's own
     this.maxVoices = 24;
     // How long a voice takes to hand over when it has to be cut: crossfaded
     // into a restart of the same string, or faded out to make room for a
@@ -243,6 +250,7 @@ export class Resonance {
 
     this.voices = new Map();      // `${kind}:${midi}` -> voice, while driven
     this.fading = new Set();      // released voices, until they have stopped
+    this.chains = new Map();      // `${kind}:${midi}` -> the filters its voices share (see chain)
     this.undamped = new Set();
     this.level = new Float64Array(this.n);   // per string, for the display
     this.keyCurve = new ResCurve(this.lo, this.hi);
@@ -320,13 +328,17 @@ export class Resonance {
    * is weighed against them for a slot; then loudest first.
    */
   order(want) {
-    const on = (w) => (this.voices.has(`${w.kind}:${w.target}`) ? 1 : 0);
-    want.sort((a, b) => on(b) - on(a) || b.g - a.g);
+    const t = this.soon();
+    for (const w of want) {
+      const id = `${w.kind}:${w.target}`;
+      w.on = this.voices.has(id) || this.tailOf(id, t) ? 1 : 0;
+    }
+    want.sort((a, b) => b.on - a.on || b.g - a.g);
   }
 
   /** A candidate's gain: its coupling `g`, at velocity `vel`, on the string's own level. */
   strength(target, g, vel) {
-    return g * Math.pow(vel / 127, VEL_EXP) * this.keyG[target - this.lo]
+    return this.amount * g * Math.pow(vel / 127, VEL_EXP) * this.keyG[target - this.lo]
       * Math.max(0, this.curves.at('resonance', target));
   }
 
@@ -351,10 +363,16 @@ export class Resonance {
       }
     }
     if (this.sbAmount > 0) {
+      const from = want.length;
       for (let ri = 0; ri < n; ri++) {
         const r = this.lo + ri;
         if (r === midi || Math.abs(r - midi) % this.sbStep) continue;
         add('sb', r, this.sbAmount * Math.pow(10, distanceDb(Math.abs(r - midi), this.sbFalloff) / 20));
+      }
+      // The loudest sbMax of them.
+      if (want.length - from > this.sbMax) {
+        const sb = want.splice(from).sort((a, b) => b.g - a.g);
+        want.push(...sb.slice(0, this.sbMax));
       }
     }
     if (this.selfAmount > 0) add('self', midi, this.selfAmount);
@@ -372,10 +390,15 @@ export class Resonance {
    * voice out while the new one faded in, on every answering string at once,
    * and a repeated note under the pedal pumped. Only when the recording has
    * decayed too far to be turned up is it crossfaded into a fresh start.
+   *
+   * The same goes for a string still on its fall from the last strike (its
+   * note let go, a damper landing): the fall stops where it has got to and
+   * the string is pushed from there, as a real one would be -- instead of a
+   * second voice blooming in on the same string beside the dying one.
    */
   drive(kind, midi, g, from, when, k = 1) {
     const id = `${kind}:${midi}`;
-    const cur = this.voices.get(id);
+    const cur = this.voices.get(id) ?? this.revive(id, when);
     if (cur) {
       cur.drivers.add(from);
       // Driven lower down its partials than before: open the filter to them.
@@ -409,6 +432,7 @@ export class Resonance {
 
   setPartialFilter(v, when = this.ctx.currentTime) {
     const f = this.partialCut(v);
+    if (v.chain) v.chain.cut = f;
     for (const hp of v.hp) hp.frequency.setTargetAtTime(f, when, 0.05);
   }
 
@@ -418,23 +442,103 @@ export class Resonance {
     for (const v of this.voices.values()) this.setPartialFilter(v);
   }
 
-  /** Free a voice for one of gain `g`, if it is well louder than the quietest. */
+  /**
+   * Free a voice for one of gain `g`, if it is well louder than the quietest.
+   * Tails on their fall count as well as driven voices -- they cost the same
+   * to play -- and are cut short (CUT) when one of them is the quietest.
+   */
   makeRoom(g, when) {
-    if (this.voices.size < this.maxVoices) return true;
+    const tails = this.tails();
+    if (this.voices.size + tails.length < this.maxVoices) return true;
     let low = null, lowG = Infinity;
-    for (const [id, v] of this.voices) {
+    for (const v of this.voices.values()) {
       const e = this.estimate(v, when);
-      if (e < lowG) { lowG = e; low = id; }
+      if (e < lowG) { lowG = e; low = v; }
+    }
+    for (const v of tails) {
+      const e = this.loudness(v, when);
+      if (e < lowG) { lowG = e; low = v; }
     }
     if (lowG * STEAL >= g) return false;
-    this.release(low, this.crossfade, 0, true);
+    if (this.fading.has(low)) this.cut(low);
+    else this.release(`${low.kind}:${low.midi}`, this.crossfade, 0, true);
     return true;
+  }
+
+  /**
+   * Released voices on their kind's fall (not those on a quick crossfade or
+   * cut, which are gone in a moment): they count toward maxVoices.
+   */
+  tails() {
+    const out = [];
+    for (const v of this.fading) if (v.resumable) out.push(v);
+    return out;
+  }
+
+  /** The tail on string `id` that a strike can pick up again, if any. */
+  tailOf(id, t = this.soon()) {
+    let got = null;
+    for (const v of this.fading) {
+      if (!v.resumable || !v.fade || t > v.stopAt - 0.04 || `${v.kind}:${v.midi}` !== id) continue;
+      if (!got || v.t0 > got.t0) got = v;
+    }
+    return got;
+  }
+
+  /** How loud a voice is now, down its fall if it is on one. */
+  loudness(v, t) {
+    return v.fade ? this.estimate(v, t) / (v.level ?? 1) * fadeAt(v.fade, t) : this.estimate(v, t);
+  }
+
+  /**
+   * The earliest a change can be scheduled and still be in the audio thread's
+   * future even at the largest buffer size: a hold placed in its past would
+   * cut a fade short instead.
+   */
+  soon() { return this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01; }
+
+  /** Where the audio clock is now (see Engine.audioNow). */
+  audioNow() { return this.ctx.currentTime; }
+
+  /** Stop the fall of the tail on `id` where it has got to, and drive it again. */
+  revive(id, when) {
+    const t = Math.max(when, this.soon());
+    const v = this.tailOf(id, t);
+    if (!v) return null;
+    const level = holdFade(v.rel.gain, v.fade, t, this.audioNow());
+    v.src.resume();
+    v.level = level;
+    v.fade = null;
+    v.resumable = false;
+    v.drivers = new Set();
+    this.fading.delete(v);
+    this.voices.set(id, v);
+    return v;
+  }
+
+  /** A tail's slot is needed: finish its fall in `fall` seconds from where it is. */
+  cut(v, fall = CUT) {
+    const t = this.soon();
+    v.resumable = false;
+    if (!v.fade) return;                      // on a plain ramp: let it finish
+    holdFade(v.rel.gain, v.fade, t, this.audioNow());
+    v.rel.gain.linearRampToValueAtTime(0, t + fall);
+    v.fade = null;
+    v.stopAt = Math.min(v.stopAt, t + fall + 0.03);
+    try { v.src.stop(v.stopAt); } catch { /* already stopped */ }
   }
 
   /** Roughly how loud a voice is now: its gain, down its recording's own decay. */
   estimate(v, t) {
+    // Asked for every voice by each new string of a strike (makeRoom), all at
+    // the strike's time: worked out once per voice, again when anything it
+    // depends on has moved.
+    const c = v.est;
+    if (c && c.t === t && c.gain === v.gain && c.level === v.level && c.layer === this.layer) return c.e;
     const age = Math.max(0, t - v.t0);
-    return v.gain * (v.level ?? 1) * Math.pow(10, (this.decayDb(v.midi, v.offset + age) - v.db0) / 20);
+    const e = v.gain * (v.level ?? 1) * Math.pow(10, (this.decayDb(v.midi, v.offset + age) - v.db0) / 20);
+    v.est = { t, gain: v.gain, level: v.level, layer: this.layer, e };
+    return e;
   }
 
   /** A note's measured decay, dB below its peak, `t` s in, for the layer played. */
@@ -453,40 +557,58 @@ export class Resonance {
   start(kind, midi, g, when, fadeIn = this.bloom, k = 1) {
     const got = this.lib.best(midi, this.layer);
     if (!got) return null;
-    const ctx = this.ctx;
     const len = got.frames / RATE;
     const offset = Math.max(Math.min(0.03, len * 0.1), Math.min(this.startAt, len / 3));
     // The wanted layer's true level, whichever layer is standing in for it
     // while the library loads -- each file is peak-normalised.
     const unit = this.lib.entry(midi, this.layer)?.gain ?? got.entry.gain;
 
-    const src = new StreamSource(this.lib.streamer, got.key, got.frames);
+    const id = `${kind}:${midi}`;
+    // `gain` moves with top-ups (see drive).
+    const v = { kind, midi, key: got.key, gain: g, unit, t0: when, offset,
+      db0: this.decayDb(midi, offset), drivers: new Set(), k };
+    const c = this.chain(id, v);
+    v.chain = c; v.hp = c.hp; v.lp = c.lp;
+    const src = this.renderer().voice(got.key, got.frames, midi, c);
+    const { lvl, rel } = src;
+    v.src = src; v.lvl = lvl; v.rel = rel;
     src.playbackRate.value = Math.pow(2, this.curves.at('tune', midi) / 1200);
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = this.tone; lp.Q.value = 0.5;
-    // Two second-order high-passes, 24 dB/octave: steep enough that a string
-    // driven at its 2nd partial loses its fundamental, not just some of it.
-    const hp = [ctx.createBiquadFilter(), ctx.createBiquadFilter()];
-    for (const h of hp) { h.type = 'highpass'; h.Q.value = Math.SQRT1_2; }
-    const lvl = ctx.createGain();
     lvl.gain.value = g * unit;
     // Sits at 1 until release() runs its fall from that known value.
-    const rel = ctx.createGain();
     rel.gain.value = 1;
-    src.connect(hp[0]).connect(hp[1]).connect(lp).connect(lvl).connect(rel).connect(this.strip(midi));
     src.start(when, offset, fadeIn, this.fadeInCurve());
-
-    // `gain` moves with top-ups (see drive).
-    const v = { kind, midi, key: got.key, src, lp, hp, lvl, rel, gain: g, unit, t0: when, offset,
-      db0: this.decayDb(midi, offset), drivers: new Set(), k };
-    for (const h of hp) h.frequency.value = this.partialCut(v);
     src.onended = () => {
       // The recording ran out: nothing left to fade.
-      const id = `${kind}:${midi}`;
       if (this.voices.get(id) === v) this.voices.delete(id);
       this.fading.delete(v);
+      if (--c.users === 0) {
+        c.free();
+        if (this.chains.get(id) === c) this.chains.delete(id);
+      }
     };
     return v;
+  }
+
+  /**
+   * The filters of the voices on one string: a new voice there while the last
+   * is still on its crossfade or its fall goes through the same ones, rather
+   * than three more filters of its own -- a biquad costs the audio thread
+   * about as much as the voice itself. Filters are linear, so the sum through
+   * one set is the sum of each through its own; the level and release gains
+   * sit in front of them for that. Shared only at the same partial cut-off:
+   * a voice that needs another one gets filters of its own, and is the one a
+   * later voice there joins.
+   */
+  chain(id, v) {
+    const cut = this.partialCut(v);
+    let c = this.chains.get(id);
+    if (!c || c.cut !== cut) {
+      c = this.renderer().chain(v.midi, cut, this.tone);
+      c.cut = cut; c.users = 0;
+      this.chains.set(id, c);
+    }
+    c.users++;
+    return c;
   }
 
   /** The fade-in shape (Envelopes: resonance fade-in), 0 -> 1, or null for the worklet's raised cosine. */
@@ -543,20 +665,25 @@ export class Resonance {
    * but only those still louder than `resumeDb`. The quiet ones finish.
    */
   resumeFreed(free, live) {
-    // Far enough ahead to be in the audio thread's future even at the largest
-    // buffer size: a hold placed in its past would cut the fade short instead.
-    const t = this.ctx.currentTime + Math.max(this.lookahead, this.ctx.baseLatency ?? 0) + 0.01;
-    for (const v of [...this.fading]) {
+    const t = this.soon();
+    // Loudest first, and no more than maxVoices driven: the rest finish.
+    const back = [];
+    for (const v of this.fading) {
       if (!v.resumable || !v.fade || t > v.stopAt - 0.04) continue;
-      const id = `${v.kind}:${v.midi}`;
-      if (this.voices.has(id)) continue;
       if (v.kind === 'sym' && !free.has(v.midi)) continue;
-      const alive = [...v.drivers].filter((d) => live.has(d));
-      if (!alive.length) continue;
+      if (![...v.drivers].some((d) => live.has(d))) continue;
       // How loud it would come back: where its fall has got to, on how loud
       // it was when the damper landed.
-      if (this.estimate(v, t) / (v.level ?? 1) * fadeAt(v.fade, t) < Math.pow(10, this.resumeDb / 20)) continue;
-      const level = holdFade(v.rel.gain, v.fade, t);
+      const e = this.loudness(v, t);
+      if (e >= Math.pow(10, this.resumeDb / 20)) back.push([e, v]);
+    }
+    back.sort((a, b) => b[0] - a[0]);
+    for (const [, v] of back) {
+      if (this.voices.size >= this.maxVoices) break;
+      const id = `${v.kind}:${v.midi}`;
+      if (this.voices.has(id)) continue;
+      const alive = [...v.drivers].filter((d) => live.has(d));
+      const level = holdFade(v.rel.gain, v.fade, t, this.audioNow());
       v.src.resume();
       v.level = level;
       v.fade = null;
@@ -574,7 +701,7 @@ export class Resonance {
    * @param sounding  [{ midi }] -- the notes still ringing freely
    */
   tick(dt, sounding = []) {
-    if (!this.enabled) { if (this.voices.size) this.allOff(); return; }
+    if (!this.enabled) { if (this.voices.size || this.tails().length) this.allOff(); return; }
     const live = new Set();
     for (const s of sounding) live.add(s.midi);
     const now = this.ctx.currentTime;
@@ -590,7 +717,9 @@ export class Resonance {
     }
   }
 
+  /** Everything, tails on their fall included: panic, or resonance switched off. */
   allOff() {
+    for (const v of this.fading) if (v.fade && v.stopAt > this.soon() + 0.1) this.cut(v, 0.05);
     for (const id of [...this.voices.keys()]) this.release(id, 0.05);
   }
 
@@ -598,7 +727,7 @@ export class Resonance {
   setTone(hz) {
     this.tone = hz;
     const now = this.ctx.currentTime;
-    for (const v of this.voices.values()) v.lp.frequency.setTargetAtTime(hz, now, 0.02);
+    for (const c of this.chains.values()) c.lp.frequency.setTargetAtTime(hz, now, 0.02);
   }
 
   /** The strings with a voice of any kind. */
@@ -642,11 +771,11 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     const w = canvas.width = canvas.clientWidth * dpr();
     const h = canvas.height;
     const kw = w / (hi - lo + 1);
-    ctx.fillStyle = '#17150f'; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#0d1119'; ctx.fillRect(0, 0, w, h);
     // The keys, and the undamped region that has no choice but to ring.
     for (let k = lo; k <= hi; k++) {
       const x = xOf(k, w);
-      if (k > topDamped) { ctx.fillStyle = '#231d12'; ctx.fillRect(x, 0, kw + 1, h); }
+      if (k > topDamped) { ctx.fillStyle = '#131822'; ctx.fillRect(x, 0, kw + 1, h); }
       if (BLACK.has(k % 12)) { ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(x, 0, kw + 1, h); }
     }
     // What is ringing right now, faintly, behind the curve.
@@ -663,13 +792,13 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     ctx.font = `${9 * dpr()}px ui-monospace,monospace`; ctx.textAlign = 'left';
     for (let d = RES_CEIL; d >= RES_FLOOR; d -= 12) {
       const y = yOf(d, h);
-      ctx.strokeStyle = d === 0 ? '#5a4a32' : '#302a20';
+      ctx.strokeStyle = d === 0 ? '#384154' : '#1c2434';
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      ctx.fillStyle = '#6d6458';
+      ctx.fillStyle = '#4f5c76';
       ctx.fillText(d === RES_FLOOR ? 'off' : `${d > 0 ? '+' : ''}${d}`, 3 * dpr(), Math.min(h - 2, y + 10 * dpr()));
     }
     // Octave lines, labelled at every C.
-    ctx.strokeStyle = '#2b261d'; ctx.fillStyle = '#5c5449';
+    ctx.strokeStyle = '#19202f'; ctx.fillStyle = '#424d63';
     for (let k = lo; k <= hi; k++) {
       if (k % 12 !== 0) continue;
       const x = xOf(k, w);
@@ -679,21 +808,21 @@ export function createResCurveEditor(canvas, rc, { topDamped = 108, energy = nul
     // The damper break, named -- everything right of it is always free.
     if (topDamped >= lo && topDamped < hi) {
       const x = xOf(topDamped + 1, w);
-      ctx.strokeStyle = '#7fbf7f'; ctx.setLineDash([4 * dpr(), 4 * dpr()]);
+      ctx.strokeStyle = '#d6c6a8'; ctx.setLineDash([4 * dpr(), 4 * dpr()]);
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = '#7fbf7f'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#d6c6a8'; ctx.textAlign = 'left';
       ctx.fillText('no dampers →', x + 4 * dpr(), 11 * dpr());
     }
     // The curve, then its handles.
-    ctx.strokeStyle = '#d9a441'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
+    ctx.strokeStyle = '#d8c4a2'; ctx.lineWidth = 2 * dpr(); ctx.beginPath();
     for (let k = lo; k <= hi; k++) {
       const x = xOf(k, w), y = yOf(rc.at(k), h);
       k === lo ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.stroke();
     for (const p of rc.points) {
-      ctx.fillStyle = '#ffeec0';
+      ctx.fillStyle = '#eee4d3';
       ctx.beginPath(); ctx.arc(xOf(p.k, w), yOf(p.db, h), 4 * dpr(), 0, 7); ctx.fill();
     }
   }
