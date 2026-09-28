@@ -38,7 +38,7 @@ main>div{display:contents}
 .exp{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:8px 0}
 .exp-h{font-size:12px;color:var(--dim);margin:0 0 6px}
 #kb{position:relative;user-select:none;overflow-x:auto;touch-action:pan-x;border-radius:10px;background:#090c11}
-#stage{display:block;width:100%;min-width:760px;height:clamp(150px,34vh,420px)}
+#stage{display:block;width:100%;min-width:760px;height:clamp(84px,19vh,235px)}
 #kbInner{position:relative;width:100%;min-width:760px;height:clamp(110px,17vh,170px);border-top:2px solid #3e485d}
 .wk{position:absolute;top:0;background:linear-gradient(#fbf7ef,#ddd5c6);border:1px solid #4e5b74;border-radius:0 0 4px 4px;cursor:pointer}
 .wk.sel{background:linear-gradient(#eee4d3,#dfd5c5)}
@@ -147,6 +147,13 @@ h3.lbl{font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
 .tip-pop table{min-width:300px}
 .tip-pop .stat{display:block}
 #overlay .lead{color:var(--ink);font-size:15px;margin:6px 0 18px}
+/* Until the page has read what is on disk, a spinner instead of the start
+   screen, so the install box, uninstall button and tips don't appear and vanish. */
+#startView{position:relative}
+#startView.checking>*{visibility:hidden}
+#startView.checking::after{content:"";position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;
+  border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* Simple view: the picture, the keyboard and a few knobs. Settings shows the rest. */
 body.simple .panel:not(#stagePanel):not(#mixPanel),body.simple .full-only{display:none}
 body:not(.simple) #mixPanel{display:none}
@@ -161,7 +168,7 @@ body.simple #hero{display:block}
 body.simple header{background:transparent;border-bottom-color:transparent}
 body.simple main{min-height:calc(100vh - 56px);min-height:calc(100svh - 56px);padding-top:0}
 body.simple #stagePanel{background:none;border:none;box-shadow:none;padding:0}
-body.simple{--roll:clamp(150px,36vh,420px)}
+body.simple{--roll:clamp(84px,20.2vh,235px)}
 body.simple #stage{height:var(--roll)}
 /* The notes rise over the photo; only the keyboard sits below it. */
 body.simple #stagePanel{position:relative;z-index:1;margin-top:calc(-1 * var(--roll))}
@@ -171,6 +178,9 @@ body.simple #kb{background:transparent;border-radius:6px}
 body.simple #kbInner{border-top:none;box-shadow:0 -1px 0 rgba(189,168,133,.35),0 20px 40px -20px #000}
 body.simple .wk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#fbf7ef,#ddd5c6)}
 body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#29303d,#0c1017)}
+/* Resonance shows as the glow above the keys, not as lit keys. */
+body.simple .wk.res:not(.dn):not(.sil){background:linear-gradient(#fbf7ef,#ddd5c6)}
+body.simple .bk.res:not(.dn):not(.sil){background:linear-gradient(#29303d,#0c1017)}
 #stagePanel{padding:6px;border:1px solid transparent;border-radius:14px;
   background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,#897556,#232d41 40%,#2c3a4a 70%,#8da1be) border-box;
   box-shadow:0 18px 40px -22px #000,0 0 0 1px #0006 inset}
@@ -196,14 +206,14 @@ body.simple .bk.sel:not(.dn):not(.res):not(.sil){background:linear-gradient(#293
 </style>
 </head>
 <body class="simple">
-<div id="overlay"><div id="startView">
+<div id="overlay"><div id="startView" class="checking">
   <h1 style="font-size:20px;margin-bottom:6px">Classic grand piano</h1>
   <p class="lead" data-tip-anchor>A recorded Yamaha C5 grand</p>
   <p data-tip>A Yamaha C5, recorded. One dedicated sample per key per velocity layer — 88 × 16,
      repitched off the Salamander library with the instrument's own body response held
      still — played by an engine with per-key velocity response, stereo spread, a
      geometric room, and sympathetic resonance that accumulates while the pedal is down.</p>
-  <label id="installOffer" class="installOpt">
+  <label id="installOffer" class="installOpt" hidden>
     <input type="checkbox" id="installChk" checked>
     <span><span id="installLbl">Download samples for smoother playing (2.6 GB)</span><span data-tip-anchor></span><span data-tip>Keeps a decoded copy of every sample in this browser's storage, so notes don't have to be decoded while you play. It takes about 2.6 GB on your disk, downloads once, and can be uninstalled from this page later.</span></span>
   </label>

@@ -1182,5 +1182,5 @@ $('uninstallBtn').onclick = async () => {
   un.disabled = false;
   await offerInstall();
 };
-offerInstall();
 tipify();
+offerInstall().finally(() => $('startView').classList.remove('checking'));
